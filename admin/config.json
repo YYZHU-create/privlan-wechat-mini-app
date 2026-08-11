@@ -1168,9 +1168,174 @@
           "desktop": true
         }
       }
+    ],
+    "appointment": [
+      {
+        "id": "appointment-hero-msoebwj6-n0dz",
+        "type": "appointment-hero",
+        "name": "预约页头图",
+        "enabled": true,
+        "props": {
+          "kicker": "PRIVLAN APPOINTMENT",
+          "title": "预约专属服务",
+          "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。"
+        },
+        "style": {
+          "backgroundColor": "#171717",
+          "textColor": "#ffffff",
+          "fontFamily": "luxury-serif",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 24,
+          "paddingY": 28,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "appointment-form-msoebwj6-3a02",
+        "type": "appointment-form",
+        "name": "预约信息与服务",
+        "enabled": true,
+        "props": {
+          "showName": true,
+          "showPhone": true,
+          "showService": false,
+          "showStore": false,
+          "showDate": true,
+          "showTime": true,
+          "showAdvisor": false
+        },
+        "style": {
+          "backgroundColor": "#f4f3f0",
+          "textColor": "#171717",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 16,
+          "paddingY": 20,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "appointment-notes-msoebwj6-l2aa",
+        "type": "appointment-notes",
+        "name": "到店备注",
+        "enabled": true,
+        "props": {
+          "label": "到店备注",
+          "placeholder": "可填写想了解的款式、场合或其他需求"
+        },
+        "style": {
+          "backgroundColor": "#ffffff",
+          "textColor": "#171717",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 16,
+          "paddingY": 20,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "appointment-submit-msoebwj6-g2j4",
+        "type": "appointment-submit",
+        "name": "提交预约",
+        "enabled": true,
+        "props": {
+          "buttonText": "确认预约",
+          "successTitle": "预约已提交",
+          "successCopy": "我们会尽快确认你的预约，请留意顾问联系。"
+        },
+        "style": {
+          "backgroundColor": "#ffffff",
+          "textColor": "#171717",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 16,
+          "paddingY": 20,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
     ]
   },
-  "_lastSync": "2026-08-11T07:51:19.860Z",
+  "_lastSync": "2026-08-11T08:41:11.320Z",
   "customFonts": [],
   "designSystem": {
     "blockDefaults": {
@@ -1198,5 +1363,23 @@
     "answerProvider": "rules",
     "humanServiceEnabled": false,
     "authMode": "test"
+  },
+  "appointment": {
+    "kicker": "PRIVLAN APPOINTMENT",
+    "title": "预约专属服务",
+    "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。",
+    "submitText": "确认预约",
+    "successTitle": "预约已提交",
+    "successCopy": "我们会尽快确认你的预约，请留意顾问联系。",
+    "fields": {
+      "name": true,
+      "phone": true,
+      "service": true,
+      "store": true,
+      "date": true,
+      "time": true,
+      "advisor": true,
+      "notes": true
+    }
   }
 }

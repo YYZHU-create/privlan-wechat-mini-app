@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "预约到店",
   "navigationBarBackgroundColor": "#171717",
-  "navigationBarTextStyle": "white"
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "service-fab": "/components/service-fab/index"
+  }
 }

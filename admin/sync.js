@@ -238,6 +238,14 @@ page {
 
   if (cfg.pageLayouts) {
     const syncPageLayout = require("./home-layout-sync");
+    if (!Array.isArray(cfg.pageLayouts.appointment)) {
+      cfg.pageLayouts.appointment = [
+        { id: "appointment-hero", type: "appointment-hero", name: "预约页头图", enabled: true, props: { kicker: "PRIVLAN APPOINTMENT", title: "预约专属服务", description: "选择适合你的门店、时间和顾问，我们会提前做好准备。" }, style: { backgroundColor: "#171717", textColor: "#ffffff", paddingX: 24, paddingY: 28 }, visibility: { mobile: true, tablet: true, desktop: true } },
+        { id: "appointment-form", type: "appointment-form", name: "预约表单", enabled: true, props: { showName: true, showPhone: true, showService: true, showStore: true, showDate: true, showTime: true, showAdvisor: true }, style: { backgroundColor: "#f4f3f0", textColor: "#171717", paddingX: 16, paddingY: 20 }, visibility: { mobile: true, tablet: true, desktop: true } },
+        { id: "appointment-notes", type: "appointment-notes", name: "预约备注", enabled: true, props: { label: "到店备注", placeholder: "可填写想了解的款式、场合或其他需求" }, style: { backgroundColor: "#ffffff", textColor: "#171717", paddingX: 16, paddingY: 20 }, visibility: { mobile: true, tablet: true, desktop: true } },
+        { id: "appointment-submit", type: "appointment-submit", name: "预约提交", enabled: true, props: { buttonText: "确认预约", successTitle: "预约已提交", successCopy: "我们会尽快确认你的预约，请留意顾问联系。" }, style: { backgroundColor: "#ffffff", textColor: "#171717", paddingX: 16, paddingY: 20 }, visibility: { mobile: true, tablet: true, desktop: true } }
+      ];
+    }
     const pageMeta = {
       home: { name: "首页" }, category: { name: "分类" }, campaign: { name: "系列活动" },
       cart: { name: "购物车" }, mine: { name: "我的" }, detail: { name: "商品详情" }, appointment: { name: "预约到店" }
