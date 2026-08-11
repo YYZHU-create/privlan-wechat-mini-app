@@ -1,0 +1,6 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "service-fab": "/components/service-fab/index"
+  }
+}

@@ -1,0 +1,48 @@
+/* 全局样式 —— 由管理面板自动生成 */
+page {
+  background: #0a0a0a;
+  color: #f0f0f0;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.serif {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  letter-spacing: 4rpx;
+}
+
+.btn-black {
+  background: #c9a97e;
+  color: #0a0a0a;
+  font-size: 28rpx;
+  letter-spacing: 6rpx;
+  border-radius: 0;
+  padding: 0 80rpx;
+  height: 96rpx;
+  line-height: 96rpx;
+  text-align: center;
+}
+
+.btn-outline {
+  border: 1rpx solid #c9a97e;
+  color: #c9a97e;
+  font-size: 26rpx;
+  letter-spacing: 4rpx;
+  padding: 14rpx 60rpx;
+  display: inline-block;
+}
+
+.hairline {
+  height: 1rpx;
+  background: #2a2a2a;
+}
+
+.section-title {
+  font-size: 32rpx;
+  letter-spacing: 8rpx;
+  text-align: center;
+  padding: 48rpx 0 32rpx;
+  font-weight: 500;
+  color: #f0f0f0;
+}

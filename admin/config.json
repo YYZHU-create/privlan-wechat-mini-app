@@ -1,0 +1,1202 @@
+{
+  "brand": {
+    "name": "PRIVLAN",
+    "logo": "brand-logo.png",
+    "slogan": "成为 PRIVLAN 会员 享受更多礼遇服务",
+    "advisorslogan": "扫描二维码，添加 PRIVLAN 专属顾问，获取独家礼遇"
+  },
+  "theme": {
+    "preset": "black-gold",
+    "colors": {
+      "bgPrimary": "#0a0a0a",
+      "bgSecondary": "#161616",
+      "bgTertiary": "#1e1e1e",
+      "textPrimary": "#f0f0f0",
+      "textSecondary": "#8a8a8a",
+      "accent": "#c9a97e",
+      "border": "#2a2a2a"
+    }
+  },
+  "themePresets": {
+    "black-gold": {
+      "name": "黑金",
+      "colors": {
+        "bgPrimary": "#0a0a0a",
+        "bgSecondary": "#161616",
+        "bgTertiary": "#1e1e1e",
+        "textPrimary": "#f0f0f0",
+        "textSecondary": "#8a8a8a",
+        "accent": "#c9a97e",
+        "border": "#2a2a2a"
+      }
+    },
+    "white-gold": {
+      "name": "白金",
+      "colors": {
+        "bgPrimary": "#ffffff",
+        "bgSecondary": "#f7f5f2",
+        "bgTertiary": "#f1efe9",
+        "textPrimary": "#1a1a1a",
+        "textSecondary": "#777777",
+        "accent": "#c9a97e",
+        "border": "#e5e2dc"
+      }
+    },
+    "dark-silver": {
+      "name": "暗银",
+      "colors": {
+        "bgPrimary": "#0f0f0f",
+        "bgSecondary": "#1a1a1a",
+        "bgTertiary": "#242424",
+        "textPrimary": "#e8e8e8",
+        "textSecondary": "#888888",
+        "accent": "#b0b0b0",
+        "border": "#2e2e2e"
+      }
+    },
+    "navy-gold": {
+      "name": "藏蓝金",
+      "colors": {
+        "bgPrimary": "#0c1421",
+        "bgSecondary": "#141e2e",
+        "bgTertiary": "#1c283a",
+        "textPrimary": "#e0e6ed",
+        "textSecondary": "#7a8899",
+        "accent": "#c9a97e",
+        "border": "#1e2d42"
+      }
+    }
+  },
+  "heroes": [
+    {
+      "id": 1,
+      "img": "/images/hero1.jpg",
+      "title": "SUNGLASSES",
+      "sub": "发现新世界",
+      "channel": "推荐"
+    },
+    {
+      "id": 2,
+      "img": "/images/hero2.jpg",
+      "title": "LAKE MAGGIORE",
+      "sub": "湖畔假日系列",
+      "channel": "LAKE MAGGIORE"
+    },
+    {
+      "id": 3,
+      "img": "/images/hero3.jpg",
+      "title": "OASI CASHMERE",
+      "sub": "绿洲羊绒",
+      "channel": "推荐"
+    }
+  ],
+  "homeChannels": [
+    "推荐",
+    "LAKE MAGGIORE"
+  ],
+  "categories": [
+    {
+      "id": "new",
+      "name": "早秋新品"
+    },
+    {
+      "id": "summer",
+      "name": "夏季系列"
+    },
+    {
+      "id": "stitch",
+      "name": "Triple Stitch"
+    },
+    {
+      "id": "tops",
+      "name": "上装"
+    },
+    {
+      "id": "shoes",
+      "name": "鞋履"
+    },
+    {
+      "id": "bottoms",
+      "name": "下装"
+    },
+    {
+      "id": "acc",
+      "name": "配饰"
+    },
+    {
+      "id": "home",
+      "name": "内衣及家居服"
+    },
+    {
+      "id": "brand",
+      "name": "品牌甄选"
+    }
+  ],
+  "products": [
+    {
+      "id": 6,
+      "cat": "tops",
+      "name": "0004",
+      "price": 4900,
+      "img": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+      "gallery": [
+        "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg"
+      ],
+      "colors": [],
+      "sizes": [],
+      "description": "",
+      "detail": "",
+      "detailImages": []
+    },
+    {
+      "id": 5,
+      "cat": "tops",
+      "name": "0003",
+      "price": 4900,
+      "img": "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg",
+      "gallery": [
+        "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg"
+      ],
+      "colors": [],
+      "sizes": [
+        "新尺码"
+      ],
+      "description": "",
+      "detail": "",
+      "detailImages": []
+    },
+    {
+      "id": 4,
+      "cat": "tops",
+      "name": "0002",
+      "price": 4900,
+      "img": "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg",
+      "gallery": [
+        "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg"
+      ],
+      "colors": [],
+      "sizes": [],
+      "description": "",
+      "detail": "",
+      "detailImages": []
+    },
+    {
+      "id": 3,
+      "cat": "tops",
+      "name": "0001",
+      "price": 4900,
+      "img": "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg",
+      "gallery": [
+        "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg"
+      ],
+      "colors": [],
+      "sizes": [],
+      "description": "",
+      "detail": "",
+      "detailImages": []
+    }
+  ],
+  "campaign": {
+    "heroImg": "/images/campaign-hero.jpg",
+    "timeBar": "活动时间：2026年8月3日 00:00 - 2026年8月10日 23:59",
+    "gift": {
+      "img": "/images/gift.png",
+      "tag": "限量 10 份",
+      "title": "限量行李牌",
+      "desc": "支付订单满 12,000 元，并添加专属顾问即可尊享",
+      "note": "* 行李牌将在订单确认后单独寄出，详情可咨询专属顾问"
+    },
+    "sectionTitle": "鞋履甄选",
+    "productIds": [
+      5,
+      6
+    ]
+  },
+  "tabBar": {
+    "centerText": "夏季系列",
+    "items": [
+      {
+        "text": "首页",
+        "icon": "/images/tab-home.png",
+        "iconOn": "/images/tab-home-on.png",
+        "center": false,
+        "iconSource": "/images/tab-home.png",
+        "iconCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "iconOnSource": "/images/tab-home-on.png",
+        "iconOnCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "text": "分类",
+        "icon": "/images/tab-grid.png",
+        "iconOn": "/images/tab-grid-on.png",
+        "center": false,
+        "iconSource": "/images/tab-grid.png",
+        "iconCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "iconOnSource": "/images/tab-grid-on.png",
+        "iconOnCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "text": "夏季系列",
+        "center": true,
+        "centerIcon": "/images/tab-3-centerIcon-pinterest.gif",
+        "centerIconSource": "/images/tab-3-centerIcon-pinterest.gif",
+        "centerIconCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "text": "购物车",
+        "icon": "/images/tab-bag.png",
+        "iconOn": "/images/tab-bag-on.png",
+        "center": false,
+        "iconSource": "/images/tab-bag.png",
+        "iconCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "iconOnSource": "/images/tab-bag-on.png",
+        "iconOnCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "text": "我的",
+        "icon": "/images/tab-user.png",
+        "iconOn": "/images/tab-user-on.png",
+        "center": false,
+        "iconSource": "/images/tab-user.png",
+        "iconCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "iconOnSource": "/images/tab-user-on.png",
+        "iconOnCrop": {
+          "zoom": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      }
+    ],
+    "centerSize": 96,
+    "centerLift": 56
+  },
+  "memberBenefits": [
+    {
+      "icon": "/images/svc-presale.png",
+      "text": "新品预售"
+    },
+    {
+      "icon": "/images/svc-cs.png",
+      "text": "专属客服"
+    },
+    {
+      "icon": "/images/svc-tailor.png",
+      "text": "改衣服务"
+    },
+    {
+      "icon": "/images/svc-gift.png",
+      "text": "尊享礼遇"
+    }
+  ],
+  "pageLayouts": {
+    "home": [
+      {
+        "id": "hero-main",
+        "type": "hero",
+        "name": "首屏轮播",
+        "enabled": true,
+        "props": {
+          "heroIndex": 0,
+          "showButton": true,
+          "buttonText": "探索更多",
+          "slides": [
+            {
+              "id": "slide-msika2n0-235j",
+              "kind": "image",
+              "src": "/images/4ee185dc154e35f14e551c06411b653d.jpg",
+              "title": "",
+              "subtitle": "",
+              "buttonText": "探索更多",
+              "showContent": false,
+              "showButton": false,
+              "linkType": "page",
+              "linkValue": "/pages/category/category",
+              "duration": 5,
+              "poster": "/images/4ee185dc154e35f14e551c06411b653d.jpg",
+              "order": 0,
+              "hotspots": []
+            },
+            {
+              "id": "slide-msikahba-n7j5",
+              "kind": "image",
+              "src": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+              "title": "",
+              "subtitle": "",
+              "buttonText": "探索更多",
+              "showContent": false,
+              "showButton": false,
+              "linkType": "page",
+              "linkValue": "/pages/category/category",
+              "duration": 5,
+              "poster": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+              "order": 1,
+              "hotspots": []
+            },
+            {
+              "id": "slide-msk84t91-ny6r",
+              "kind": "image",
+              "src": "/images/b1ab190011e268ef1156a894e91412b7.jpg",
+              "title": "",
+              "subtitle": "",
+              "buttonText": "探索更多",
+              "showContent": false,
+              "showButton": false,
+              "linkType": "page",
+              "linkValue": "/pages/category/category",
+              "duration": 5,
+              "poster": "/images/b1ab190011e268ef1156a894e91412b7.jpg",
+              "order": 2,
+              "hotspots": []
+            }
+          ],
+          "autoplay": true,
+          "interval": 5,
+          "transition": "slide"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "#c9a97e",
+          "fontFamily": "luxury-serif",
+          "fontSize": 28,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 0,
+          "paddingY": 0,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "height": 536,
+          "overlay": 0
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "categories-main",
+        "type": "categories",
+        "name": "分类导航",
+        "enabled": true,
+        "props": {
+          "count": 5
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 10,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 14,
+          "paddingY": 17,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "products-new",
+        "type": "product-grid",
+        "name": "早秋新品",
+        "enabled": true,
+        "props": {
+          "title": "早秋新品",
+          "category": "tops",
+          "columns": 3,
+          "count": 6,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "media-msjznam0-9mel",
+        "type": "media",
+        "enabled": true,
+        "props": {
+          "mode": "image",
+          "src": "/images/371b2a8ec840f557725bb8150bf126c8.jpg",
+          "fit": "cover",
+          "position": "center",
+          "overlay": 0,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "controls": false,
+          "linkType": "",
+          "linkValue": "",
+          "hotspots": []
+        },
+        "style": {
+          "backgroundColor": "#ffffff",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 0,
+          "paddingY": 0,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "height": 360,
+          "overlay": 0
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        },
+        "name": "媒体背景"
+      }
+    ],
+    "category": [
+      {
+        "id": "text-mshcjlje-6nph",
+        "type": "text",
+        "name": "分类页标题",
+        "enabled": true,
+        "props": {
+          "title": "分类",
+          "text": "按系列浏览商品"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 18,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 22,
+          "paddingY": 22,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "categories-mshcjlje-0cit",
+        "type": "categories",
+        "name": "分类导航",
+        "enabled": true,
+        "props": {
+          "count": 8
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 10,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 14,
+          "paddingY": 17,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "product-grid-mshcjlje-03r8",
+        "type": "product-grid",
+        "name": "全部商品",
+        "enabled": true,
+        "props": {
+          "title": "全部商品",
+          "category": "all",
+          "columns": 2,
+          "count": 8,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
+    ],
+    "campaign": [
+      {
+        "id": "hero-mshcjlje-no6i",
+        "type": "hero",
+        "name": "系列主视觉",
+        "enabled": true,
+        "props": {
+          "slides": [
+            {
+              "id": "slide-msjzktea-9zkt",
+              "kind": "image",
+              "src": "/images/d5f9cfe54e41e6dda2cf77987cb75749.jpg",
+              "title": "",
+              "subtitle": "",
+              "buttonText": "探索更多",
+              "showContent": false,
+              "showButton": false,
+              "linkType": "page",
+              "linkValue": "/pages/category/category",
+              "duration": 5,
+              "poster": "/images/d5f9cfe54e41e6dda2cf77987cb75749.jpg",
+              "order": 0,
+              "hotspots": []
+            },
+            {
+              "id": "slide-mshcjlje-0z1x",
+              "kind": "image",
+              "src": "/images/hero2.jpg",
+              "title": "LAKE MAGGIORE",
+              "subtitle": "湖畔假日系列",
+              "buttonText": "探索更多",
+              "showContent": true,
+              "showButton": true,
+              "linkType": "page",
+              "linkValue": "/pages/category/category",
+              "duration": 5,
+              "poster": "",
+              "order": 1,
+              "hotspots": []
+            }
+          ],
+          "autoplay": false,
+          "interval": 6,
+          "transition": "fade"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "#c9a97e",
+          "fontFamily": "luxury-serif",
+          "fontSize": 28,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 0,
+          "paddingY": 0,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "height": 390,
+          "overlay": 0
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "text-mshcjlje-s6w1",
+        "type": "text",
+        "name": "系列说明",
+        "enabled": true,
+        "props": {
+          "title": "LAKE MAGGIORE",
+          "text": "从湖光与建筑线条中汲取灵感，呈现松弛而克制的夏日衣橱。"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 18,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 22,
+          "paddingY": 30,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "product-grid-mshcjlje-vo53",
+        "type": "product-grid",
+        "name": "系列商品",
+        "enabled": true,
+        "props": {
+          "title": "系列精选",
+          "category": "summer",
+          "columns": 2,
+          "count": 6,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
+    ],
+    "cart": [
+      {
+        "id": "text-mshcjlje-j175",
+        "type": "text",
+        "name": "购物车标题",
+        "enabled": true,
+        "props": {
+          "title": "购物车",
+          "text": "已选商品会安全保留，可继续探索或前往结算。"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 18,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 22,
+          "paddingY": 34,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "product-grid-mshcjlje-kf3o",
+        "type": "product-grid",
+        "name": "为你推荐",
+        "enabled": true,
+        "props": {
+          "title": "为你推荐",
+          "category": "all",
+          "columns": 2,
+          "count": 4,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
+    ],
+    "mine": [
+      {
+        "id": "member-banner-mshcjlje-ytli",
+        "type": "member-banner",
+        "name": "会员中心",
+        "enabled": true,
+        "props": {
+          "title": "PRIVLAN",
+          "subtitle": "成为 PRIVLAN 会员 享受更多礼遇服务"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 18,
+          "paddingY": 28,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "text-mshcjlje-oocq",
+        "type": "text",
+        "name": "专属服务",
+        "enabled": true,
+        "props": {
+          "title": "专属服务",
+          "text": "订单、收藏、礼遇与专属顾问均可在这里查看。"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 18,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 22,
+          "paddingY": 30,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "product-grid-mshcjlje-tlf6",
+        "type": "product-grid",
+        "name": "最近浏览",
+        "enabled": true,
+        "props": {
+          "title": "最近浏览",
+          "category": "all",
+          "columns": 2,
+          "count": 4,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
+    ],
+    "detail": [
+      {
+        "id": "product-detail-mshcjlje-2cds",
+        "type": "product-detail",
+        "name": "商品详情",
+        "enabled": true,
+        "props": {
+          "productId": 1,
+          "showPrice": true,
+          "showActions": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 18,
+          "paddingY": 24,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "text-mshcjlje-42xs",
+        "type": "text",
+        "name": "商品说明",
+        "enabled": true,
+        "props": {
+          "title": "匠心细节",
+          "text": "精选材质与精准剪裁，在日常穿着中呈现克制而持久的质感。"
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "luxury-serif",
+          "fontSize": 18,
+          "fontWeight": 400,
+          "textAlign": "center",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 22,
+          "paddingY": 30,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      },
+      {
+        "id": "product-grid-mshcjlje-j64i",
+        "type": "product-grid",
+        "name": "相关推荐",
+        "enabled": true,
+        "props": {
+          "title": "相关推荐",
+          "category": "all",
+          "columns": 2,
+          "count": 4,
+          "showName": true,
+          "showPrice": true
+        },
+        "style": {
+          "backgroundColor": "transparent",
+          "textColor": "",
+          "fontFamily": "system",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "textAlign": "left",
+          "letterSpacing": 0,
+          "lineHeight": 1.5,
+          "paddingX": 15,
+          "paddingY": 25,
+          "marginTop": 0,
+          "marginBottom": 0,
+          "borderColor": "transparent",
+          "borderWidth": 0,
+          "borderRadius": 0,
+          "buttonTextColor": "",
+          "buttonBackground": "transparent",
+          "buttonBorderColor": "",
+          "buttonBorderWidth": 1,
+          "buttonRadius": 0,
+          "buttonFontSize": 12,
+          "buttonFontWeight": 500,
+          "gap": 10
+        },
+        "visibility": {
+          "mobile": true,
+          "tablet": true,
+          "desktop": true
+        }
+      }
+    ]
+  },
+  "_lastSync": "2026-08-11T07:51:19.860Z",
+  "customFonts": [],
+  "designSystem": {
+    "blockDefaults": {
+      "fontFamily": "system",
+      "fontWeight": 400,
+      "lineHeight": 1.5
+    }
+  },
+  "customPages": [],
+  "serviceBot": {
+    "enabled": true,
+    "icon": "/images/icon-headset.png",
+    "size": 88,
+    "right": 110,
+    "bottom": 475,
+    "welcomeMessage": "您好，我是 PRIVLAN 专属服务助手。请问今天想了解什么？",
+    "quickPrompts": [
+      "我要预约",
+      "你们的价格区间是多少？",
+      "你们用的什么面料？",
+      "版型与款式",
+      "制作周期多久？",
+      "转人工服务"
+    ],
+    "answerProvider": "rules",
+    "humanServiceEnabled": false,
+    "authMode": "test"
+  }
+}

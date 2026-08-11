@@ -1,0 +1,6 @@
+{
+  "name": "privlan-service-query",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": { "wx-server-sdk": "latest" }
+}

@@ -1,0 +1,13 @@
+<button
+  wx:if="{{enabled}}"
+  class="service-fab {{dragging ? 'is-dragging' : ''}}"
+  style="right:{{positionRight}}rpx;bottom:{{positionBottom}}rpx;width:{{size}}rpx;height:{{size}}rpx"
+  hover-class="service-fab--pressed"
+  aria-label="打开 PRIVLAN 智能客服"
+  bindtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"
+>
+  <image src="{{icon}}" mode="aspectFit" />
+</button>

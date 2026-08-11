@@ -1,0 +1,31 @@
+<view class="builder-page">
+  <view class="builder-nav" style="padding-top:{{navPadTop}}px">
+    <image class="builder-search" src="/images/icon-back.png" mode="aspectFit" bindtap="goBack" /><view class="builder-page-title">{{pageTitle}}</view>
+  </view>
+  <view class="builder-content"><view class="builder-detail builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:24px 18px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
+  <swiper class="builder-detail-gallery" indicator-dots="{{block0.gallery.length > 1}}" circular="{{block0.gallery.length > 1}}" duration="260">
+    <swiper-item wx:for="{{block0.gallery}}" wx:key="*this"><image class="builder-detail-image" src="{{item}}" mode="aspectFill" /></swiper-item>
+  </swiper>
+  <view class="builder-detail-kicker">PRIVLAN COLLECTION</view>
+  <view class="builder-detail-name serif">{{block0.name}}</view>
+  <view class="builder-detail-price">¥{{block0.price}}</view>
+  <view wx:if="{{block0.description}}" class="builder-detail-copy">{{block0.description}}</view>
+  <view wx:if="{{block0.colors.length}}" class="builder-detail-options"><text class="builder-detail-label">颜色</text><text wx:for="{{block0.colors}}" wx:key="name" class="builder-detail-option">{{item.name}}</text></view>
+  <view wx:if="{{block0.sizes.length}}" class="builder-detail-options"><text class="builder-detail-label">尺码</text><text wx:for="{{block0.sizes}}" wx:key="*this" class="builder-detail-option">{{item}}</text></view>
+  <view wx:if="{{block0.detail}}" class="builder-detail-long-copy">{{block0.detail}}</view>
+  <view wx:if="{{block0.detailImages.length}}" class="builder-detail-story"><image wx:for="{{block0.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" /></view>
+  <view class="builder-detail-actions"><button bindtap="addCart">加入购物车</button><button class="primary" bindtap="buyNow">立即购买</button></view>
+</view>
+<view class="builder-text builder-block" style="background:transparent;color:#f0f0f0;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:18px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:30px 22px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><view class="builder-text-title serif">匠心细节</view><view class="builder-text-copy">精选材质与精准剪裁，在日常穿着中呈现克制而持久的质感。</view></view>
+<view class="builder-products builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:25px 15px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
+  <view class="builder-section-head"><text class="serif">相关推荐</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-grid" style="grid-template-columns:repeat(2,1fr);gap:10px">
+    <view wx:for="{{block2}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
+      <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
+      <view class="builder-product-name">{{item.name}}</view>
+      <view class="builder-product-price">¥{{item.price}}</view>
+    </view>
+  </view>
+</view></view>
+  <service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" />
+</view>

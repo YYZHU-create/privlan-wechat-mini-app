@@ -1,0 +1,54 @@
+<view class="service-page">
+  <view class="service-header">
+    <view class="service-mark">P</view>
+    <view><view class="service-title">PRIVLAN 专属服务</view><view class="service-status"><view class="status-dot"></view>在线服务</view></view>
+  </view>
+
+  <scroll-view class="message-list" scroll-y scroll-into-view="{{scrollTarget}}" enhanced show-scrollbar="{{false}}">
+    <view class="service-intro">PRIVLAN CLIENT SERVICE</view>
+    <view wx:for="{{messages}}" wx:key="id" id="{{item.id}}" class="message-row {{item.role}}">
+      <view class="message-bubble {{item.type === 'error' ? 'is-error' : ''}}">
+        <text selectable>{{item.text}}</text>
+        <view wx:if="{{item.type === 'measurement' && item.items.length}}" class="measurement-list">
+          <view wx:for="{{item.items}}" wx:for-item="metric" wx:key="label"><text>{{metric.label}}</text><text class="metric-value">{{metric.value}}</text></view>
+        </view>
+        <button wx:if="{{item.action === 'appointment'}}" class="message-action" bindtap="openAppointment">进入预约</button>
+        <button wx:if="{{item.action === 'measurements'}}" class="message-action" bindtap="openAuthentication">验证后查看</button>
+        <button wx:if="{{item.action === 'human' && humanServiceEnabled}}" class="message-action" open-type="contact" bindtap="humanServiceOpened">联系人工顾问</button>
+        <button wx:elif="{{item.action === 'human'}}" class="message-action muted" bindtap="showHumanUnavailable">人工客服暂未开通</button>
+        <button wx:if="{{item.retryText}}" class="message-action muted" data-text="{{item.retryText}}" bindtap="retryMessage">重试</button>
+      </view>
+    </view>
+    <view wx:if="{{sending}}" class="message-row assistant"><view class="typing" aria-label="正在回复"><view></view><view></view><view></view></view></view>
+    <view id="message-end" class="message-end"></view>
+  </scroll-view>
+
+  <view class="composer-panel">
+    <scroll-view class="quick-prompts" scroll-x enhanced show-scrollbar="{{false}}">
+      <button wx:for="{{quickPrompts}}" wx:key="*this" data-text="{{item}}" bindtap="selectPrompt">{{item}}</button>
+    </scroll-view>
+    <view class="composer">
+      <input value="{{draft}}" maxlength="200" placeholder="输入你想了解的问题" confirm-type="send" bindinput="onDraftInput" bindconfirm="sendDraft" />
+      <button class="send-button" disabled="{{sending || !draft}}" bindtap="sendDraft" aria-label="发送消息">发送</button>
+    </view>
+    <view class="privacy-note">私人量体信息仅在身份验证后显示，本次会话结束即清除。</view>
+  </view>
+
+  <view wx:if="{{authOpen}}" class="modal-layer" catchtouchmove="noop">
+    <view class="auth-sheet" role="dialog" aria-label="客户身份验证">
+      <view class="sheet-handle"></view>
+      <view class="sheet-head"><view><view class="sheet-title">验证客户身份</view><view class="sheet-copy">验证通过后，仅显示与你账号绑定的量体信息。</view></view><button bindtap="closeAuthentication" aria-label="关闭">×</button></view>
+      <view wx:if="{{authMode === 'test'}}">
+        <label class="form-field"><text>会员号</text><input value="{{authForm.memberNo}}" data-field="memberNo" maxlength="30" bindinput="onAuthInput" placeholder="请输入会员号" /></label>
+        <label class="form-field"><text>手机号</text><input value="{{authForm.phone}}" data-field="phone" type="number" maxlength="11" bindinput="onAuthInput" placeholder="请输入手机号" /></label>
+        <label class="form-field"><text>测试验证码</text><input value="{{authForm.code}}" data-field="code" type="number" maxlength="8" bindinput="onAuthInput" placeholder="由测试环境管理员提供" /></label>
+        <view wx:if="{{authError}}" class="form-error">{{authError}}</view>
+        <button class="primary-button" loading="{{authLoading}}" disabled="{{authLoading}}" bindtap="verifyTestIdentity">验证并查看</button>
+      </view>
+      <view wx:else>
+        <view class="auth-phone-copy">请使用微信绑定手机号完成身份验证。</view>
+        <button class="primary-button" open-type="getPhoneNumber" bindgetphonenumber="verifyWechatIdentity">授权手机号</button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,41 @@
+<view class="builder-page">
+  <view class="builder-nav" style="padding-top:{{navPadTop}}px">
+    <image class="builder-search" src="/images/icon-search.png" mode="aspectFit" bindtap="onSearch" /><view class="builder-channels"><text wx:for="{{channels}}" wx:key="*this" class="builder-channel {{channel === item ? 'on' : ''}}" data-c="{{item}}" bindtap="switchChannel">{{item}}</text></view>
+  </view>
+  <view class="builder-content"><view class="builder-block" style="background:transparent;color:#c9a97e;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:28px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:0px 0px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><swiper class="builder-hero" style="height:536px" autoplay="{{block0Autoplay}}" circular="{{block0.length > 1}}" interval="{{block0Interval}}" duration="500">
+  <swiper-item wx:for="{{block0}}" wx:key="id">
+    <video wx:if="{{item.kind === 'video'}}" src="{{item.src}}" poster="{{item.poster}}" class="builder-cover" autoplay="{{block0Autoplay}}" muted loop controls="{{false}}" object-fit="cover"></video>
+    <image wx:else src="{{item.src}}" mode="aspectFill" class="builder-cover" />
+    <view class="builder-mask" style="background:rgba(0,0,0,0)"></view>
+    <view wx:for="{{item.hotspots}}" wx:for-item="spot" wx:key="id" class="builder-hotspot" style="left:{{spot.x}}%;top:{{spot.y}}%;width:{{spot.width}}%;height:{{spot.height}}%" data-link-type="{{spot.linkType}}" data-link-value="{{spot.linkValue}}" catchtap="hotspotAction"></view>
+    <view wx:if="{{item.showContent !== false || item.showButton}}" class="builder-hero-copy">
+      <block wx:if="{{item.showContent !== false}}">
+        <view class="builder-eyebrow">PRIVLAN COLLECTION</view>
+        <view class="builder-hero-title serif">{{item.title}}</view>
+        <view class="builder-hero-sub">{{item.subtitle}}</view>
+      </block>
+      <view wx:if="{{item.showButton}}" class="builder-outline" style="color:#c9a97e;background:transparent;border:1px solid #c9a97e;border-radius:0px;font-size:12px" data-link-type="{{item.linkType}}" data-link-value="{{item.linkValue}}" bindtap="heroAction">{{item.buttonText}}</view>
+    </view>
+  </swiper-item>
+</swiper></view>
+<scroll-view scroll-x class="builder-categories builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:10px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:17px 14px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px" enable-flex>
+  <view wx:for="{{block1}}" wx:key="id" class="builder-category {{index === 0 ? 'on' : ''}}">{{item.name}}</view>
+</scroll-view>
+<view class="builder-products builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:25px 15px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
+  <view class="builder-section-head"><text class="serif">早秋新品</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-grid" style="grid-template-columns:repeat(3,1fr);gap:10px">
+    <view wx:for="{{block2}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
+      <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
+      <view class="builder-product-name">{{item.name}}</view>
+      <view class="builder-product-price">¥{{item.price}}</view>
+    </view>
+  </view>
+</view>
+<view class="builder-media builder-block" style="background:#ffffff;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:0px 0px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px;height:360px" data-link-type="{{block3.linkType}}" data-link-value="{{block3.linkValue}}" bindtap="mediaAction">
+  <video wx:if="{{block3.mode === 'video' && block3.src}}" class="builder-media-content" src="{{block3.src}}" autoplay="{{block3.autoplay}}" loop="{{block3.loop}}" muted="{{block3.muted}}" controls="{{block3.controls}}" object-fit="cover"></video>
+  <image wx:elif="{{block3.mode === 'image' && block3.src}}" class="builder-media-content" src="{{block3.src}}" mode="aspectFill" style="object-position:center" />
+  
+  <view wx:for="{{block3.hotspots}}" wx:for-item="spot" wx:key="id" class="builder-hotspot" style="left:{{spot.x}}%;top:{{spot.y}}%;width:{{spot.width}}%;height:{{spot.height}}%" data-link-type="{{spot.linkType}}" data-link-value="{{spot.linkValue}}" catchtap="hotspotAction"></view>
+</view></view>
+  <service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" />
+</view>

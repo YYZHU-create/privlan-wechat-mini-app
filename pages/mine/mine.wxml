@@ -1,0 +1,22 @@
+<view class="builder-page">
+  <view class="builder-nav" style="padding-top:{{navPadTop}}px">
+    
+  </view>
+  <view class="builder-content"><view class="builder-member builder-block" style="background:transparent;color:#f0f0f0;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:14px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:28px 18px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
+  <image class="builder-member-logo" src="/images/privlan-ai-logo-white.png" mode="aspectFit" />
+  <view class="builder-member-sub">成为 PRIVLAN 会员 享受更多礼遇服务</view>
+  <view class="builder-benefits"><view wx:for="{{block0}}" wx:key="text" class="builder-benefit"><image src="{{item.icon}}" mode="aspectFit" /><text>{{item.text}}</text></view></view>
+</view>
+<view class="builder-text builder-block" style="background:transparent;color:#f0f0f0;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:18px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:30px 22px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><view class="builder-text-title serif">专属服务</view><view class="builder-text-copy">订单、收藏、礼遇与专属顾问均可在这里查看。</view></view>
+<view class="builder-products builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:25px 15px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
+  <view class="builder-section-head"><text class="serif">最近浏览</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-grid" style="grid-template-columns:repeat(2,1fr);gap:10px">
+    <view wx:for="{{block2}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
+      <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
+      <view class="builder-product-name">{{item.name}}</view>
+      <view class="builder-product-price">¥{{item.price}}</view>
+    </view>
+  </view>
+</view></view>
+  <service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" />
+</view>
