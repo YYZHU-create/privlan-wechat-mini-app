@@ -200,10 +200,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .member-section { padding: 28px 18px; background: #000; color: #fff; text-align: center; }
 .member-section h3 { margin: 0; font-family: Georgia, serif; letter-spacing: .25em; color: var(--page-accent, #c9a97e); font-size: 17px; }
 .member-brand-logo { display: block; width: min(180px, 72%); height: 42px; margin: 0 auto 12px; object-fit: contain; background: #000; }
+.member-section h3, .member-section p, .member-section .benefits { position: relative; top: 8px; }
 .member-section h3, .member-section p, .member-section .benefit { color: #fff; }
 .member-section p { margin: 8px 0 17px; color: #fff; opacity: .72; font-size: 9px; }
 .benefits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
-.benefit { border-top: 1px solid var(--page-border, #2a2a2a); padding-top: 12px; font-size: 8px; }
+.benefit { min-width: 0; border: 0; border-top: 1px solid var(--page-border, #2a2a2a); padding: 12px 2px 0; background: transparent; font: inherit; font-size: 8px; cursor: pointer; }
+.member-section button.benefit { display: flex; flex-direction: column; align-items: center; }
+.member-section button.benefit:hover { color: var(--page-accent, #c9a97e); }
+.member-section button.benefit:focus-visible { outline: 2px solid var(--page-accent, #c9a97e); outline-offset: 3px; }
 .benefit img { width: 22px; height: 22px; object-fit: contain; display: block; margin: 0 auto 6px; }
 .text-section { padding: 30px 22px; background: var(--page-bg, #0a0a0a); text-align: center; }
 .text-section h3 { color: var(--page-accent, #c9a97e); letter-spacing: .12em; font-size: 18px; margin: 0 0 9px; }

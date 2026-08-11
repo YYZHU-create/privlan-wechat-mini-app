@@ -174,11 +174,21 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     }
 
     if (block.type === "member-banner") {
-      data[key] = cfg.memberBenefits || [];
+      const benefitDefaults = [
+        "/pages/category/category?cat=new",
+        "/pages/service-chat/index",
+        "/pages/appointment/index",
+        "/pages/mine/mine"
+      ];
+      data[key] = (cfg.memberBenefits || []).map((benefit, benefitIndex) => ({
+        ...benefit,
+        linkType: benefit.linkType || "page",
+        linkValue: benefit.linkValue || benefitDefaults[benefitIndex] || "/pages/mine/mine"
+      }));
       return `<view class="builder-member builder-block" style="${escapeXml(inlineStyle)}">
   ${props.useBrandLogo === false ? `<view class="builder-member-title serif">${escapeXml(props.title || cfg.brand.name)}</view>` : `<image class="builder-member-logo" src="/images/privlan-ai-logo-white.png" mode="aspectFit" />`}
   <view class="builder-member-sub">${escapeXml(props.subtitle || cfg.brand.slogan || "")}</view>
-  <view class="builder-benefits"><view wx:for="{{${key}}}" wx:key="text" class="builder-benefit"><image src="{{item.icon}}" mode="aspectFit" /><text>{{item.text}}</text></view></view>
+  <view class="builder-benefits"><button wx:for="{{${key}}}" wx:key="text" class="builder-benefit" data-link-type="{{item.linkType}}" data-link-value="{{item.linkValue}}" bindtap="benefitAction"><image src="{{item.icon}}" mode="aspectFit" /><text>{{item.text}}</text></button></view>
 </view>`;
     }
 
@@ -266,6 +276,7 @@ ${cartImport}Page({
     else wx.navigateTo({ url: value });
   },
   mediaAction(e) { this.heroAction(e); },
+  benefitAction(e) { this.heroAction(e); },
   hotspotAction(e) { this.heroAction(e); },
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
@@ -276,7 +287,7 @@ ${cartImport}Page({
 `;
 
   const customFonts = (cfg.customFonts || []).filter(font => font.url).map(font => `@font-face{font-family:'${cssValue(font.id)}';src:url('${cssValue(font.url)}');font-display:swap}`).join("");
-  const memberLogoStyles = ".builder-member{background:#000;color:#fff}.builder-member-logo{display:block;width:360rpx;height:72rpx;margin:0 auto 18rpx;background:#000}.builder-member-title{color:#fff}.builder-member-sub{color:#fff}.builder-benefit{color:#fff}";
+  const memberLogoStyles = ".builder-member{background:#000;color:#fff}.builder-member-logo{display:block;width:360rpx;height:72rpx;margin:0 auto 18rpx;background:#000}.builder-member-title,.builder-member-sub,.builder-benefits{transform:translateY(16rpx)}.builder-member-title{color:#fff}.builder-member-sub{color:#fff}.builder-benefit{min-width:0;margin:0;padding:22rpx 4rpx 0;border:0;border-top:1rpx solid ${colors.border};border-radius:0;background:transparent;color:#fff;line-height:1.4}.builder-benefit::after{border:0}";
   const productDetailStyles = `.builder-detail-gallery{width:100%;height:auto;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-gallery swiper-item{height:100%}.builder-detail-options{display:flex;align-items:center;flex-wrap:wrap;gap:10rpx;margin-top:18rpx}.builder-detail-label{color:${colors.textSecondary};font-size:20rpx;margin-right:6rpx}.builder-detail-option{padding:8rpx 18rpx;border:1rpx solid ${colors.border};border-radius:99rpx;font-size:20rpx}.builder-detail-long-copy{margin-top:24rpx;color:${colors.textSecondary};font-size:22rpx;line-height:1.8;white-space:pre-line}.builder-detail-story{margin-top:24rpx}.builder-detail-story image{display:block;width:100%;margin-bottom:14rpx}`;
   const mediaStyles = ".builder-media{position:relative;width:100%;overflow:hidden}.builder-media-content{display:block;width:100%;height:100%}.builder-media-overlay{position:absolute;inset:0;pointer-events:none}.builder-hero swiper-item{position:relative}.builder-hotspot{position:absolute;z-index:8;background:transparent}";
   const cartStyles = `.builder-cart-panel{padding:32px 15px 18px}.builder-cart-empty{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;border:1rpx solid ${colors.border};text-align:center}.builder-cart-empty-icon{display:block;width:52rpx;height:52rpx;margin-bottom:10rpx}.builder-cart-empty-title{font-size:28rpx;font-weight:600}.builder-cart-empty-copy{margin-top:8rpx;color:${colors.textSecondary};font-size:20rpx}.builder-cart-empty button{min-height:68rpx;margin-top:18rpx;padding:0 32rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:22rpx;line-height:68rpx}.builder-cart-head,.builder-cart-total{display:flex;align-items:center;justify-content:space-between;color:${colors.textSecondary};font-size:20rpx}.builder-cart-head{padding-bottom:18rpx;border-bottom:1rpx solid ${colors.border}}.builder-cart-accent{color:${colors.accent}}.builder-cart-line{display:grid;grid-template-columns:136rpx minmax(0,1fr) auto;gap:20rpx;align-items:center;padding:22rpx 0;border-bottom:1rpx solid ${colors.border}}.builder-cart-line>image{width:136rpx;height:172rpx;background:${colors.bgSecondary}}.builder-cart-copy{min-width:0}.builder-cart-name{display:block;overflow:hidden;font-size:23rpx;white-space:nowrap;text-overflow:ellipsis}.builder-cart-price{display:block;margin-top:8rpx;color:${colors.accent};font-size:21rpx}.builder-cart-quantity{display:grid;grid-template-columns:56rpx 44rpx 56rpx;align-items:center;width:156rpx;margin-top:16rpx;border:1rpx solid ${colors.border}}.builder-cart-quantity button{width:56rpx;height:56rpx;padding:0;border:0;background:transparent;color:${colors.textPrimary};font-size:30rpx;line-height:56rpx}.builder-cart-quantity text{text-align:center;font-size:21rpx}.builder-cart-total{padding-top:24rpx;font-size:22rpx}.builder-cart-total .builder-cart-accent{font-size:28rpx}`;
