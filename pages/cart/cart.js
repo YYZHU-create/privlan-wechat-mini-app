@@ -4,10 +4,10 @@ Page({
   data: {
     "navPadTop": 20,
     "channels": [
-        "推荐",
+        "??",
         "LAKE MAGGIORE"
     ],
-    "channel": "推荐",
+    "channel": "??",
     "pageTitle": "购物车",
     "cartItems": [],
     "cartSummary": {
@@ -48,7 +48,7 @@ Page({
             ],
             "colors": [],
             "sizes": [
-                "新尺码"
+                "???"
             ],
             "description": "",
             "detail": "",

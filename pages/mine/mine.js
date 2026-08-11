@@ -3,10 +3,10 @@ Page({
   data: {
     "navPadTop": 20,
     "channels": [
-        "推荐",
+        "??",
         "LAKE MAGGIORE"
     ],
-    "channel": "推荐",
+    "channel": "??",
     "pageTitle": "我的",
     "cartItems": [],
     "cartSummary": {
@@ -23,19 +23,19 @@ Page({
     "block0": [
         {
             "icon": "/images/svc-presale.png",
-            "text": "新品预售"
+            "text": "????"
         },
         {
             "icon": "/images/svc-cs.png",
-            "text": "专属客服"
+            "text": "????"
         },
         {
             "icon": "/images/svc-tailor.png",
-            "text": "改衣服务"
+            "text": "????"
         },
         {
             "icon": "/images/svc-gift.png",
-            "text": "尊享礼遇"
+            "text": "????"
         }
     ],
     "block2": [
@@ -65,7 +65,7 @@ Page({
             ],
             "colors": [],
             "sizes": [
-                "新尺码"
+                "???"
             ],
             "description": "",
             "detail": "",

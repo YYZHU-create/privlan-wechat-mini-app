@@ -3,10 +3,10 @@ Page({
   data: {
     "navPadTop": 20,
     "channels": [
-        "推荐",
+        "??",
         "LAKE MAGGIORE"
     ],
-    "channel": "推荐",
+    "channel": "??",
     "pageTitle": "首页",
     "cartItems": [],
     "cartSummary": {
@@ -27,7 +27,7 @@ Page({
             "src": "/images/4ee185dc154e35f14e551c06411b653d.jpg",
             "title": "",
             "subtitle": "",
-            "buttonText": "探索更多",
+            "buttonText": "????",
             "showContent": false,
             "showButton": false,
             "linkType": "page",
@@ -43,7 +43,7 @@ Page({
             "src": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
             "title": "",
             "subtitle": "",
-            "buttonText": "探索更多",
+            "buttonText": "????",
             "showContent": false,
             "showButton": false,
             "linkType": "page",
@@ -59,7 +59,7 @@ Page({
             "src": "/images/b1ab190011e268ef1156a894e91412b7.jpg",
             "title": "",
             "subtitle": "",
-            "buttonText": "探索更多",
+            "buttonText": "????",
             "showContent": false,
             "showButton": false,
             "linkType": "page",
@@ -75,11 +75,11 @@ Page({
     "block1": [
         {
             "id": "new",
-            "name": "早秋新品"
+            "name": "????"
         },
         {
             "id": "summer",
-            "name": "夏季系列"
+            "name": "????"
         },
         {
             "id": "stitch",
@@ -87,11 +87,11 @@ Page({
         },
         {
             "id": "tops",
-            "name": "上装"
+            "name": "??"
         },
         {
             "id": "shoes",
-            "name": "鞋履"
+            "name": "??"
         }
     ],
     "block2": [
@@ -121,7 +121,7 @@ Page({
             ],
             "colors": [],
             "sizes": [
-                "新尺码"
+                "???"
             ],
             "description": "",
             "detail": "",

@@ -3,10 +3,10 @@ Page({
   data: {
     "navPadTop": 20,
     "channels": [
-        "推荐",
+        "??",
         "LAKE MAGGIORE"
     ],
-    "channel": "推荐",
+    "channel": "??",
     "pageTitle": "分类",
     "cartItems": [],
     "cartSummary": {
@@ -23,11 +23,11 @@ Page({
     "block1": [
         {
             "id": "new",
-            "name": "早秋新品"
+            "name": "????"
         },
         {
             "id": "summer",
-            "name": "夏季系列"
+            "name": "????"
         },
         {
             "id": "stitch",
@@ -35,23 +35,23 @@ Page({
         },
         {
             "id": "tops",
-            "name": "上装"
+            "name": "??"
         },
         {
             "id": "shoes",
-            "name": "鞋履"
+            "name": "??"
         },
         {
             "id": "bottoms",
-            "name": "下装"
+            "name": "??"
         },
         {
             "id": "acc",
-            "name": "配饰"
+            "name": "??"
         },
         {
             "id": "home",
-            "name": "内衣及家居服"
+            "name": "??????"
         }
     ],
     "block2": [
@@ -81,7 +81,7 @@ Page({
             ],
             "colors": [],
             "sizes": [
-                "新尺码"
+                "???"
             ],
             "description": "",
             "detail": "",

@@ -2,11 +2,11 @@
 const categories = [
   {
     "id": "new",
-    "name": "早秋新品"
+    "name": "????"
   },
   {
     "id": "summer",
-    "name": "夏季系列"
+    "name": "????"
   },
   {
     "id": "stitch",
@@ -14,27 +14,27 @@ const categories = [
   },
   {
     "id": "tops",
-    "name": "上装"
+    "name": "??"
   },
   {
     "id": "shoes",
-    "name": "鞋履"
+    "name": "??"
   },
   {
     "id": "bottoms",
-    "name": "下装"
+    "name": "??"
   },
   {
     "id": "acc",
-    "name": "配饰"
+    "name": "??"
   },
   {
     "id": "home",
-    "name": "内衣及家居服"
+    "name": "??????"
   },
   {
     "id": "brand",
-    "name": "品牌甄选"
+    "name": "????"
   }
 ];
 
@@ -65,7 +65,7 @@ const products = [
     ],
     "colors": [],
     "sizes": [
-      "新尺码"
+      "???"
     ],
     "description": "",
     "detail": "",
@@ -107,39 +107,39 @@ const heroes = [
   {
     "img": "/images/hero1.jpg",
     "title": "SUNGLASSES",
-    "sub": "发现新世界",
-    "channel": "推荐"
+    "sub": "?????",
+    "channel": "??"
   },
   {
     "img": "/images/hero2.jpg",
     "title": "LAKE MAGGIORE",
-    "sub": "湖畔假日系列",
+    "sub": "??????",
     "channel": "LAKE MAGGIORE"
   },
   {
     "img": "/images/hero3.jpg",
     "title": "OASI CASHMERE",
-    "sub": "绿洲羊绒",
-    "channel": "推荐"
+    "sub": "????",
+    "channel": "??"
   }
 ];
 
 const memberBenefits = [
   {
     "icon": "/images/svc-presale.png",
-    "text": "新品预售"
+    "text": "????"
   },
   {
     "icon": "/images/svc-cs.png",
-    "text": "专属客服"
+    "text": "????"
   },
   {
     "icon": "/images/svc-tailor.png",
-    "text": "改衣服务"
+    "text": "????"
   },
   {
     "icon": "/images/svc-gift.png",
-    "text": "尊享礼遇"
+    "text": "????"
   }
 ];
 

@@ -22,7 +22,7 @@
   <view wx:for="{{block1}}" wx:key="id" class="builder-category {{index === 0 ? 'on' : ''}}">{{item.name}}</view>
 </scroll-view>
 <view class="builder-products builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:14px;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.5;padding:25px 15px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
-  <view class="builder-section-head"><text class="serif">早秋新品</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-section-head"><text class="serif">????</text><text class="builder-more">查看全部</text></view>
   <view class="builder-grid" style="grid-template-columns:repeat(3,1fr);gap:10px">
     <view wx:for="{{block2}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
       <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
