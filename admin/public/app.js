@@ -141,7 +141,7 @@ createApp({
     const hotspotOwner = computed(() => {
       if (selectedSection.value?.type === "hero") return selectedHeroSlide.value;
       if (selectedSection.value?.type === "media") return selectedSection.value.props;
-      return null;
+      return selectedSection.value?.props || null;
     });
     const currentHotspots = computed(() => hotspotOwner.value?.hotspots || []);
     const selectedHotspot = computed(() => currentHotspots.value.find(item => item.id === selectedHotspotId.value) || null);
@@ -473,6 +473,9 @@ createApp({
         }
         if (section.type === "media") {
           section.props = { mode: "color", src: "", fit: "cover", position: "center", overlay: 0, autoplay: true, loop: true, muted: true, controls: false, linkType: "", linkValue: "", hotspots: [], ...section.props };
+          section.props.hotspots = (Array.isArray(section.props.hotspots) ? section.props.hotspots : []).map(normalizeHotspot);
+        }
+        if (section.type !== "hero" && section.type !== "media") {
           section.props.hotspots = (Array.isArray(section.props.hotspots) ? section.props.hotspots : []).map(normalizeHotspot);
         }
       });
@@ -1921,6 +1924,9 @@ createApp({
                         <div v-else-if="section.type === 'appointment-submit'" class="appointment-editor-submit"><button type="button">{{ section.props.buttonText }}</button></div>
                         <div v-else-if="section.type === 'text'" class="text-section"><h3 class="serif">{{ section.props.title }}</h3><p>{{ section.props.text }}</p></div>
                         <div v-else-if="section.type === 'spacer'"></div>
+                        <div v-if="section.type !== 'hero' && section.type !== 'media'" class="hotspot-surface" :class="{editing:hotspotEditMode && selectedId===section.id}" @pointerdown="beginHotspotDraw($event, section.props)">
+                          <button v-for="(hotspot,hotspotIndex) in section.props.hotspots" :key="hotspot.id" type="button" class="hotspot-marker" :class="{selected:selectedHotspotId===hotspot.id}" :style="hotspotStyle(hotspot)" :aria-label="hotspot.label" @pointerdown.stop="beginHotspotPointer($event,hotspot,'move')" @click.stop="hotspotEditMode ? selectedHotspotId=hotspot.id : navigatePreview(hotspot)"><span>{{ hotspotIndex + 1 }}</span><i v-if="hotspotEditMode && selectedHotspotId===hotspot.id" class="hotspot-resize" @pointerdown.stop="beginHotspotPointer($event,hotspot,'resize')"></i></button>
+                        </div>
                       </section>
                     </template>
 

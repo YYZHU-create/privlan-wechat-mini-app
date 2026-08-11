@@ -83,5 +83,13 @@ Page({
     this.setData({ success: result.data });
     wx.vibrateShort?.({ type: "light" });
   },
+  hotspotAction(event) {
+    const value = event.currentTarget.dataset.linkValue || "";
+    const clean = value.split("?")[0];
+    const tabs = ["/pages/home/home", "/pages/category/category", "/pages/campaign/campaign", "/pages/cart/cart", "/pages/mine/mine"];
+    if (tabs.includes(clean)) wx.switchTab({ url: clean });
+    else if (event.currentTarget.dataset.linkType === "external") wx.navigateTo({ url: "/pages/webview/webview?url=" + encodeURIComponent(value) });
+    else if (value) wx.navigateTo({ url: value });
+  },
   finish() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); }
 });
