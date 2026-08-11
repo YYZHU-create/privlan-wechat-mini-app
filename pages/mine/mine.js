@@ -23,19 +23,27 @@ Page({
     "block0": [
         {
             "icon": "/images/svc-presale.png",
-            "text": "????"
+            "text": "????",
+            "linkType": "page",
+            "linkValue": "/pages/category/category?cat=new"
         },
         {
             "icon": "/images/svc-cs.png",
-            "text": "????"
+            "text": "????",
+            "linkType": "page",
+            "linkValue": "/pages/service-chat/index"
         },
         {
             "icon": "/images/svc-tailor.png",
-            "text": "????"
+            "text": "????",
+            "linkType": "page",
+            "linkValue": "/pages/appointment/index"
         },
         {
             "icon": "/images/svc-gift.png",
-            "text": "????"
+            "text": "????",
+            "linkType": "page",
+            "linkValue": "/pages/mine/mine"
         }
     ],
     "block2": [
@@ -124,6 +132,7 @@ Page({
     else wx.navigateTo({ url: value });
   },
   mediaAction(e) { this.heroAction(e); },
+  benefitAction(e) { this.heroAction(e); },
   hotspotAction(e) { this.heroAction(e); },
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },

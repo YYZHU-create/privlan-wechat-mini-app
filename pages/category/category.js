@@ -140,6 +140,7 @@ Page({
     else wx.navigateTo({ url: value });
   },
   mediaAction(e) { this.heroAction(e); },
+  benefitAction(e) { this.heroAction(e); },
   hotspotAction(e) { this.heroAction(e); },
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },

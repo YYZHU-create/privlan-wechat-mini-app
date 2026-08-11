@@ -127,19 +127,27 @@ const heroes = [
 const memberBenefits = [
   {
     "icon": "/images/svc-presale.png",
-    "text": "????"
+    "text": "????",
+    "linkType": "page",
+    "linkValue": "/pages/category/category?cat=new"
   },
   {
     "icon": "/images/svc-cs.png",
-    "text": "????"
+    "text": "????",
+    "linkType": "page",
+    "linkValue": "/pages/service-chat/index"
   },
   {
     "icon": "/images/svc-tailor.png",
-    "text": "????"
+    "text": "????",
+    "linkType": "page",
+    "linkValue": "/pages/appointment/index"
   },
   {
     "icon": "/images/svc-gift.png",
-    "text": "????"
+    "text": "????",
+    "linkType": "page",
+    "linkValue": "/pages/mine/mine"
   }
 ];
 
