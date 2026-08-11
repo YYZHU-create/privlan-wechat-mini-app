@@ -42,6 +42,29 @@ function writeConfig(cfg) {
   fs.renameSync(tempPath, CONFIG_PATH);
 }
 
+function autoSyncGitHub(reason = "editor save") {
+  const gitPath = process.env.PRIVLAN_GIT_BIN || "git";
+  if (!fs.existsSync(path.join(ROOT, ".git"))) {
+    return { ok: false, skipped: true, error: "当前项目未连接 Git 仓库" };
+  }
+  const runGit = args => execFileSync(gitPath, args, { cwd: ROOT, encoding: "utf8", windowsHide: true, timeout: 120000 });
+  try {
+    runGit(["add", "-A"]);
+    try {
+      runGit(["diff", "--cached", "--quiet"]);
+      return { ok: true, committed: false, pushed: false };
+    } catch (diffError) {
+      if (diffError.status !== 1) throw diffError;
+    }
+    const stamp = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+    runGit(["commit", "-m", `chore: sync ${reason} (${stamp})`]);
+    runGit(["push", "origin", "HEAD:main"]);
+    return { ok: true, committed: true, pushed: true };
+  } catch (error) {
+    return { ok: false, error: error.stderr?.toString()?.trim() || error.message };
+  }
+}
+
 function readMediaFolders() {
   try {
     const parsed = JSON.parse(fs.readFileSync(MEDIA_FOLDERS_PATH, "utf-8"));
@@ -230,7 +253,10 @@ app.get("/api/config", (req, res) => {
   try { res.json(readConfig()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post("/api/config", (req, res) => {
-  try { writeConfig(req.body); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    writeConfig(req.body);
+    res.json({ ok: true, git: autoSyncGitHub("editor save") });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ---- Media Library API ----
@@ -488,7 +514,7 @@ app.post("/api/sync", (req, res) => {
     const result = sync(cfg, ROOT);
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);
-    res.json({ ok: true, ...result, lastSync: cfg._lastSync });
+    res.json({ ok: true, ...result, lastSync: cfg._lastSync, git: autoSyncGitHub("mini program sync") });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack });
   }
 });

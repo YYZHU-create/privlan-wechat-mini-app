@@ -14,6 +14,11 @@ function cssValue(value) {
   return String(value ?? "").replace(/[{}<>]/g, "").replace(/;/g, "");
 }
 
+function spacingValue(value, fallback = 0, max = 240) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(0, number)) : fallback;
+}
+
 function productGallery(product = {}) {
   return [...(Array.isArray(product.gallery) ? product.gallery : []), product.img]
     .filter((path, index, list) => path && list.indexOf(path) === index)
@@ -56,9 +61,9 @@ function blockInlineStyle(style = {}, cfg) {
     `text-align:${cssValue(style.textAlign || "left")}`,
     `letter-spacing:${Number(style.letterSpacing || 0)}px`,
     `line-height:${Number(style.lineHeight || 1.5)}`,
-    `padding:${Number(style.paddingY || 0)}px ${Number(style.paddingX || 0)}px`,
-    `margin-top:${Number(style.marginTop || 0)}px`,
-    `margin-bottom:${Number(style.marginBottom || 0)}px`,
+    `padding:${spacingValue(style.paddingY)}px ${spacingValue(style.paddingX, 0, 120)}px`,
+    `margin-top:${spacingValue(style.marginTop)}px`,
+    `margin-bottom:${spacingValue(style.marginBottom)}px`,
     `border:${Number(style.borderWidth || 0)}px solid ${cssValue(style.borderColor || "transparent")}`,
     `border-radius:${Number(style.borderRadius || 0)}px`
   ].join(";");
@@ -201,7 +206,7 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     }
 
     if (block.type === "spacer") {
-      return `<view style="height:${Math.max(8, Math.min(200, Number(style.height || 30)))}px"></view>`;
+      return `<view class="builder-block" style="${escapeXml(`${inlineStyle};height:${Math.max(8, Math.min(200, Number(style.height || 30)))}px`)}"></view>`;
     }
 
     return "";
@@ -322,7 +327,10 @@ function syncAppointmentLayout(cfg, root, pageMeta = {}) {
   const style = block => escapeXml(blockInlineStyle(block?.style || {}, cfg));
   const body = blocks.map(block => {
     const props = block.props || {};
-    if (block.type === "appointment-hero") return `<view class="appointment-hero" style="${style(block)}"><view class="kicker">${escapeXml(appointmentConfig.kicker)}</view><view class="title">${escapeXml(appointmentConfig.title)}</view><view class="copy">${escapeXml(appointmentConfig.description)}</view></view>`;
+    if (block.type === "appointment-hero") {
+      const heroStyle = `${style(block)};background-color:${cssValue(block.style?.backgroundColor || "#171717")}${heroProps.backgroundSrc ? `;background-image:url('${cssValue(heroProps.backgroundSrc)}');background-size:${cssValue(heroProps.backgroundFit || "cover")};background-position:${cssValue(heroProps.backgroundPosition || "center")}` : ""}`;
+      return `<view class="appointment-hero" style="${escapeXml(heroStyle)}"><view class="kicker">${escapeXml(appointmentConfig.kicker)}</view><view class="title">${escapeXml(appointmentConfig.title)}</view><view class="copy">${escapeXml(appointmentConfig.description)}</view></view>`;
+    }
     if (block.type === "appointment-form") return `<view class="appointment-form" style="${style(block)}">
   ${fields.name || fields.phone ? `<view class="form-section"><view class="section-number">01</view><view class="section-title">预约人信息</view>${fields.name ? `<label class="field"><text>姓名</text><input value="{{form.name}}" data-field="name" maxlength="24" bindinput="onInput" placeholder="请输入预约人姓名" /></label><view wx:if="{{errors.name}}" class="field-error">{{errors.name}}</view>` : ""}${fields.phone ? `<label class="field"><text>联系电话</text><input value="{{form.phone}}" data-field="phone" type="number" maxlength="11" bindinput="onInput" placeholder="请输入手机号" /></label><view wx:if="{{errors.phone}}" class="field-error">{{errors.phone}}</view>` : ""}</view>` : ""}
   ${fields.service || fields.store ? `<view class="form-section"><view class="section-number">02</view><view class="section-title">服务与门店</view>${fields.service ? `<view class="choice-grid"><button wx:for="{{services}}" wx:key="id" class="{{form.serviceId === item.id ? 'selected' : ''}}" data-value="{{item.id}}" bindtap="selectService"><text class="option-name">{{item.name}}</text><text>{{item.description}}</text></button></view><view wx:if="{{errors.serviceId}}" class="field-error">{{errors.serviceId}}</view>` : ""}${fields.store ? `<view class="store-list"><button wx:for="{{stores}}" wx:key="id" class="{{form.storeId === item.id ? 'selected' : ''}}" data-value="{{item.id}}" bindtap="selectStore"><view><text class="option-name">{{item.name}}</text><text>{{item.address}}</text></view><view class="radio-mark"></view></button></view><view wx:if="{{errors.storeId}}" class="field-error">{{errors.storeId}}</view>` : ""}</view>` : ""}
@@ -333,7 +341,7 @@ function syncAppointmentLayout(cfg, root, pageMeta = {}) {
     if (block.type === "appointment-submit") return "";
     return "";
   }).join("\n");
-  const wxml = `<view class="appointment-page"><view wx:if="{{loadError}}" class="state-card error"><view>{{loadError}}</view><button bindtap="loadOptions">重新加载</button></view><view wx:elif="{{loading}}" class="state-card"><view class="loading-line"></view><view class="loading-line short"></view><text>正在读取可预约时间</text></view><view wx:else>${body}</view><view class="submit-bar"><button loading="{{submitting}}" disabled="{{loading || submitting || loadError}}" bindtap="submitAppointment">${escapeXml(appointmentConfig.submitText)}</button></view><view wx:if="{{success}}" class="success-layer"><view class="success-card"><view class="success-mark">完成</view><view class="success-title">${escapeXml(appointmentConfig.successTitle)}</view><view class="success-copy">${escapeXml(appointmentConfig.successCopy)}</view><view class="success-detail"><text>预约编号</text><text class="detail-value">{{success.number}}</text><text>门店</text><text class="detail-value">{{success.storeName}}</text><text>时间</text><text class="detail-value">{{success.date}} {{success.slotLabel}}</text><text>顾问</text><text class="detail-value">{{success.advisorName}}</text></view><button bindtap="finish">完成</button></view></view><service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" /></view>`;
+  const wxml = `<view class="appointment-page"><view wx:if="{{loadError}}" class="state-card error"><view>{{loadError}}</view><button bindtap="loadOptions">重新加载</button></view><view wx:elif="{{loading}}" class="state-card"><view class="loading-line"></view><view class="loading-line short"></view><text>正在读取可预约时间</text></view><view wx:else>${body}</view><view class="submit-bar" style="${style(submit)}"><button loading="{{submitting}}" disabled="{{loading || submitting || loadError}}" bindtap="submitAppointment">${escapeXml(appointmentConfig.submitText)}</button></view><view wx:if="{{success}}" class="success-layer"><view class="success-card"><view class="success-mark">完成</view><view class="success-title">${escapeXml(appointmentConfig.successTitle)}</view><view class="success-copy">${escapeXml(appointmentConfig.successCopy)}</view><view class="success-detail"><text>预约编号</text><text class="detail-value">{{success.number}}</text><text>门店</text><text class="detail-value">{{success.storeName}}</text><text>时间</text><text class="detail-value">{{success.date}} {{success.slotLabel}}</text><text>顾问</text><text class="detail-value">{{success.advisorName}}</text></view><button bindtap="finish">完成</button></view></view><service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" /></view>`;
   fs.writeFileSync(path.join(pageDir, "index.wxml"), wxml, "utf-8");
   const jsonPath = path.join(pageDir, "index.json");
   const pageJson = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, "utf-8")) : {};

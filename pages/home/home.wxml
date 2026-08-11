@@ -2,7 +2,7 @@
   <view class="builder-nav" style="padding-top:{{navPadTop}}px">
     <image class="builder-search" src="/images/icon-search.png" mode="aspectFit" bindtap="onSearch" /><view class="builder-channels"><text wx:for="{{channels}}" wx:key="*this" class="builder-channel {{channel === item ? 'on' : ''}}" data-c="{{item}}" bindtap="switchChannel">{{item}}</text></view>
   </view>
-  <view class="builder-content"><view class="builder-block" style="background:transparent;color:#c9a97e;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:28px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:0px 0px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><swiper class="builder-hero" style="height:536px" autoplay="{{block0Autoplay}}" circular="{{block0.length > 1}}" interval="{{block0Interval}}" duration="500">
+  <view class="builder-content"><view class="builder-block" style="background:transparent;color:#c9a97e;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:28px;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.5;padding:0px 0px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><swiper class="builder-hero" style="height:680px" autoplay="{{block0Autoplay}}" circular="{{block0.length > 1}}" interval="{{block0Interval}}" duration="500">
   <swiper-item wx:for="{{block0}}" wx:key="id">
     <video wx:if="{{item.kind === 'video'}}" src="{{item.src}}" poster="{{item.poster}}" class="builder-cover" autoplay="{{block0Autoplay}}" muted loop controls="{{false}}" object-fit="cover"></video>
     <image wx:else src="{{item.src}}" mode="aspectFill" class="builder-cover" />

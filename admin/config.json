@@ -2,8 +2,8 @@
   "brand": {
     "name": "PRIVLAN",
     "logo": "brand-logo.png",
-    "slogan": "成为 PRIVLAN 会员 享受更多礼遇服务",
-    "advisorslogan": "扫描二维码，添加 PRIVLAN 专属顾问，获取独家礼遇"
+    "slogan": "?? PRIVLAN ?? ????????",
+    "advisorslogan": "?????,?? PRIVLAN ????,??????"
   },
   "theme": {
     "preset": "black-gold",
@@ -19,7 +19,7 @@
   },
   "themePresets": {
     "black-gold": {
-      "name": "黑金",
+      "name": "??",
       "colors": {
         "bgPrimary": "#0a0a0a",
         "bgSecondary": "#161616",
@@ -31,7 +31,7 @@
       }
     },
     "white-gold": {
-      "name": "白金",
+      "name": "??",
       "colors": {
         "bgPrimary": "#ffffff",
         "bgSecondary": "#f7f5f2",
@@ -43,7 +43,7 @@
       }
     },
     "dark-silver": {
-      "name": "暗银",
+      "name": "??",
       "colors": {
         "bgPrimary": "#0f0f0f",
         "bgSecondary": "#1a1a1a",
@@ -55,7 +55,7 @@
       }
     },
     "navy-gold": {
-      "name": "藏蓝金",
+      "name": "???",
       "colors": {
         "bgPrimary": "#0c1421",
         "bgSecondary": "#141e2e",
@@ -72,36 +72,36 @@
       "id": 1,
       "img": "/images/hero1.jpg",
       "title": "SUNGLASSES",
-      "sub": "发现新世界",
-      "channel": "推荐"
+      "sub": "?????",
+      "channel": "??"
     },
     {
       "id": 2,
       "img": "/images/hero2.jpg",
       "title": "LAKE MAGGIORE",
-      "sub": "湖畔假日系列",
+      "sub": "??????",
       "channel": "LAKE MAGGIORE"
     },
     {
       "id": 3,
       "img": "/images/hero3.jpg",
       "title": "OASI CASHMERE",
-      "sub": "绿洲羊绒",
-      "channel": "推荐"
+      "sub": "????",
+      "channel": "??"
     }
   ],
   "homeChannels": [
-    "推荐",
+    "??",
     "LAKE MAGGIORE"
   ],
   "categories": [
     {
       "id": "new",
-      "name": "早秋新品"
+      "name": "????"
     },
     {
       "id": "summer",
-      "name": "夏季系列"
+      "name": "????"
     },
     {
       "id": "stitch",
@@ -109,27 +109,27 @@
     },
     {
       "id": "tops",
-      "name": "上装"
+      "name": "??"
     },
     {
       "id": "shoes",
-      "name": "鞋履"
+      "name": "??"
     },
     {
       "id": "bottoms",
-      "name": "下装"
+      "name": "??"
     },
     {
       "id": "acc",
-      "name": "配饰"
+      "name": "??"
     },
     {
       "id": "home",
-      "name": "内衣及家居服"
+      "name": "??????"
     },
     {
       "id": "brand",
-      "name": "品牌甄选"
+      "name": "????"
     }
   ],
   "products": [
@@ -159,7 +159,7 @@
       ],
       "colors": [],
       "sizes": [
-        "新尺码"
+        "???"
       ],
       "description": "",
       "detail": "",
@@ -198,25 +198,25 @@
   ],
   "campaign": {
     "heroImg": "/images/campaign-hero.jpg",
-    "timeBar": "活动时间：2026年8月3日 00:00 - 2026年8月10日 23:59",
+    "timeBar": "????:2026?8?3? 00:00 - 2026?8?10? 23:59",
     "gift": {
       "img": "/images/gift.png",
-      "tag": "限量 10 份",
-      "title": "限量行李牌",
-      "desc": "支付订单满 12,000 元，并添加专属顾问即可尊享",
-      "note": "* 行李牌将在订单确认后单独寄出，详情可咨询专属顾问"
+      "tag": "?? 10 ?",
+      "title": "?????",
+      "desc": "????? 12,000 ?,???????????",
+      "note": "* ??????????????,?????????"
     },
-    "sectionTitle": "鞋履甄选",
+    "sectionTitle": "????",
     "productIds": [
       5,
       6
     ]
   },
   "tabBar": {
-    "centerText": "夏季系列",
+    "centerText": "????",
     "items": [
       {
-        "text": "首页",
+        "text": "??",
         "icon": "/images/tab-home.png",
         "iconOn": "/images/tab-home-on.png",
         "center": false,
@@ -234,7 +234,7 @@
         }
       },
       {
-        "text": "分类",
+        "text": "??",
         "icon": "/images/tab-grid.png",
         "iconOn": "/images/tab-grid-on.png",
         "center": false,
@@ -252,7 +252,7 @@
         }
       },
       {
-        "text": "夏季系列",
+        "text": "????",
         "center": true,
         "centerIcon": "/images/tab-3-centerIcon-pinterest.gif",
         "centerIconSource": "/images/tab-3-centerIcon-pinterest.gif",
@@ -263,7 +263,7 @@
         }
       },
       {
-        "text": "购物车",
+        "text": "???",
         "icon": "/images/tab-bag.png",
         "iconOn": "/images/tab-bag-on.png",
         "center": false,
@@ -281,7 +281,7 @@
         }
       },
       {
-        "text": "我的",
+        "text": "??",
         "icon": "/images/tab-user.png",
         "iconOn": "/images/tab-user-on.png",
         "center": false,
@@ -305,19 +305,19 @@
   "memberBenefits": [
     {
       "icon": "/images/svc-presale.png",
-      "text": "新品预售"
+      "text": "????"
     },
     {
       "icon": "/images/svc-cs.png",
-      "text": "专属客服"
+      "text": "????"
     },
     {
       "icon": "/images/svc-tailor.png",
-      "text": "改衣服务"
+      "text": "????"
     },
     {
       "icon": "/images/svc-gift.png",
-      "text": "尊享礼遇"
+      "text": "????"
     }
   ],
   "pageLayouts": {
@@ -325,12 +325,12 @@
       {
         "id": "hero-main",
         "type": "hero",
-        "name": "首屏轮播",
+        "name": "????",
         "enabled": true,
         "props": {
           "heroIndex": 0,
           "showButton": true,
-          "buttonText": "探索更多",
+          "buttonText": "????",
           "slides": [
             {
               "id": "slide-msika2n0-235j",
@@ -338,7 +338,7 @@
               "src": "/images/4ee185dc154e35f14e551c06411b653d.jpg",
               "title": "",
               "subtitle": "",
-              "buttonText": "探索更多",
+              "buttonText": "????",
               "showContent": false,
               "showButton": false,
               "linkType": "page",
@@ -354,7 +354,7 @@
               "src": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
               "title": "",
               "subtitle": "",
-              "buttonText": "探索更多",
+              "buttonText": "????",
               "showContent": false,
               "showButton": false,
               "linkType": "page",
@@ -370,7 +370,7 @@
               "src": "/images/b1ab190011e268ef1156a894e91412b7.jpg",
               "title": "",
               "subtitle": "",
-              "buttonText": "探索更多",
+              "buttonText": "????",
               "showContent": false,
               "showButton": false,
               "linkType": "page",
@@ -408,7 +408,7 @@
           "buttonRadius": 0,
           "buttonFontSize": 12,
           "buttonFontWeight": 500,
-          "height": 536,
+          "height": 694,
           "overlay": 0
         },
         "visibility": {
@@ -420,7 +420,7 @@
       {
         "id": "categories-main",
         "type": "categories",
-        "name": "分类导航",
+        "name": "????",
         "enabled": true,
         "props": {
           "count": 5
@@ -458,10 +458,10 @@
       {
         "id": "products-new",
         "type": "product-grid",
-        "name": "早秋新品",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "早秋新品",
+          "title": "????",
           "category": "tops",
           "columns": 3,
           "count": 6,
@@ -548,18 +548,18 @@
           "tablet": true,
           "desktop": true
         },
-        "name": "媒体背景"
+        "name": "????"
       }
     ],
     "category": [
       {
         "id": "text-mshcjlje-6nph",
         "type": "text",
-        "name": "分类页标题",
+        "name": "?????",
         "enabled": true,
         "props": {
-          "title": "分类",
-          "text": "按系列浏览商品"
+          "title": "??",
+          "text": "???????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -594,7 +594,7 @@
       {
         "id": "categories-mshcjlje-0cit",
         "type": "categories",
-        "name": "分类导航",
+        "name": "????",
         "enabled": true,
         "props": {
           "count": 8
@@ -632,10 +632,10 @@
       {
         "id": "product-grid-mshcjlje-03r8",
         "type": "product-grid",
-        "name": "全部商品",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "全部商品",
+          "title": "????",
           "category": "all",
           "columns": 2,
           "count": 8,
@@ -678,7 +678,7 @@
       {
         "id": "hero-mshcjlje-no6i",
         "type": "hero",
-        "name": "系列主视觉",
+        "name": "?????",
         "enabled": true,
         "props": {
           "slides": [
@@ -688,7 +688,7 @@
               "src": "/images/d5f9cfe54e41e6dda2cf77987cb75749.jpg",
               "title": "",
               "subtitle": "",
-              "buttonText": "探索更多",
+              "buttonText": "????",
               "showContent": false,
               "showButton": false,
               "linkType": "page",
@@ -703,8 +703,8 @@
               "kind": "image",
               "src": "/images/hero2.jpg",
               "title": "LAKE MAGGIORE",
-              "subtitle": "湖畔假日系列",
-              "buttonText": "探索更多",
+              "subtitle": "??????",
+              "buttonText": "????",
               "showContent": true,
               "showButton": true,
               "linkType": "page",
@@ -754,11 +754,11 @@
       {
         "id": "text-mshcjlje-s6w1",
         "type": "text",
-        "name": "系列说明",
+        "name": "????",
         "enabled": true,
         "props": {
           "title": "LAKE MAGGIORE",
-          "text": "从湖光与建筑线条中汲取灵感，呈现松弛而克制的夏日衣橱。"
+          "text": "?????????????,?????????????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -793,10 +793,10 @@
       {
         "id": "product-grid-mshcjlje-vo53",
         "type": "product-grid",
-        "name": "系列商品",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "系列精选",
+          "title": "????",
           "category": "summer",
           "columns": 2,
           "count": 6,
@@ -839,11 +839,11 @@
       {
         "id": "text-mshcjlje-j175",
         "type": "text",
-        "name": "购物车标题",
+        "name": "?????",
         "enabled": true,
         "props": {
-          "title": "购物车",
-          "text": "已选商品会安全保留，可继续探索或前往结算。"
+          "title": "???",
+          "text": "?????????,???????????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -878,10 +878,10 @@
       {
         "id": "product-grid-mshcjlje-kf3o",
         "type": "product-grid",
-        "name": "为你推荐",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "为你推荐",
+          "title": "????",
           "category": "all",
           "columns": 2,
           "count": 4,
@@ -924,11 +924,11 @@
       {
         "id": "member-banner-mshcjlje-ytli",
         "type": "member-banner",
-        "name": "会员中心",
+        "name": "????",
         "enabled": true,
         "props": {
           "title": "PRIVLAN",
-          "subtitle": "成为 PRIVLAN 会员 享受更多礼遇服务"
+          "subtitle": "?? PRIVLAN ?? ????????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -963,11 +963,11 @@
       {
         "id": "text-mshcjlje-oocq",
         "type": "text",
-        "name": "专属服务",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "专属服务",
-          "text": "订单、收藏、礼遇与专属顾问均可在这里查看。"
+          "title": "????",
+          "text": "?????????????????????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -1002,10 +1002,10 @@
       {
         "id": "product-grid-mshcjlje-tlf6",
         "type": "product-grid",
-        "name": "最近浏览",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "最近浏览",
+          "title": "????",
           "category": "all",
           "columns": 2,
           "count": 4,
@@ -1048,7 +1048,7 @@
       {
         "id": "product-detail-mshcjlje-2cds",
         "type": "product-detail",
-        "name": "商品详情",
+        "name": "????",
         "enabled": true,
         "props": {
           "productId": 1,
@@ -1088,11 +1088,11 @@
       {
         "id": "text-mshcjlje-42xs",
         "type": "text",
-        "name": "商品说明",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "匠心细节",
-          "text": "精选材质与精准剪裁，在日常穿着中呈现克制而持久的质感。"
+          "title": "????",
+          "text": "?????????,?????????????????"
         },
         "style": {
           "backgroundColor": "transparent",
@@ -1127,10 +1127,10 @@
       {
         "id": "product-grid-mshcjlje-j64i",
         "type": "product-grid",
-        "name": "相关推荐",
+        "name": "????",
         "enabled": true,
         "props": {
-          "title": "相关推荐",
+          "title": "????",
           "category": "all",
           "columns": 2,
           "count": 4,
@@ -1173,12 +1173,12 @@
       {
         "id": "appointment-hero-msoebwj6-n0dz",
         "type": "appointment-hero",
-        "name": "预约页头图",
+        "name": "?????",
         "enabled": true,
         "props": {
           "kicker": "PRIVLAN APPOINTMENT",
-          "title": "预约专属服务",
-          "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。"
+          "title": "??????",
+          "description": "??????????????,??????????"
         },
         "style": {
           "backgroundColor": "#171717",
@@ -1213,7 +1213,7 @@
       {
         "id": "appointment-form-msoebwj6-3a02",
         "type": "appointment-form",
-        "name": "预约信息与服务",
+        "name": "???????",
         "enabled": true,
         "props": {
           "showName": true,
@@ -1257,11 +1257,11 @@
       {
         "id": "appointment-notes-msoebwj6-l2aa",
         "type": "appointment-notes",
-        "name": "到店备注",
+        "name": "????",
         "enabled": true,
         "props": {
-          "label": "到店备注",
-          "placeholder": "可填写想了解的款式、场合或其他需求"
+          "label": "????",
+          "placeholder": "?????????????????"
         },
         "style": {
           "backgroundColor": "#ffffff",
@@ -1296,12 +1296,12 @@
       {
         "id": "appointment-submit-msoebwj6-g2j4",
         "type": "appointment-submit",
-        "name": "提交预约",
+        "name": "????",
         "enabled": true,
         "props": {
-          "buttonText": "确认预约",
-          "successTitle": "预约已提交",
-          "successCopy": "我们会尽快确认你的预约，请留意顾问联系。"
+          "buttonText": "????",
+          "successTitle": "?????",
+          "successCopy": "???????????,????????"
         },
         "style": {
           "backgroundColor": "#ffffff",
@@ -1335,7 +1335,7 @@
       }
     ]
   },
-  "_lastSync": "2026-08-11T08:41:11.320Z",
+  "_lastSync": "2026-08-11T09:27:11.878Z",
   "customFonts": [],
   "designSystem": {
     "blockDefaults": {
@@ -1351,14 +1351,14 @@
     "size": 88,
     "right": 110,
     "bottom": 475,
-    "welcomeMessage": "您好，我是 PRIVLAN 专属服务助手。请问今天想了解什么？",
+    "welcomeMessage": "??,?? PRIVLAN ?????????????????",
     "quickPrompts": [
-      "我要预约",
-      "你们的价格区间是多少？",
-      "你们用的什么面料？",
-      "版型与款式",
-      "制作周期多久？",
-      "转人工服务"
+      "????",
+      "???????????",
+      "?????????",
+      "?????",
+      "???????",
+      "?????"
     ],
     "answerProvider": "rules",
     "humanServiceEnabled": false,
@@ -1366,11 +1366,11 @@
   },
   "appointment": {
     "kicker": "PRIVLAN APPOINTMENT",
-    "title": "预约专属服务",
-    "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。",
-    "submitText": "确认预约",
-    "successTitle": "预约已提交",
-    "successCopy": "我们会尽快确认你的预约，请留意顾问联系。",
+    "title": "??????",
+    "description": "??????????????,??????????",
+    "submitText": "????",
+    "successTitle": "?????",
+    "successCopy": "???????????,????????",
     "fields": {
       "name": true,
       "phone": true,

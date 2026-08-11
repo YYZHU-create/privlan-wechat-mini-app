@@ -319,6 +319,20 @@ createApp({
       return { ...common, ...global, ...(typeDefaults[type] || {}) };
     }
 
+    function normalizeSectionStyle(style = {}, type = "text") {
+      const defaults = sectionStyleDefaults(type);
+      const merged = { ...defaults, ...(style || {}) };
+      const numeric = (value, fallback, min, max) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+      };
+      merged.marginTop = numeric(merged.marginTop, defaults.marginTop, 0, 240);
+      merged.marginBottom = numeric(merged.marginBottom, defaults.marginBottom, 0, 240);
+      merged.paddingX = numeric(merged.paddingX, defaults.paddingX, 0, 120);
+      merged.paddingY = numeric(merged.paddingY, defaults.paddingY, 0, 180);
+      return merged;
+    }
+
     function makeSlide(hero, index = 0) {
       return {
         id: makeId("slide"), kind: "image", src: hero?.img || "/images/hero1.jpg",
@@ -331,7 +345,7 @@ createApp({
     function makeSection(type, name, props = {}, style = {}) {
       return {
         id: makeId(type), type, name, enabled: true, props,
-        style: { ...sectionStyleDefaults(type), ...style },
+        style: normalizeSectionStyle(style, type),
         visibility: { mobile: true, tablet: true, desktop: true }
       };
     }
@@ -429,7 +443,7 @@ createApp({
       });
       Object.values(data.pageLayouts).flat().forEach(section => {
         section.props ||= {};
-        section.style = { ...sectionStyleDefaults(section.type), ...(section.style || {}) };
+        section.style = normalizeSectionStyle(section.style, section.type);
         section.visibility ||= { mobile: true, tablet: true, desktop: true };
         if (section.enabled === undefined) section.enabled = true;
         if (section.type === "hero") {
@@ -527,6 +541,9 @@ createApp({
 
     async function saveConfig(silent = false) {
       if (!cfg.value) return false;
+      Object.values(cfg.value.pageLayouts || {}).flat().forEach(section => {
+        section.style = normalizeSectionStyle(section.style, section.type);
+      });
       saveMode.value = "saving";
       try {
         const response = await fetch("/api/config", {
@@ -886,7 +903,7 @@ createApp({
     function categoryName(id) { return cfg.value?.categories.find(c => c.id === id)?.name || id || "未分类"; }
     function fontStack(id) { return fontOptions.value.find(font => font.id === id)?.stack || fontPresets[0].stack; }
     function sectionStyle(section) {
-      const style = section.style || sectionStyleDefaults(section.type);
+      const style = normalizeSectionStyle(section.style, section.type);
       const result = {
         backgroundColor: style.backgroundColor === "transparent" ? "transparent" : style.backgroundColor,
         color: style.textColor || "inherit", fontFamily: fontStack(style.fontFamily), fontSize: `${style.fontSize || 14}px`,
@@ -899,6 +916,11 @@ createApp({
         "--button-border-width": `${style.buttonBorderWidth ?? 1}px`, "--button-radius": `${style.buttonRadius || 0}px`,
         "--button-font-size": `${style.buttonFontSize || 12}px`, "--overlay-opacity": Number(style.overlay ?? 40) / 100
       };
+      if (section.type === "appointment-hero" && section.props?.backgroundSrc) {
+        result.backgroundImage = `url("${mpUrl(section.props.backgroundSrc)}")`;
+        result.backgroundSize = section.props.backgroundFit || "cover";
+        result.backgroundPosition = section.props.backgroundPosition || "center";
+      }
       if (section.type === "spacer" || section.type === "media") result.height = `${style.height || (section.type === "media" ? 360 : 30)}px`;
       else result.padding = `${style.paddingY || 0}px ${style.paddingX || 0}px`;
       return result;
@@ -1232,7 +1254,15 @@ createApp({
     }
     function applySectionMedia(item) {
       const section = selectedSection.value;
-      if (!section || section.type !== "media") return;
+      if (!section || !["media", "appointment-hero"].includes(section.type)) return;
+      if (section.type === "appointment-hero") {
+        section.props.backgroundSrc = item.mpPath;
+        section.props.backgroundFit = section.props.backgroundFit || "cover";
+        section.props.backgroundPosition = section.props.backgroundPosition || "center";
+        mediaPickerOpen.value = false;
+        toast("预约头图已应用", item.name);
+        return;
+      }
       section.props.mode = item.kind === "video" ? "video" : "image";
       section.props.src = item.mpPath;
       mediaPickerOpen.value = false;
@@ -1831,7 +1861,7 @@ createApp({
               </div>
               <div class="canvas-stage">
                 <div class="phone-canvas" :class="device" :style="{ transform: 'scale(' + zoom / 100 + ')' }">
-                  <div class="mobile-page" :style="{'--page-bg': cfg.theme.colors.bgPrimary, '--page-secondary': cfg.theme.colors.bgSecondary, '--page-text': cfg.theme.colors.textPrimary, '--page-muted': cfg.theme.colors.textSecondary, '--page-accent': cfg.theme.colors.accent, '--page-border': cfg.theme.colors.border}">
+                  <div class="mobile-page" :class="{'appointment-preview': currentPage === 'appointment'}" :style="{'--page-bg': cfg.theme.colors.bgPrimary, '--page-secondary': cfg.theme.colors.bgSecondary, '--page-text': cfg.theme.colors.textPrimary, '--page-muted': cfg.theme.colors.textSecondary, '--page-accent': cfg.theme.colors.accent, '--page-border': cfg.theme.colors.border}">
                     <div class="mobile-status"><span>9:41</span><span class="mobile-status-icons"><iconify-icon class="icon" icon="ph:cell-signal-high"></iconify-icon><iconify-icon class="icon" icon="ph:wifi-high"></iconify-icon><iconify-icon class="icon" icon="ph:battery-high"></iconify-icon></span></div>
                     <div v-if="currentPage==='home' || !currentPageMeta.tab" class="mobile-nav"><iconify-icon class="icon" :icon="currentPage==='home' ? 'ph:magnifying-glass' : 'ph:arrow-left'" @click.stop="currentPage!=='home' ? switchPage('home') : null"></iconify-icon><div v-if="currentPage==='home'" class="mobile-channel"><span v-for="(channel,index) in cfg.homeChannels" :key="channel+index" :class="{active:index===0}">{{ channel }}</span></div><div v-else-if="currentPage!=='appointment'" class="mobile-page-title">{{ currentPageMeta.name }}</div></div>
 
@@ -1938,7 +1968,7 @@ createApp({
                   <div v-else-if="selectedSection.type === 'product-grid'" class="field-group"><div class="field-title">商品数据</div><div class="field"><label>区块标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>商品分类</label><select v-model="selectedSection.props.category"><option value="all">全部商品</option><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select></div><div class="field"><label>显示数量 <span>{{ selectedSection.props.count || 6 }}</span></label><div class="range-row"><input v-model.number="selectedSection.props.count" type="range" min="1" max="12"><input v-model.number="selectedSection.props.count" type="number" min="1" max="12"></div></div><div class="toggle-row"><span>显示商品名称</span><button class="switch" :class="{on:selectedSection.props.showName}" @click="selectedSection.props.showName = !selectedSection.props.showName"></button></div><div class="toggle-row"><span>显示价格</span><button class="switch" :class="{on:selectedSection.props.showPrice}" @click="selectedSection.props.showPrice = !selectedSection.props.showPrice"></button></div></div>
                   <div v-else-if="selectedSection.type === 'member-banner'" class="field-group"><div class="field-title">会员内容</div><div class="toggle-row"><span>使用 PRIVLAN 品牌标志</span><button class="switch" :class="{on:selectedSection.props.useBrandLogo !== false}" @click="selectedSection.props.useBrandLogo = selectedSection.props.useBrandLogo === false"></button></div><div v-if="selectedSection.props.useBrandLogo === false" class="field"><label>品牌标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>说明文字</label><textarea v-model="selectedSection.props.subtitle"></textarea></div></div>
                   <div v-else-if="selectedSection.type === 'product-detail'" class="field-group"><div class="field-title">商品详情</div><div class="field"><label>预览商品</label><select v-model.number="selectedSection.props.productId"><option v-for="product in cfg.products" :key="product.id" :value="product.id">{{ product.name }} · {{ money(product.price) }}</option></select></div><div class="toggle-row"><span>显示价格</span><button class="switch" :class="{on:selectedSection.props.showPrice}" @click="selectedSection.props.showPrice=!selectedSection.props.showPrice"></button></div><div class="toggle-row"><span>显示购买按钮</span><button class="switch" :class="{on:selectedSection.props.showActions}" @click="selectedSection.props.showActions=!selectedSection.props.showActions"></button></div></div>
-                  <div v-else-if="selectedSection.type === 'appointment-hero'" class="field-group"><div class="field-title">预约页标题</div><div class="field"><label>英文标识</label><input v-model="selectedSection.props.kicker" type="text"></div><div class="field"><label>主标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>说明文字</label><textarea v-model="selectedSection.props.description"></textarea></div></div>
+                  <div v-else-if="selectedSection.type === 'appointment-hero'" class="field-group"><div class="field-title">预约页标题</div><div class="field"><label>英文标识</label><input v-model="selectedSection.props.kicker" type="text"></div><div class="field"><label>主标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>说明文字</label><textarea v-model="selectedSection.props.description"></textarea></div><div class="field-title">头图媒体</div><div v-if="selectedSection.props.backgroundSrc" class="section-media-preview"><img :src="mpUrl(selectedSection.props.backgroundSrc)" alt="预约头图"></div><div class="media-actions"><button class="btn small" @click="openSectionMediaPicker"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传图片<input type="file" accept="image/*,.jpg,.jpeg,.png,.webp" hidden @change="uploadSectionMedia($event.target.files);$event.target.value=''" /></label></div><div class="field-row"><div class="field"><label>填充方式</label><select v-model="selectedSection.props.backgroundFit"><option value="cover">铺满</option><option value="contain">完整显示</option></select></div><div class="field"><label>画面位置</label><select v-model="selectedSection.props.backgroundPosition"><option value="center">居中</option><option value="top">顶部</option><option value="bottom">底部</option><option value="left">左侧</option><option value="right">右侧</option></select></div></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-form'" class="field-group"><div class="field-title">预约字段</div><p class="field-help">字段顺序按预约流程固定，门店、顾问和时段选项由飞书实时提供。关闭字段后，小程序也会跳过对应校验。</p><div v-for="field in [{key:'showName',label:'姓名'},{key:'showPhone',label:'联系电话'},{key:'showService',label:'预约服务'},{key:'showStore',label:'到店门店'},{key:'showDate',label:'预约日期'},{key:'showTime',label:'预约时间'},{key:'showAdvisor',label:'专属顾问'}]" :key="field.key" class="toggle-row"><span>{{ field.label }}</span><button class="switch" :class="{on:selectedSection.props[field.key] !== false}" @click="selectedSection.props[field.key] = selectedSection.props[field.key] === false"></button></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-notes'" class="field-group"><div class="field-title">备注字段</div><div class="field"><label>字段标题</label><input v-model="selectedSection.props.label" type="text"></div><div class="field"><label>输入提示</label><textarea v-model="selectedSection.props.placeholder"></textarea></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-submit'" class="field-group"><div class="field-title">提交与成功反馈</div><div class="field"><label>按钮文字</label><input v-model="selectedSection.props.buttonText" type="text"></div><div class="field"><label>成功标题</label><input v-model="selectedSection.props.successTitle" type="text"></div><div class="field"><label>成功说明</label><textarea v-model="selectedSection.props.successCopy"></textarea></div></div>
@@ -1970,7 +2000,7 @@ createApp({
                     <div class="field-row"><div class="field"><label>字间距</label><input v-model.number="selectedSection.style.letterSpacing" type="number" step="0.1"></div><div class="field"><label>行高</label><input v-model.number="selectedSection.style.lineHeight" type="number" min="1" max="2.4" step="0.1"></div></div>
                     <div class="media-actions"><button v-if="selectedSection.style.fontFamily?.startsWith('system:')" class="btn small gold" @click="importSelectedSystemFont"><iconify-icon class="icon" icon="ph:package"></iconify-icon>{{ fontUploading ? '打包中…' : '打包当前字体' }}</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>{{ fontUploading ? '上传中…' : '上传字体' }}<input type="file" accept=".woff2,.woff,.ttf,.otf,.ttc" hidden @change="uploadFontFiles($event.target.files);$event.target.value=''" /></label><button class="btn small" @click="addCustomFontUrl"><iconify-icon class="icon" icon="ph:link"></iconify-icon>填写字体地址</button></div><p class="font-note">电脑字体可直接用于后台预览；同步前只打包实际选择的字体，避免把全部字体塞进小程序。请确认商业授权，优先选择体积较小的字体。</p>
                   </div></details>
-                  <details class="inspector-disclosure"><summary>间距与边框 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><div class="disclosure-body"><div class="field-row"><div class="field"><label>水平内边距</label><input v-model.number="selectedSection.style.paddingX" type="number"></div><div class="field"><label>垂直内边距</label><input v-model.number="selectedSection.style.paddingY" type="number"></div></div><div class="field-row"><div class="field"><label>上外边距</label><input v-model.number="selectedSection.style.marginTop" type="number"></div><div class="field"><label>下外边距</label><input v-model.number="selectedSection.style.marginBottom" type="number"></div></div><div class="field-row"><div class="field"><label>边框宽度</label><input v-model.number="selectedSection.style.borderWidth" type="number" min="0"></div><div class="field"><label>圆角</label><input v-model.number="selectedSection.style.borderRadius" type="number" min="0"></div></div><div class="field"><label>边框颜色</label><div class="color-field"><input v-model="selectedSection.style.borderColor" type="color"><input v-model="selectedSection.style.borderColor" type="text"></div></div></div></details>
+                  <details class="inspector-disclosure" open><summary>区块间距与边框 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><div class="disclosure-body"><div class="field"><label>上外边距 <span>{{ selectedSection.style.marginTop }} px</span></label><div class="range-row"><input v-model.number="selectedSection.style.marginTop" type="range" min="0" max="240" step="1"><input v-model.number="selectedSection.style.marginTop" type="number" min="0" max="240"></div></div><div class="field"><label>下外边距 <span>{{ selectedSection.style.marginBottom }} px</span></label><div class="range-row"><input v-model.number="selectedSection.style.marginBottom" type="range" min="0" max="240" step="1"><input v-model.number="selectedSection.style.marginBottom" type="number" min="0" max="240"></div></div><p class="field-help">用于调整当前区块与前后区块之间的留白，所有页面区块均独立保存。</p><div class="field-row"><div class="field"><label>水平内边距</label><input v-model.number="selectedSection.style.paddingX" type="number" min="0" max="120"></div><div class="field"><label>垂直内边距</label><input v-model.number="selectedSection.style.paddingY" type="number" min="0" max="180"></div></div><div class="field-row"><div class="field"><label>边框宽度</label><input v-model.number="selectedSection.style.borderWidth" type="number" min="0"></div><div class="field"><label>圆角</label><input v-model.number="selectedSection.style.borderRadius" type="number" min="0"></div></div><div class="field"><label>边框颜色</label><div class="color-field"><input v-model="selectedSection.style.borderColor" type="color"><input v-model="selectedSection.style.borderColor" type="text"></div></div></div></details>
                   <details v-if="selectedSection.type==='hero'" class="inspector-disclosure"><summary>行动按钮 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><div class="disclosure-body"><div v-for="(label,key) in {buttonTextColor:'文字颜色',buttonBackground:'背景颜色',buttonBorderColor:'边框颜色'}" :key="key" class="field"><label>{{ label }}</label><div class="color-field"><input v-model="selectedSection.style[key]" type="color"><input v-model="selectedSection.style[key]" type="text"></div></div><div class="field-row"><div class="field"><label>边框宽度</label><input v-model.number="selectedSection.style.buttonBorderWidth" type="number" min="0"></div><div class="field"><label>按钮圆角</label><input v-model.number="selectedSection.style.buttonRadius" type="number" min="0"></div></div><div class="field"><label>按钮字号</label><input v-model.number="selectedSection.style.buttonFontSize" type="number" min="9" max="28"></div></div></details>
                   <details v-if="selectedSection.type==='product-grid'" class="inspector-disclosure"><summary>商品网格 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><div class="disclosure-body"><div class="field"><label>每行列数</label><div class="choice-grid"><button v-for="n in [2,3,4]" :key="n" :class="{active:selectedSection.props.columns===n}" @click="selectedSection.props.columns=n">{{ n }} 列</button></div></div><div class="field"><label>商品间距</label><div class="range-row"><input v-model.number="selectedSection.style.gap" type="range" min="4" max="24"><input v-model.number="selectedSection.style.gap" type="number"></div></div></div></details>
                 </template>
