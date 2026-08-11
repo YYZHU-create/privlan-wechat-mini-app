@@ -21,6 +21,7 @@ Page({
         "right": 110,
         "bottom": 475
     },
+    "block0Hotspots": [],
     "block0": {
         "id": 6,
         "cat": "tops",
@@ -36,6 +37,8 @@ Page({
         "detail": "",
         "detailImages": []
     },
+    "block1Hotspots": [],
+    "block2Hotspots": [],
     "block2": [
         {
             "id": 6,

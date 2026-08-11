@@ -20,6 +20,7 @@ Page({
         "right": 110,
         "bottom": 475
     },
+    "block0Hotspots": [],
     "block0": [
         {
             "id": "slide-msjzktea-9zkt",
@@ -56,6 +57,8 @@ Page({
     ],
     "block0Autoplay": false,
     "block0Interval": 6000,
+    "block1Hotspots": [],
+    "block2Hotspots": [],
     "block2": []
 },
   onLoad() {

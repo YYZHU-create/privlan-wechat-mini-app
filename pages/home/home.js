@@ -20,6 +20,7 @@ Page({
         "right": 110,
         "bottom": 475
     },
+    "block0Hotspots": [],
     "block0": [
         {
             "id": "slide-msika2n0-235j",
@@ -72,6 +73,7 @@ Page({
     ],
     "block0Autoplay": true,
     "block0Interval": 5000,
+    "block1Hotspots": [],
     "block1": [
         {
             "id": "new",
@@ -94,6 +96,7 @@ Page({
             "name": "??"
         }
     ],
+    "block2Hotspots": [],
     "block2": [
         {
             "id": 6,
@@ -158,6 +161,7 @@ Page({
             "detailImages": []
         }
     ],
+    "block3Hotspots": [],
     "block3": {
         "mode": "image",
         "src": "/images/371b2a8ec840f557725bb8150bf126c8.jpg",
