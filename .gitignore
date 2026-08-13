@@ -8,4 +8,5 @@ project.private.config.json
 miniprogram_npm/
 dist/
 tmp/
+admin/config-backups/
 .DS_Store
