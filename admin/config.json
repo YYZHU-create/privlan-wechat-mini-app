@@ -1397,7 +1397,7 @@
       }
     ]
   },
-  "_lastSync": "2026-08-13T04:10:58.266Z",
+  "_lastSync": "2026-08-13T09:26:04.251Z",
   "customFonts": [],
   "designSystem": {
     "blockDefaults": {
@@ -1457,6 +1457,67 @@
       "制作周期多久？",
       "转人工服务"
     ],
+    "faqs": [
+      {
+        "id": "faq-1",
+        "question": "我要预约",
+        "keywords": [
+          "预约"
+        ],
+        "answer": "可以进入预约页面选择日期和时间，系统会避免同一服务时段重复预约。",
+        "enabled": true,
+        "showAsPrompt": true
+      },
+      {
+        "id": "faq-2",
+        "question": "你们的价格区间是多少？",
+        "keywords": [
+          "价格",
+          "价位",
+          "多少钱"
+        ],
+        "answer": "价格会根据商品、服务内容和具体需求确定。请告诉我你感兴趣的商品或服务，我会提供更准确的信息。",
+        "enabled": true,
+        "showAsPrompt": true
+      },
+      {
+        "id": "faq-3",
+        "question": "你们用的什么面料？",
+        "keywords": [
+          "产品",
+          "服务",
+          "项目"
+        ],
+        "answer": "你可以在店铺商品和服务页面查看当前内容，也可以告诉我你的需求，我会协助你找到合适的选项。",
+        "enabled": true,
+        "showAsPrompt": true
+      },
+      {
+        "id": "faq-4",
+        "question": "版型与款式",
+        "keywords": [
+          "周期",
+          "多久",
+          "时间"
+        ],
+        "answer": "处理时间会根据具体商品或服务有所不同。确认需求后，我们会告知准确时间。",
+        "enabled": true,
+        "showAsPrompt": true
+      },
+      {
+        "id": "faq-5",
+        "question": "制作周期多久？",
+        "keywords": [
+          "人工",
+          "客服",
+          "顾问"
+        ],
+        "answer": "可以通过人工客服入口联系我们。若当前未开通微信客服，请使用店铺公布的联系方式。",
+        "enabled": true,
+        "showAsPrompt": true
+      }
+    ],
+    "knowledgeNotes": [],
     "answerProvider": "rules",
     "humanServiceEnabled": false,
     "authMode": "test"
