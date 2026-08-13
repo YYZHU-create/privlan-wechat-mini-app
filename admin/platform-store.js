@@ -10,7 +10,7 @@ const PROVIDER_PRESETS = [
   { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", protocol: "openai", region: "中国大陆" },
   { id: "moonshot", name: "Moonshot / Kimi", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k", protocol: "openai", region: "中国大陆" },
   { id: "zhipu", name: "智谱 GLM", baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash", protocol: "openai", region: "中国大陆" },
-  { id: "openai-compatible", name: "OpenAI 兼容接口", baseUrl: "", model: "", protocol: "openai", region: "自定义" }
+  { id: "openai-compatible", name: "自定义供应商（OpenAI 兼容）", baseUrl: "", model: "", protocol: "openai", region: "自定义" }
 ];
 
 function defaultState() {
@@ -68,7 +68,7 @@ function normalizeState(parsed = {}) {
     tenants,
     plans: Array.isArray(parsed.plans) && parsed.plans.length ? parsed.plans : defaults.plans,
     subscriptions: Array.isArray(parsed.subscriptions) ? parsed.subscriptions : defaults.subscriptions,
-    providerCatalog: Array.isArray(parsed.providerCatalog) && parsed.providerCatalog.length ? parsed.providerCatalog : defaults.providerCatalog,
+    providerCatalog: (Array.isArray(parsed.providerCatalog) && parsed.providerCatalog.length ? parsed.providerCatalog : defaults.providerCatalog).map(item => item.id === "openai-compatible" ? { ...item, name: "自定义供应商（OpenAI 兼容）", protocol: "openai", region: "自定义", baseUrl: "", model: "" } : item),
     aiConnections: Array.isArray(parsed.aiConnections) ? parsed.aiConnections : [],
     aiPolicies: Array.isArray(parsed.aiPolicies) && parsed.aiPolicies.length ? parsed.aiPolicies : defaults.aiPolicies,
     aiUsageEvents: Array.isArray(parsed.aiUsageEvents) ? parsed.aiUsageEvents : [],

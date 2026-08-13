@@ -246,6 +246,8 @@ function connectionFromInput(input, scope) {
   const baseUrl = normalizeBaseUrl(input.baseUrl || preset.baseUrl);
   const model = String(input.model || preset.model || "").trim().slice(0, 120);
   const apiKey = String(input.apiKey || "").trim();
+  const protocol = String(input.protocol || preset.protocol || "openai").trim();
+  if (protocol !== "openai") throw new Error("当前仅支持 OpenAI Chat Completions 兼容协议；其他协议需要平台适配器");
   if (!model) throw new Error("请输入模型名称");
   if (!apiKey) throw new Error("请输入 API Key");
   return {
@@ -255,7 +257,7 @@ function connectionFromInput(input, scope) {
     ownerType: scope.ownerType,
     providerPreset,
     providerName: String(input.providerName || preset.name || "自定义模型").trim().slice(0, 60),
-    protocol: "openai",
+    protocol,
     baseUrl,
     model,
     timeoutMs: Math.min(60000, Math.max(3000, Number(input.timeoutMs) || 12000)),
