@@ -323,14 +323,14 @@ function migrateLegacyAiConnection(state) {
 }
 
 function fallbackFaq(text, cfg) {
-  const rules = [
-    { pattern: /价格|价位|多少钱/, content: "价格会根据品类、面料和定制需求确定。你可以告诉我感兴趣的商品或服务，我会提供更准确的范围。", citation: "品牌价格政策" },
-    { pattern: /面料|材质/, content: "我们会根据季节、穿着场景和版型选择天然及高品质混纺面料。具体成分请以商品详情和顾问确认为准。", citation: "商品与面料说明" },
-    { pattern: /版型|款式|剪裁/, content: "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。", citation: "品牌服务说明" },
-    { pattern: /周期|多久|制作时间/, content: "制作周期会随品类、面料和工艺变化。完成量体与款式确认后，顾问会给出准确交付时间。", citation: "定制服务政策" }
-  ];
-  const matched = rules.find(rule => rule.pattern.test(text));
-  if (matched) return { type: "faq", content: matched.content, citations: [matched.citation] };
+  const configuredFaqs = Array.isArray(cfg.serviceBot?.faqs) ? cfg.serviceBot.faqs : [];
+  const matched = configuredFaqs.find(item => {
+    if (item?.enabled === false || !item?.answer) return false;
+    const question = String(item.question || "").trim();
+    const keywords = Array.isArray(item.keywords) ? item.keywords : [];
+    return (question && (text === question || text.includes(question))) || keywords.some(keyword => keyword && text.includes(String(keyword)));
+  });
+  if (matched) return { type: "faq", content: String(matched.answer), citations: [`店铺问答：${matched.question}`] };
   const product = (cfg.products || []).find(item => text.includes(String(item.name || "")) || text.includes(String(item.id || "")));
   if (product) return { type: "product", content: `${product.name} 当前标价为 ¥${Number(product.price || 0).toLocaleString("zh-CN")}。你还可以询问颜色、尺码或预约顾问。`, citations: [`商品 #${product.id}`] };
   return { type: "action", content: "现有知识中没有足够信息回答这个问题。你可以补充具体商品或需求，或转接人工顾问。", citations: [], actions: [{ id: "human", label: "转人工服务" }] };
@@ -347,7 +347,9 @@ function deterministicServiceAction(text) {
 function knowledgeContext(cfg) {
   const products = (cfg.products || []).slice(0, 30).map(item => ({ id: item.id, name: item.name, price: item.price, category: item.cat, description: item.description || item.detail || "" }));
   const categories = (cfg.categories || []).map(item => ({ id: item.id, name: item.name }));
-  return JSON.stringify({ brand: cfg.brand, products, categories, quickPrompts: cfg.serviceBot?.quickPrompts || [] });
+  const faqs = (cfg.serviceBot?.faqs || []).filter(item => item?.enabled !== false).slice(0, 100).map(item => ({ question: item.question, keywords: item.keywords, answer: item.answer }));
+  const notes = (cfg.serviceBot?.knowledgeNotes || []).slice(0, 30).map(item => ({ title: item.title, content: item.content }));
+  return JSON.stringify({ brand: cfg.brand, products, categories, faqs, notes });
 }
 
 function selectedAiConnection(state, tenantId, storeId) {

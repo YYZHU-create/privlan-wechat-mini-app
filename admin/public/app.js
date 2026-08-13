@@ -93,6 +93,8 @@ createApp({
     });
     const aiConsole = reactive({ question: "", sending: false, answer: null, error: "" });
     const aiConnectionEditor = reactive({ open: false, saving: false, error: "", providerPreset: "deepseek", providerName: "", baseUrl: "", model: "", apiKey: "", timeoutMs: 12000, maxTokens: 500 });
+    const faqEditor = reactive({ open: false, index: -1, question: "", keywordsText: "", answer: "", enabled: true, showAsPrompt: true, error: "" });
+    const knowledgeSourceEditor = reactive({ open: false, type: "faq", title: "", content: "", error: "" });
     const aiConnectionBusy = ref("");
     let historyTimer;
     let dragSlideIndex = -1;
@@ -501,6 +503,17 @@ createApp({
       data.homeChannels = data.homeChannels.map(channel => String(channel || "").trim()).filter(Boolean).slice(0, 5);
       if (!data.homeChannels.length) data.homeChannels = ["推荐"];
       const serviceBot = data.serviceBot || {};
+      const defaultFaqs = [
+        { question: "我要预约", keywords: ["预约"], answer: "可以进入预约页面选择日期和时间，系统会避免同一服务时段重复预约。", showAsPrompt: true },
+        { question: "你们的价格区间是多少？", keywords: ["价格", "价位", "多少钱"], answer: "价格会根据品类、面料和定制需求确定。请告诉我感兴趣的商品或服务，我会提供更准确的范围。", showAsPrompt: true },
+        { question: "你们用的什么面料？", keywords: ["面料", "材质"], answer: "我们会根据季节、穿着场景和版型选择天然及高品质混纺面料，具体成分请以商品详情或顾问确认为准。", showAsPrompt: true },
+        { question: "版型与款式", keywords: ["版型", "款式", "剪裁"], answer: "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。", showAsPrompt: true },
+        { question: "制作周期多久？", keywords: ["周期", "多久", "制作时间"], answer: "制作周期会随品类、面料和工艺变化。完成量体与款式确认后，顾问会给出准确交付时间。", showAsPrompt: true },
+        { question: "转人工服务", keywords: ["人工", "客服", "顾问"], answer: "可以通过人工客服入口联系我们。若当前未开通微信客服，请使用店铺公布的联系方式。", showAsPrompt: true }
+      ];
+      const sourceFaqs = Array.isArray(serviceBot.faqs) && serviceBot.faqs.length
+        ? serviceBot.faqs
+        : defaultFaqs.map((item, index) => ({ ...item, question: serviceBot.quickPrompts?.[index] || item.question }));
       data.serviceBot = {
         enabled: serviceBot.enabled !== false,
         icon: serviceBot.icon || "/images/icon-headset.png",
@@ -508,7 +521,19 @@ createApp({
         right: clamp(serviceBot.right ?? 24, 8, 300),
         bottom: clamp(serviceBot.bottom ?? 150, 112, 700),
         welcomeMessage: String(serviceBot.welcomeMessage || "您好，我是 PRIVLAN 专属服务助手。请问今天想了解什么？").slice(0, 160),
-        quickPrompts: (Array.isArray(serviceBot.quickPrompts) ? serviceBot.quickPrompts : ["我要预约", "你们的价格区间是多少？", "你们用的什么面料？", "版型与款式", "制作周期多久？", "转人工服务"]).map(value => String(value || "")).slice(0, 8),
+        quickPrompts: (Array.isArray(serviceBot.quickPrompts) ? serviceBot.quickPrompts : defaultFaqs.map(item => item.question)).map(value => String(value || "")).slice(0, 8),
+        faqs: sourceFaqs.map((item, index) => ({
+          id: String(item?.id || `faq-${index + 1}`),
+          question: String(item?.question || "").trim().slice(0, 80),
+          keywords: (Array.isArray(item?.keywords) ? item.keywords : String(item?.keywords || "").split(/[，,、\s]+/)).map(value => String(value || "").trim()).filter(Boolean).slice(0, 12),
+          answer: String(item?.answer || "").trim().slice(0, 1200),
+          enabled: item?.enabled !== false,
+          showAsPrompt: item?.showAsPrompt !== false
+        })).filter(item => item.question && item.answer).slice(0, 100),
+        knowledgeNotes: (Array.isArray(serviceBot.knowledgeNotes) ? serviceBot.knowledgeNotes : []).map((item, index) => ({
+          id: String(item?.id || `note-${index + 1}`), title: String(item?.title || `知识来源 ${index + 1}`).trim().slice(0, 80),
+          content: String(item?.content || "").trim().slice(0, 20000), updatedAt: item?.updatedAt || new Date().toISOString()
+        })).filter(item => item.content).slice(0, 50),
         answerProvider: "rules",
         humanServiceEnabled: serviceBot.humanServiceEnabled === true,
         authMode: serviceBot.authMode === "wechat" ? "wechat" : "test"
@@ -687,6 +712,90 @@ createApp({
       } finally {
         aiConsole.sending = false;
       }
+    }
+
+    function syncQuickPromptsFromFaqs() {
+      cfg.value.serviceBot.quickPrompts = cfg.value.serviceBot.faqs
+        .filter(item => item.enabled !== false && item.showAsPrompt !== false)
+        .map(item => item.question).filter(Boolean).slice(0, 8);
+    }
+
+    function openFaqEditor(index = -1) {
+      const item = index >= 0 ? cfg.value.serviceBot.faqs[index] : null;
+      Object.assign(faqEditor, {
+        open: true, index, question: item?.question || "", keywordsText: (item?.keywords || []).join("、"),
+        answer: item?.answer || "", enabled: item?.enabled !== false, showAsPrompt: item?.showAsPrompt !== false, error: ""
+      });
+    }
+
+    function saveFaq() {
+      const question = faqEditor.question.trim();
+      const answer = faqEditor.answer.trim();
+      const keywords = faqEditor.keywordsText.split(/[，,、\s]+/).map(item => item.trim()).filter(Boolean).slice(0, 12);
+      if (!question || !answer) { faqEditor.error = "请填写顾客问题和标准回答。"; return; }
+      if (cfg.value.serviceBot.faqs.some((item, index) => index !== faqEditor.index && item.question === question)) {
+        faqEditor.error = "已经存在相同的顾客问题。"; return;
+      }
+      const item = { id: faqEditor.index >= 0 ? cfg.value.serviceBot.faqs[faqEditor.index].id : makeId("faq"), question, keywords, answer, enabled: faqEditor.enabled, showAsPrompt: faqEditor.showAsPrompt };
+      if (faqEditor.index >= 0) cfg.value.serviceBot.faqs.splice(faqEditor.index, 1, item);
+      else cfg.value.serviceBot.faqs.push(item);
+      syncQuickPromptsFromFaqs();
+      faqEditor.open = false;
+      toast("问答已更新", "保存店铺后，后台测试与小程序客服都会使用这条知识。", "success");
+    }
+
+    function removeFaq(index) {
+      const item = cfg.value.serviceBot.faqs[index];
+      if (!item || !window.confirm(`删除“${item.question}”及其标准回答？`)) return;
+      cfg.value.serviceBot.faqs.splice(index, 1);
+      syncQuickPromptsFromFaqs();
+    }
+
+    function toggleFaq(item, field) {
+      item[field] = !item[field];
+      syncQuickPromptsFromFaqs();
+    }
+
+    function openKnowledgeSourceEditor() {
+      Object.assign(knowledgeSourceEditor, { open: true, type: "faq", title: "", content: "", error: "" });
+    }
+
+    function selectKnowledgeSourceType(type) {
+      knowledgeSourceEditor.type = type;
+      knowledgeSourceEditor.error = "";
+      if (type === "faq") { knowledgeSourceEditor.open = false; openFaqEditor(); }
+    }
+
+    function saveKnowledgeNote() {
+      const title = knowledgeSourceEditor.title.trim();
+      const content = knowledgeSourceEditor.content.trim();
+      if (!title || !content) { knowledgeSourceEditor.error = "请填写来源名称和知识内容。"; return; }
+      cfg.value.serviceBot.knowledgeNotes.push({ id: makeId("note"), title, content, updatedAt: new Date().toISOString() });
+      knowledgeSourceEditor.open = false;
+      toast("知识来源已添加", "该内容会提供给已连接的模型作为店铺知识。", "success");
+    }
+
+    function removeKnowledgeNote(index) {
+      const item = cfg.value.serviceBot.knowledgeNotes[index];
+      if (!item || !window.confirm(`删除知识来源“${item.title}”？`)) return;
+      cfg.value.serviceBot.knowledgeNotes.splice(index, 1);
+    }
+
+    function importKnowledgeText(files) {
+      const file = files?.[0];
+      if (!file) return;
+      if (!/\.(txt|md)$/i.test(file.name) || file.size > 2 * 1024 * 1024) {
+        knowledgeSourceEditor.error = "仅支持不超过 2MB 的 TXT 或 Markdown 文件。"; return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        knowledgeSourceEditor.title = file.name.replace(/\.(txt|md)$/i, "").slice(0, 80);
+        knowledgeSourceEditor.content = String(reader.result || "").slice(0, 20000);
+        knowledgeSourceEditor.type = "text";
+        knowledgeSourceEditor.error = "";
+      };
+      reader.onerror = () => { knowledgeSourceEditor.error = "文件读取失败，请重试。"; };
+      reader.readAsText(file, "utf-8");
     }
 
     function selectedProviderPreset() {
@@ -944,16 +1053,9 @@ createApp({
         servicePreview.messages.push(previewServiceMessage("assistant", "预览模式不会读取真实客户资料。真机验证身份后，可查看肩宽、胸围、腰围等完整量体数据。", { action: "measurements" }));
       } else if (/人工/.test(question)) {
         servicePreview.messages.push(previewServiceMessage("assistant", cfg.value.serviceBot.humanServiceEnabled ? "真机中将打开微信原生客服。" : "微信原生客服尚未开通，请在公众平台开通后再启用。", { action: "human" }));
-      } else if (/价格/.test(question)) {
-        servicePreview.messages.push(previewServiceMessage("assistant", "价格会根据品类、面料和定制需求确定，品牌顾问会提供对应区间。"));
-      } else if (/面料/.test(question)) {
-        servicePreview.messages.push(previewServiceMessage("assistant", "我们会根据季节、场景和版型选择适合的天然及高品质混纺面料。"));
-      } else if (/版型|款式/.test(question)) {
-        servicePreview.messages.push(previewServiceMessage("assistant", "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形与场合提供建议。"));
-      } else if (/周期|多久/.test(question)) {
-        servicePreview.messages.push(previewServiceMessage("assistant", "完成量体和款式确认后，顾问会根据面料与工艺给出准确交付时间。"));
       } else {
-        servicePreview.messages.push(previewServiceMessage("assistant", "这个问题需要品牌顾问进一步确认，你可以补充具体品类和需求。"));
+        const faq = cfg.value.serviceBot.faqs.find(item => item.enabled !== false && (item.question === question || item.keywords.some(keyword => question.includes(keyword))));
+        servicePreview.messages.push(previewServiceMessage("assistant", faq?.answer || "现有知识中没有足够信息回答这个问题，你可以补充具体需求或联系人工客服。"));
       }
       nextTick(() => { const list = document.querySelector(".preview-service-messages"); if (list) list.scrollTop = list.scrollHeight; });
     }
@@ -2288,8 +2390,8 @@ createApp({
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
-      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy,
+      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2589,7 +2691,8 @@ createApp({
             <div class="ai-routing-strip" role="group" aria-label="客服回答模式"><button type="button" :class="{active:platform.aiPolicy?.mode==='rules'}" @click="updateAiPolicy('rules')"><iconify-icon class="icon" icon="ph:list-checks"></iconify-icon><span><strong>规则 FAQ</strong><small>无需 Token 费用</small></span></button><button v-for="connection in platform.aiConnections" :key="connection.id" type="button" :class="{active:platform.aiPolicy?.mode==='byok' && platform.aiPolicy?.connectionId===connection.id}" @click="updateAiPolicy('byok', connection.id)"><iconify-icon class="icon" icon="ph:key"></iconify-icon><span><strong>{{ connection.providerName }}</strong><small>自带 API · {{ connection.model }}</small></span></button><button v-for="connection in platform.platformAiConnections" :key="'platform-'+connection.id" type="button" :class="{active:platform.aiPolicy?.mode==='platform' && platform.aiPolicy?.platformConnectionId===connection.id}" @click="updateAiPolicy('platform', connection.id)"><iconify-icon class="icon" icon="ph:cloud"></iconify-icon><span><strong>{{ connection.providerName }}</strong><small>平台托管 · {{ connection.model }}</small></span></button></div>
             <div class="ai-grid"><section class="atelier-panel ai-console"><div class="atelier-panel-head"><div><span class="eyebrow">TEST CONSOLE</span><h2>模拟客户提问</h2></div><span class="status-chip">不读取真实客户资料</span></div><div class="ai-preview"><div class="ai-welcome"><span class="ai-avatar">A</span><p>{{ cfg.serviceBot.welcomeMessage }}</p></div><div class="ai-prompts"><button v-for="prompt in cfg.serviceBot.quickPrompts" :key="prompt" type="button" @click="testAiService(prompt)">{{ prompt }}</button></div><div v-if="aiConsole.answer" class="ai-answer"><div><strong>{{ aiConsole.answer.provider || 'FAQ 降级' }}</strong><span>{{ aiConsole.answer.requestId }}</span></div><p>{{ aiConsole.answer.content }}</p><small v-if="aiConsole.answer.citations?.length">来源：{{ aiConsole.answer.citations.join('、') }}</small></div><div v-if="aiConsole.error" class="form-error" role="alert">{{ aiConsole.error }}</div><form class="ai-composer" @submit.prevent="testAiService()"><label class="sr-only" for="ai-test-question">测试问题</label><input id="ai-test-question" v-model="aiConsole.question" name="ai-test-question" autocomplete="off" type="text" maxlength="400" placeholder="输入客户可能提出的问题…"><button type="submit" class="btn primary" :disabled="aiConsole.sending || !aiConsole.question.trim()">{{ aiConsole.sending ? '生成中…' : '发送' }}</button></form></div></section><aside class="atelier-panel ai-status-panel"><div class="atelier-panel-head"><div><span class="eyebrow">MODEL ROUTING</span><h2>模型与降级</h2></div></div><dl class="status-definition"><div><dt>模式</dt><dd>{{ platform.aiPolicy?.mode === 'byok' ? '商户自带 API' : platform.aiPolicy?.mode === 'platform' ? '平台托管额度' : '规则 FAQ' }}</dd></div><div><dt>提供方</dt><dd>{{ platform.ai?.provider || 'Rules' }}</dd></div><div><dt>模型</dt><dd>{{ platform.ai?.model || 'rules' }}</dd></div><div><dt>知识来源</dt><dd>商品 / 页面 / FAQ / 飞书</dd></div><div><dt>原始对话留存</dt><dd>仅当前会话</dd></div><div><dt>失败策略</dt><dd>FAQ → 操作入口 → 人工</dd></div></dl><div class="callout" :class="platform.ai?.configured ? 'success' : 'warning'"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check-circle' : 'ph:shield-check'"></iconify-icon><div><strong>{{ platform.ai?.configured ? '模型网关可用' : '当前不调用外部模型' }}</strong><p>{{ platform.ai?.configured ? '请求经过店铺作用域、知识检索和权限过滤。' : '规则 FAQ 会保持客服入口可用，不产生 Token 费用。' }}</p></div></div></aside></div>
             <section class="atelier-panel ai-connections-panel"><div class="atelier-panel-head"><div><span class="eyebrow">MODEL CONNECTIONS</span><h2>商户模型连接</h2><p>API Key 加密保存，写入后不会显示明文，也不会同步进小程序或 GitHub。</p></div><button type="button" class="btn" @click="openAiConnectionEditor"><iconify-icon class="icon" icon="ph:key"></iconify-icon>添加连接</button></div><div v-if="!platform.aiConnections.length" class="empty-compact"><iconify-icon class="icon" icon="ph:plugs"></iconify-icon><p>还没有商户模型连接。你可以使用供应商预设或填写 OpenAI 兼容接口。</p></div><div v-else class="connection-list"><article v-for="connection in platform.aiConnections" :key="connection.id"><div class="connection-mark"><iconify-icon class="icon" icon="ph:circuitry"></iconify-icon></div><div class="connection-copy"><strong>{{ connection.providerName }} <span>{{ connection.model }}</span></strong><small>{{ connection.baseUrl }} · {{ connection.secretHint }}</small><span v-if="connection.lastError" class="connection-error">{{ connection.lastError }}</span></div><span class="status-chip" :class="connection.lastTestOk === true ? 'success' : connection.lastTestOk === false ? 'danger' : 'warning'">{{ connection.lastTestOk === true ? '测试通过' : connection.lastTestOk === false ? '测试失败' : '待测试' }}</span><div class="connection-actions"><button type="button" class="btn small" :disabled="aiConnectionBusy===connection.id" @click="testAiConnection(connection)">测试</button><button type="button" class="icon-btn" aria-label="轮换 API Key" title="轮换 API Key" @click="rotateAiConnectionSecret(connection)"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button><button type="button" class="icon-btn danger" aria-label="删除模型连接" title="删除模型连接" @click="deleteAiConnection(connection)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></article></div></section>
-            <div class="ai-management-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>知识库</h2><p>同步状态与来源治理</p></div><button type="button" class="btn small">添加来源</button></div><div class="knowledge-list"><div><span class="source-icon"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>商品与页面内容</strong><small>{{ cfg.products.length }} 个商品 · {{ pageDefinitions.length }} 个页面</small></span><span class="status-chip success">已连接</span></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:file-text"></iconify-icon></span><span><strong>上传文档</strong><small>PDF、DOCX、TXT，保留来源引用</small></span><span class="status-chip">0 个</span></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:table"></iconify-icon></span><span><strong>飞书多维表格</strong><small>FAQ、客户与预约字段映射</small></span><span class="status-chip warning">待验证</span></div></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>实时会话</h2><p>只显示当前在线会话，不保存历史正文</p></div><span class="status-chip">0 个在线</span></div><div class="empty-compact"><iconify-icon class="icon" icon="ph:chat-circle-dots"></iconify-icon><p>发布小程序后，等待中的人工会话会显示在这里。</p></div></section></div>
+            <section class="atelier-panel faq-management-panel"><div class="atelier-panel-head"><div><h2>问答知识</h2><p>按当前行业设置顾客问题、匹配关键词与标准回答</p></div><button type="button" class="btn small primary" @click="openFaqEditor()"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加问答</button></div><div class="faq-summary"><span><strong>{{ cfg.serviceBot.faqs.filter(item => item.enabled).length }}</strong> 条启用问答</span><span><strong>{{ cfg.serviceBot.quickPrompts.length }}</strong> 个顾客快捷问题</span><small>标记为“快捷问题”的项目会显示在小程序客服入口，最多显示 8 个。</small></div><div v-if="!cfg.serviceBot.faqs.length" class="empty-compact"><iconify-icon class="icon" icon="ph:question"></iconify-icon><p>还没有行业问答。添加后，规则 FAQ、模型知识与客服预览都会使用它。</p></div><div v-else class="faq-list"><article v-for="(faq,index) in cfg.serviceBot.faqs" :key="faq.id" :class="{disabled:faq.enabled===false}"><div class="faq-order">{{ String(index + 1).padStart(2,'0') }}</div><div class="faq-copy"><strong>{{ faq.question }}</strong><p>{{ faq.answer }}</p><small>关键词：{{ faq.keywords.length ? faq.keywords.join('、') : '仅匹配完整问题' }}</small></div><div class="faq-flags"><button type="button" class="status-chip interactive" :class="faq.enabled ? 'success' : ''" @click="toggleFaq(faq,'enabled')">{{ faq.enabled ? '已启用' : '已停用' }}</button><button type="button" class="status-chip interactive" :class="faq.showAsPrompt ? 'accent' : ''" @click="toggleFaq(faq,'showAsPrompt')">{{ faq.showAsPrompt ? '快捷问题' : '仅知识库' }}</button></div><div class="row-actions"><button type="button" title="编辑问答" aria-label="编辑问答" @click="openFaqEditor(index)"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button type="button" title="删除问答" aria-label="删除问答" @click="removeFaq(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></article></div></section>
+            <div class="ai-management-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>知识来源</h2><p>决定模型和规则客服可以参考哪些店铺资料</p></div><button type="button" class="btn small" @click="openKnowledgeSourceEditor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加来源</button></div><div class="knowledge-list"><div><span class="source-icon"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>商品与页面内容</strong><small>{{ cfg.products.length }} 个商品 · {{ pageDefinitions.length }} 个页面</small></span><span class="status-chip success">自动读取</span></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:file-text"></iconify-icon></span><span><strong>文本知识</strong><small>TXT / Markdown 或直接粘贴 · {{ cfg.serviceBot.knowledgeNotes.length }} 个来源</small></span><span class="status-chip">{{ cfg.serviceBot.knowledgeNotes.length }} 个</span></div><div v-for="(note,index) in cfg.serviceBot.knowledgeNotes" :key="note.id" class="knowledge-note-row"><span class="source-icon"><iconify-icon class="icon" icon="ph:note"></iconify-icon></span><span><strong>{{ note.title }}</strong><small>{{ note.content.slice(0,72) }}{{ note.content.length > 72 ? '…' : '' }}</small></span><button type="button" class="icon-btn small danger" :aria-label="'删除知识来源 ' + note.title" title="删除知识来源" @click="removeKnowledgeNote(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:table"></iconify-icon></span><span><strong>飞书多维表格</strong><small>FAQ、客户与预约字段映射</small></span><span class="status-chip warning">待验证</span></div></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>实时会话</h2><p>只显示当前在线会话，不保存历史正文</p></div><span class="status-chip">0 个在线</span></div><div class="empty-compact"><iconify-icon class="icon" icon="ph:chat-circle-dots"></iconify-icon><p>发布小程序后，等待中的人工会话会显示在这里。</p></div></section></div>
           </section>
 
           <section v-else-if="currentView === 'analytics'" class="management">
@@ -2624,7 +2727,7 @@ createApp({
             <div class="theme-layout"><div class="theme-card"><h2>品牌资料</h2><p>这些内容会被页面区块和小程序生成文件复用。</p><div class="field"><label for="brand-name">品牌名称</label><input id="brand-name" v-model="cfg.brand.name" name="brand-name" autocomplete="organization" type="text"></div><div class="field"><label for="brand-slogan">会员标语</label><textarea id="brand-slogan" v-model="cfg.brand.slogan" name="brand-slogan" autocomplete="off"></textarea></div><div class="field"><label for="advisor-copy">顾问文案</label><textarea id="advisor-copy" v-model="cfg.brand.advisorslogan" name="advisor-copy" autocomplete="off"></textarea></div></div><div class="theme-card"><h2>项目状态</h2><p>保存只写入配置；同步会进一步更新小程序源文件。</p><div class="field-group"><div class="toggle-row"><span>配置状态</span><span class="badge">{{ isDirty ? '待保存' : '已保存' }}</span></div><div class="toggle-row"><span>最近同步</span><span>{{ cfg._lastSync ? new Date(cfg._lastSync).toLocaleString('zh-CN') : '尚未同步' }}</span></div></div><button class="btn primary" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>保存并同步</button></div></div>
             <section class="theme-card service-settings-card"><div class="settings-card-header"><div><h2>客服入口</h2><p>这里只调整小程序入口与身份模式；模型、知识库、实时会话和用量在智能客服工作台管理。</p></div><button type="button" class="btn small" @click="switchView('ai-service')">打开客服工作台</button></div>
               <div class="service-settings-grid">
-                <div class="service-settings-main"><div class="toggle-row"><span>显示客服入口</span><button type="button" class="switch" :class="{on:cfg.serviceBot.enabled}" role="switch" :aria-checked="cfg.serviceBot.enabled" aria-label="显示客服入口" @click="cfg.serviceBot.enabled=!cfg.serviceBot.enabled"></button></div><div class="field"><label for="service-welcome">欢迎语</label><textarea id="service-welcome" v-model="cfg.serviceBot.welcomeMessage" name="service-welcome" autocomplete="off" maxlength="160"></textarea></div><div class="field"><label>快捷问题</label><div class="service-prompt-editor"><input v-for="(prompt,index) in cfg.serviceBot.quickPrompts" :key="index" v-model="cfg.serviceBot.quickPrompts[index]" type="text" maxlength="32" :name="'service-prompt-' + index" autocomplete="off" :aria-label="'快捷问题 ' + (index + 1)"></div></div></div>
+                <div class="service-settings-main"><div class="toggle-row"><span>显示客服入口</span><button type="button" class="switch" :class="{on:cfg.serviceBot.enabled}" role="switch" :aria-checked="cfg.serviceBot.enabled" aria-label="显示客服入口" @click="cfg.serviceBot.enabled=!cfg.serviceBot.enabled"></button></div><div class="field"><label for="service-welcome">欢迎语</label><textarea id="service-welcome" v-model="cfg.serviceBot.welcomeMessage" name="service-welcome" autocomplete="off" maxlength="160"></textarea></div><div class="service-knowledge-link"><div><strong>顾客问题与标准回答</strong><small>{{ cfg.serviceBot.faqs.filter(item => item.enabled).length }} 条启用问答 · {{ cfg.serviceBot.quickPrompts.length }} 个快捷问题</small></div><button type="button" class="btn small" @click="switchView('ai-service')">管理问答知识</button></div></div>
                 <div class="service-settings-side"><div class="field"><label>客服图标</label><div class="service-icon-control"><button type="button" class="service-icon-preview" @click="openServiceBotMediaPicker"><img :src="mpUrl(cfg.serviceBot.icon)" alt="当前客服图标"><span>从媒体库更换</span></button><label class="icon-upload-btn" title="上传客服图标"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon><input type="file" accept="image/*" hidden @change="uploadServiceBotIcon($event.target.files);$event.target.value=''" /></label></div></div><div class="service-number-grid"><div class="field"><label>尺寸（rpx）</label><input v-model.number="cfg.serviceBot.size" name="service-size" aria-label="客服图标尺寸" type="number" min="64" max="120"></div><div class="field"><label>右侧距离</label><input v-model.number="cfg.serviceBot.right" name="service-right" aria-label="客服图标右侧距离" type="number" min="8" max="300"></div><div class="field"><label>底部距离</label><input v-model.number="cfg.serviceBot.bottom" name="service-bottom" aria-label="客服图标底部距离" type="number" min="112" max="700"></div></div><div class="field"><label>身份验证</label><select v-model="cfg.serviceBot.authMode" name="service-auth-mode" aria-label="客服身份验证模式"><option value="test">测试验证码</option><option value="wechat">微信手机号授权</option></select></div><div class="toggle-row"><span>微信人工客服已开通</span><button type="button" class="switch" :class="{on:cfg.serviceBot.humanServiceEnabled}" role="switch" :aria-checked="cfg.serviceBot.humanServiceEnabled" aria-label="微信人工客服已开通" @click="cfg.serviceBot.humanServiceEnabled=!cfg.serviceBot.humanServiceEnabled"></button></div></div>
               </div>
               <div class="service-status-row"><span><i :class="platform.ai?.configured ? 'ok' : 'warn'"></i>{{ platform.ai?.configured ? platform.ai.provider + ' 已连接' : 'FAQ 降级模式' }}</span><span><i :class="cfg.serviceBot.authMode==='test' ? 'warn' : 'ok'"></i>{{ cfg.serviceBot.authMode==='test' ? '测试身份模式' : '微信手机号模式' }}</span><span><i :class="cfg.serviceBot.humanServiceEnabled ? 'ok' : 'warn'"></i>{{ cfg.serviceBot.humanServiceEnabled ? '人工客服已启用' : '人工客服待开通' }}</span></div>
@@ -2673,6 +2776,23 @@ createApp({
           <div class="drawer-body"><div class="security-notice"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>API Key 不会回显</strong><p>保存后只能测试、轮换或删除。它不会写入店铺配置、小程序文件、浏览器存储或 GitHub。</p></div></div><div class="field"><label for="ai-provider-preset">供应商预设</label><select id="ai-provider-preset" v-model="aiConnectionEditor.providerPreset" name="ai-provider-preset" @change="applyAiProviderPreset"><option v-for="provider in platform.providerCatalog" :key="provider.id" :value="provider.id">{{ provider.name }} · {{ provider.region }}</option></select></div><div class="field"><label for="ai-provider-name">显示名称</label><input id="ai-provider-name" v-model.trim="aiConnectionEditor.providerName" name="ai-provider-name" type="text" maxlength="60" autocomplete="off" placeholder="例如：公司客服模型…"></div><div class="field"><label for="ai-base-url">API 地址</label><input id="ai-base-url" v-model.trim="aiConnectionEditor.baseUrl" name="ai-base-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1…"><small class="field-help">系统会调用 <code>/chat/completions</code>；如果地址已包含该路径则直接使用。</small></div><div class="field"><label for="ai-model-name">模型名称</label><input id="ai-model-name" v-model.trim="aiConnectionEditor.model" name="ai-model-name" type="text" autocomplete="off" spellcheck="false" placeholder="例如：deepseek-chat…"></div><div class="field"><label for="ai-api-key">API Key</label><input id="ai-api-key" v-model="aiConnectionEditor.apiKey" name="ai-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="sk-…"></div><div class="field-row"><div class="field"><label for="ai-timeout">超时（毫秒）</label><input id="ai-timeout" v-model.number="aiConnectionEditor.timeoutMs" name="ai-timeout" type="number" min="3000" max="60000" step="1000"></div><div class="field"><label for="ai-max-tokens">最大输出 Token</label><input id="ai-max-tokens" v-model.number="aiConnectionEditor.maxTokens" name="ai-max-tokens" type="number" min="100" max="2000" step="100"></div></div><div v-if="aiConnectionEditor.error" class="form-error" role="alert">{{ aiConnectionEditor.error }}</div></div>
           <div class="drawer-footer"><button type="button" class="btn subtle" @click="aiConnectionEditor.open=false">取消</button><button type="submit" class="btn primary" :disabled="aiConnectionEditor.saving"><iconify-icon class="icon" :icon="aiConnectionEditor.saving ? 'ph:spinner-gap' : 'ph:lock-key'"></iconify-icon>{{ aiConnectionEditor.saving ? '正在加密保存…' : '加密保存连接' }}</button></div>
         </form>
+      </template>
+
+      <template v-if="faqEditor.open">
+        <div class="drawer-backdrop" @click="faqEditor.open=false"></div>
+        <form class="drawer faq-editor-drawer" role="dialog" aria-modal="true" aria-labelledby="faq-editor-title" @submit.prevent="saveFaq">
+          <div class="drawer-header"><div><h2 id="faq-editor-title">{{ faqEditor.index >= 0 ? '编辑问答' : '添加行业问答' }}</h2><p>问题用于顾客快捷入口，关键词用于识别不同说法，回答由当前商户独立维护。</p></div><button type="button" class="icon-btn" aria-label="关闭问答设置" @click="faqEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-body"><div class="field"><label for="faq-question">顾客问题</label><input id="faq-question" v-model.trim="faqEditor.question" type="text" maxlength="80" autocomplete="off" placeholder="例如：你们提供上门服务吗？"></div><div class="field"><label for="faq-keywords">匹配关键词</label><input id="faq-keywords" v-model="faqEditor.keywordsText" type="text" maxlength="160" autocomplete="off" placeholder="例如：上门、到家、服务范围"><small class="field-help">使用逗号、顿号或空格分隔。顾客问题包含任一关键词时使用这条回答。</small></div><div class="field"><label for="faq-answer">标准回答</label><textarea id="faq-answer" v-model.trim="faqEditor.answer" maxlength="1200" rows="8" placeholder="填写准确、可直接发送给顾客的回答。"></textarea></div><div class="faq-editor-options"><label><input v-model="faqEditor.enabled" type="checkbox">启用这条问答</label><label><input v-model="faqEditor.showAsPrompt" type="checkbox">显示为顾客快捷问题</label></div><div v-if="faqEditor.error" class="form-error" role="alert">{{ faqEditor.error }}</div></div>
+          <div class="drawer-footer"><button type="button" class="btn subtle" @click="faqEditor.open=false">取消</button><button type="submit" class="btn primary">保存问答</button></div>
+        </form>
+      </template>
+
+      <template v-if="knowledgeSourceEditor.open">
+        <div class="drawer-backdrop" @click="knowledgeSourceEditor.open=false"></div>
+        <aside class="drawer knowledge-source-drawer" role="dialog" aria-modal="true" aria-labelledby="knowledge-source-title">
+          <div class="drawer-header"><div><h2 id="knowledge-source-title">添加知识来源</h2><p>选择商户最容易维护的方式。没有完成接入的来源会明确标记，不会假装已同步。</p></div><button type="button" class="icon-btn" aria-label="关闭知识来源" @click="knowledgeSourceEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-body"><div class="source-choice-grid"><button type="button" @click="selectKnowledgeSourceType('faq')"><iconify-icon class="icon" icon="ph:question"></iconify-icon><span><strong>问答知识</strong><small>设置问题、关键词和标准回答</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" :class="{active:knowledgeSourceEditor.type==='text'}" @click="selectKnowledgeSourceType('text')"><iconify-icon class="icon" icon="ph:text-t"></iconify-icon><span><strong>粘贴文本</strong><small>政策、服务说明、门店资料等</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><label class="source-choice-upload"><iconify-icon class="icon" icon="ph:file-text"></iconify-icon><span><strong>导入 TXT / Markdown</strong><small>最大 2MB，读取后可继续编辑</small></span><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon><input type="file" accept=".txt,.md,text/plain,text/markdown" hidden @change="importKnowledgeText($event.target.files);$event.target.value=''" /></label><button type="button" disabled><iconify-icon class="icon" icon="ph:file-pdf"></iconify-icon><span><strong>PDF / DOCX</strong><small>文档解析服务尚未接入</small></span><span class="status-chip warning">规划中</span></button><button type="button" disabled><iconify-icon class="icon" icon="ph:table"></iconify-icon><span><strong>飞书多维表格</strong><small>需要平台配置字段映射与授权</small></span><span class="status-chip warning">待配置</span></button></div><form v-if="knowledgeSourceEditor.type==='text'" class="knowledge-note-form" @submit.prevent="saveKnowledgeNote"><div class="field"><label for="knowledge-title">来源名称</label><input id="knowledge-title" v-model.trim="knowledgeSourceEditor.title" maxlength="80" autocomplete="off" placeholder="例如：售后与退换政策"></div><div class="field"><label for="knowledge-content">知识内容</label><textarea id="knowledge-content" v-model.trim="knowledgeSourceEditor.content" maxlength="20000" rows="12" placeholder="粘贴可公开给顾客的准确资料。请勿加入 API 密钥或不应被客服读取的敏感信息。"></textarea></div><div v-if="knowledgeSourceEditor.error" class="form-error" role="alert">{{ knowledgeSourceEditor.error }}</div><button type="submit" class="btn primary">添加文本知识</button></form></div>
+        </aside>
       </template>
 
       <template v-if="mediaTrashOpen">

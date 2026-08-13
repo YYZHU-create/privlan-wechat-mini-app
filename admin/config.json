@@ -1461,9 +1461,7 @@
       {
         "id": "faq-1",
         "question": "我要预约",
-        "keywords": [
-          "预约"
-        ],
+        "keywords": ["预约"],
         "answer": "可以进入预约页面选择日期和时间，系统会避免同一服务时段重复预约。",
         "enabled": true,
         "showAsPrompt": true
@@ -1471,47 +1469,39 @@
       {
         "id": "faq-2",
         "question": "你们的价格区间是多少？",
-        "keywords": [
-          "价格",
-          "价位",
-          "多少钱"
-        ],
-        "answer": "价格会根据商品、服务内容和具体需求确定。请告诉我你感兴趣的商品或服务，我会提供更准确的信息。",
+        "keywords": ["价格", "价位", "多少钱"],
+        "answer": "价格会根据品类、面料和定制需求确定。请告诉我感兴趣的商品或服务，我会提供更准确的范围。",
         "enabled": true,
         "showAsPrompt": true
       },
       {
         "id": "faq-3",
         "question": "你们用的什么面料？",
-        "keywords": [
-          "产品",
-          "服务",
-          "项目"
-        ],
-        "answer": "你可以在店铺商品和服务页面查看当前内容，也可以告诉我你的需求，我会协助你找到合适的选项。",
+        "keywords": ["面料", "材质"],
+        "answer": "我们会根据季节、穿着场景和版型选择天然及高品质混纺面料，具体成分请以商品详情或顾问确认为准。",
         "enabled": true,
         "showAsPrompt": true
       },
       {
         "id": "faq-4",
         "question": "版型与款式",
-        "keywords": [
-          "周期",
-          "多久",
-          "时间"
-        ],
-        "answer": "处理时间会根据具体商品或服务有所不同。确认需求后，我们会告知准确时间。",
+        "keywords": ["版型", "款式", "剪裁"],
+        "answer": "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。",
         "enabled": true,
         "showAsPrompt": true
       },
       {
         "id": "faq-5",
         "question": "制作周期多久？",
-        "keywords": [
-          "人工",
-          "客服",
-          "顾问"
-        ],
+        "keywords": ["周期", "多久", "制作时间"],
+        "answer": "制作周期会随品类、面料和工艺变化。完成量体与款式确认后，顾问会给出准确交付时间。",
+        "enabled": true,
+        "showAsPrompt": true
+      },
+      {
+        "id": "faq-6",
+        "question": "转人工服务",
+        "keywords": ["人工", "客服", "顾问"],
         "answer": "可以通过人工客服入口联系我们。若当前未开通微信客服，请使用店铺公布的联系方式。",
         "enabled": true,
         "showAsPrompt": true

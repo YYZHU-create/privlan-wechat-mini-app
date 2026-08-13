@@ -1,4 +1,5 @@
 const core = require("./common");
+const storeConfig = require("./store-config");
 
 const builtinFaq = [
   { keywords: ["价格", "价位", "多少钱"], answer: "价格会根据品类、面料和定制需求确定。告诉我感兴趣的商品或服务后，我可以提供更准确的价格范围。", source: "品牌价格政策" },
@@ -56,6 +57,17 @@ async function queryModelGateway(text, faqContext = "") {
   return answer ? { type: response.type || "faq", text: answer, provider: response.provider || "gateway", model: response.model || "", citations: response.citations || (faqContext ? ["店铺 FAQ"] : []), usage: response.usage || null } : null;
 }
 
+function searchStoreFaq(text, items) {
+  const faqs = Array.isArray(items) ? items : [];
+  const matched = faqs.find(item => {
+    if (!item || item.enabled === false || !item.answer) return false;
+    const question = String(item.question || "").trim();
+    const keywords = Array.isArray(item.keywords) ? item.keywords : [];
+    return (question && (text === question || text.includes(question))) || keywords.some(keyword => keyword && text.includes(String(keyword)));
+  });
+  return matched ? { type: "faq", text: String(matched.answer), faqId: matched.id || "store-config", citations: [`店铺问答：${matched.question}`] } : null;
+}
+
 exports.main = async event => {
   const id = core.requestId();
   const openId = core.currentOpenId();
@@ -67,15 +79,20 @@ exports.main = async event => {
     const action = sensitiveAction(text);
     if (action) return core.ok(action, "请通过安全操作继续", id);
 
-    const matchedFaq = await searchFaq(text);
+    const localStoreFaq = searchStoreFaq(text, storeConfig.faqs);
+    const matchedFaq = localStoreFaq || await searchFaq(text);
     try {
-      const aiAnswer = await queryModelGateway(text, matchedFaq?.text || builtinFaq.map(item => `${item.keywords[0]}：${item.answer}`).join("\n"));
+      const storeNotes = (Array.isArray(storeConfig.knowledgeNotes) ? storeConfig.knowledgeNotes : []).slice(0, 20).map(item => `${item.title || "店铺资料"}：${String(item.content || "").slice(0, 3000)}`).join("\n");
+      const aiAnswer = await queryModelGateway(text, [matchedFaq?.text, storeNotes].filter(Boolean).join("\n") || builtinFaq.map(item => `${item.keywords[0]}：${item.answer}`).join("\n"));
       if (aiAnswer) return core.ok(aiAnswer, "已生成回答", id);
     } catch (error) {
       await core.audit("service_ai_fallback", openId, { code: String(error.code || "AI_ERROR"), requestId: id });
     }
 
     if (matchedFaq) return core.ok({ ...matchedFaq, provider: "rules", fallback: true }, "已从店铺知识中找到回答", id);
+    if (Array.isArray(storeConfig.faqs) && storeConfig.faqs.length) {
+      return core.ok({ type: "action", action: "human", provider: "rules", fallback: true, text: "现有店铺知识中没有足够信息回答这个问题。你可以补充具体需求，或转接人工客服。" }, "建议联系人工客服", id);
+    }
     const local = builtinFaq.find(item => item.keywords.some(term => text.includes(term)));
     if (local) return core.ok({ type: "faq", text: local.answer, faqId: "builtin", provider: "rules", fallback: true, citations: [local.source] }, "已从基础知识中找到回答", id);
     return core.ok({ type: "action", action: "human", provider: "rules", fallback: true, text: "现有知识中没有足够信息回答这个问题。你可以补充具体商品或需求，或转接人工顾问。" }, "建议联系人工顾问", id);
