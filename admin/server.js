@@ -5,6 +5,7 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { execSync, execFileSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
@@ -19,16 +20,55 @@ const PREVIEW_ROOT_BASE = path.join(path.dirname(ROOT), `${path.basename(ROOT)}-
 const PREVIEW_IMAGE_MAX_EDGE = 960;
 const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
+const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
+const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
+const TRASH_DIR = path.join(__dirname, "media-trash");
+const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
 let previewBuildCount = 0;
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
 fs.mkdirSync(FONTS_DIR, { recursive: true });
 fs.mkdirSync(CONFIG_BACKUP_DIR, { recursive: true });
+fs.mkdirSync(TRASH_DIR, { recursive: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
 
 // 中间件
 app.use(express.json({ limit: "100mb" }));
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
+  });
+  next();
+});
+
+const mutationRequests = new Map();
+app.use("/api", (req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const origin = String(req.get("origin") || "");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) return res.status(403).json({ error: "请求来源不受信任" });
+    } catch (error) {
+      return res.status(403).json({ error: "请求来源无效" });
+    }
+  }
+  if (HOST !== "127.0.0.1" && HOST !== "localhost" && HOST !== "::1") {
+    const suppliedToken = String(req.get("x-privlan-token") || "");
+    if (!ADMIN_TOKEN || suppliedToken !== ADMIN_TOKEN) return res.status(401).json({ error: "需要后台访问令牌" });
+  }
+  const client = req.ip || req.socket.remoteAddress || "local";
+  const now = Date.now();
+  const recent = (mutationRequests.get(client) || []).filter(time => now - time < 60_000);
+  if (recent.length >= 120) return res.status(429).json({ error: "操作过于频繁，请稍后重试" });
+  recent.push(now);
+  mutationRequests.set(client, recent);
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
@@ -77,24 +117,45 @@ function writeConfig(cfg) {
   fs.renameSync(tempPath, CONFIG_PATH);
 }
 
-function autoSyncGitHub(reason = "editor save") {
-  const gitPath = process.env.PRIVLAN_GIT_BIN || "git";
+function collectConfigAssetPaths(cfg) {
+  const paths = new Set();
+  const visit = value => {
+    if (typeof value === "string" && /^\/(images|fonts)\/[A-Za-z0-9._-]+$/.test(value)) paths.add(value.slice(1));
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object") Object.values(value).forEach(visit);
+  };
+  visit(cfg);
+  return [...paths];
+}
+
+function normalizeGitPathspec(value) {
+  const normalized = String(value || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized || normalized.startsWith("../") || path.isAbsolute(normalized)) return "";
+  return normalized;
+}
+
+function autoSyncGitHub(reason = "editor save", ownedPaths = []) {
+  const bundledGit = path.join(process.env.USERPROFILE || "", ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "native", "git", "cmd", "git.exe");
+  const gitPath = process.env.PRIVLAN_GIT_BIN || (fs.existsSync(bundledGit) ? bundledGit : "git");
   if (!fs.existsSync(path.join(ROOT, ".git"))) {
     return { ok: false, skipped: true, error: "当前项目未连接 Git 仓库" };
   }
   const runGit = args => execFileSync(gitPath, args, { cwd: ROOT, encoding: "utf8", windowsHide: true, timeout: 120000 });
   try {
-    runGit(["add", "-A"]);
+    const allowed = [...new Set(["admin/config.json", ...ownedPaths].map(normalizeGitPathspec).filter(Boolean))];
+    if (!allowed.length) return { ok: true, committed: false, pushed: false, files: [] };
+    runGit(["add", "-A", "--", ...allowed]);
     try {
       runGit(["diff", "--cached", "--quiet"]);
-      return { ok: true, committed: false, pushed: false };
+      return { ok: true, committed: false, pushed: false, files: [] };
     } catch (diffError) {
       if (diffError.status !== 1) throw diffError;
     }
     const stamp = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
     runGit(["commit", "-m", `chore: sync ${reason} (${stamp})`]);
     runGit(["push", "origin", "HEAD:main"]);
-    return { ok: true, committed: true, pushed: true };
+    const commit = runGit(["rev-parse", "--short", "HEAD"]).trim();
+    return { ok: true, committed: true, pushed: true, commit, files: allowed };
   } catch (error) {
     return { ok: false, error: error.stderr?.toString()?.trim() || error.message };
   }
@@ -114,6 +175,63 @@ function writeMediaFolders(data) {
   const tempPath = `${MEDIA_FOLDERS_PATH}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), "utf-8");
   fs.renameSync(tempPath, MEDIA_FOLDERS_PATH);
+}
+
+function readTrashManifest() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(TRASH_MANIFEST_PATH, "utf-8"));
+    return Array.isArray(parsed.items) ? parsed : { items: [] };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return { items: [] };
+  }
+}
+
+function writeTrashManifest(data) {
+  const tempPath = `${TRASH_MANIFEST_PATH}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), "utf-8");
+  fs.renameSync(tempPath, TRASH_MANIFEST_PATH);
+}
+
+function purgeExpiredMediaTrash(data = readTrashManifest()) {
+  const now = Date.now();
+  const active = [];
+  let changed = false;
+  for (const item of data.items) {
+    const filePath = path.join(TRASH_DIR, path.basename(String(item.storedName || "")));
+    const expired = Number.isFinite(Date.parse(item.expiresAt)) && Date.parse(item.expiresAt) <= now;
+    if (expired || !fs.existsSync(filePath)) {
+      if (expired && fs.existsSync(filePath)) fs.rmSync(filePath, { force: true });
+      changed = true;
+      continue;
+    }
+    active.push(item);
+  }
+  if (changed) writeTrashManifest({ ...data, items: active });
+  return { ...data, items: active };
+}
+
+function configMediaUsage(cfg) {
+  const usage = {};
+  const visit = (value, trail = "配置") => {
+    if (typeof value === "string" && /^\/images\/[A-Za-z0-9._-]+$/.test(value)) {
+      const name = path.basename(value);
+      usage[name] ||= [];
+      usage[name].push(trail);
+    } else if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${trail}[${index}]`));
+    else if (value && typeof value === "object") Object.entries(value).forEach(([key, item]) => visit(item, `${trail}.${key}`));
+  };
+  visit(cfg);
+  return usage;
+}
+
+function moveMediaToTrash(name, folderId = "") {
+  const sourcePath = path.join(IMAGES_DIR, name);
+  if (!fs.existsSync(sourcePath)) return null;
+  const id = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const storedName = `${id}-${name}`;
+  fs.renameSync(sourcePath, path.join(TRASH_DIR, storedName));
+  return { id, name, storedName, folderId, deletedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() };
 }
 
 function normalizeMediaFolderId(value) {
@@ -290,7 +408,8 @@ app.get("/api/config", (req, res) => {
 app.post("/api/config", (req, res) => {
   try {
     writeConfig(req.body);
-    res.json({ ok: true, git: autoSyncGitHub("editor save") });
+    const ownedPaths = ["admin/config.json", ...collectConfigAssetPaths(req.body)];
+    res.json({ ok: true, git: autoSyncGitHub("editor save", ownedPaths) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -352,6 +471,7 @@ app.delete("/api/media/folders/:id", (req, res) => {
 
 app.get("/api/media", (req, res) => {
   try {
+    const usage = configMediaUsage(readConfig());
     const folderData = readMediaFolders();
     const folderMap = new Map(folderData.folders.map(folder => [folder.id, folder]));
     const files = fs.readdirSync(IMAGES_DIR).filter(f => {
@@ -370,8 +490,11 @@ app.get("/api/media", (req, res) => {
         sizeKB: Math.round(stat.size / 1024),
         mtime: stat.mtime.toISOString(),
         folderId: folderMap.has(folderData.assignments[f]) ? folderData.assignments[f] : "",
-        folderName: folderMap.get(folderData.assignments[f])?.name || "",
-      };
+         folderName: folderMap.get(folderData.assignments[f])?.name || "",
+         usageCount: usage[f]?.length || 0,
+         usedIn: (usage[f] || []).slice(0, 8),
+         large: stat.size > 5 * 1024 * 1024,
+       };
     }).sort((a, b) => b.mtime.localeCompare(a.mtime));
     res.json(files);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -437,18 +560,52 @@ app.post("/api/media/delete", (req, res) => {
     if (!names.length) return res.status(400).json({ error: "请选择要删除的素材" });
     const deleted = [];
     const missing = [];
+    const folderData = readMediaFolders();
+    const trash = readTrashManifest();
     for (const name of names) {
       const safeName = path.basename(String(name || ""));
       if (!safeName || safeName !== name) return res.status(400).json({ error: `文件名无效：${name}` });
       const filePath = path.join(IMAGES_DIR, safeName);
       if (!fs.existsSync(filePath)) { missing.push(safeName); continue; }
-      fs.unlinkSync(filePath);
+      const item = moveMediaToTrash(safeName, folderData.assignments[safeName] || "");
+      if (item) trash.items.push(item);
       deleted.push(safeName);
     }
-    const folderData = readMediaFolders();
     deleted.forEach(name => delete folderData.assignments[name]);
     writeMediaFolders(folderData);
-    res.json({ ok: true, deleted, missing });
+    writeTrashManifest(trash);
+    res.json({ ok: true, deleted, missing, recoverableUntil: new Date(Date.now() + 30 * 86400000).toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/media/trash", (req, res) => {
+  try {
+    const data = purgeExpiredMediaTrash();
+    res.json(data.items.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/media/trash/restore", (req, res) => {
+  try {
+    const ids = [...new Set(Array.isArray(req.body?.ids) ? req.body.ids : [])].slice(0, 500);
+    if (!ids.length) return res.status(400).json({ error: "请选择要恢复的素材" });
+    const data = purgeExpiredMediaTrash();
+    const folderData = readMediaFolders();
+    const restored = [];
+    for (const item of data.items.filter(entry => ids.includes(entry.id))) {
+      const sourcePath = path.join(TRASH_DIR, item.storedName);
+      if (!fs.existsSync(sourcePath)) continue;
+      let targetName = item.name;
+      let counter = 1;
+      while (fs.existsSync(path.join(IMAGES_DIR, targetName))) targetName = `${path.basename(item.name, path.extname(item.name))}-restored-${counter++}${path.extname(item.name)}`;
+      fs.renameSync(sourcePath, path.join(IMAGES_DIR, targetName));
+      if (item.folderId && folderData.folders.some(folder => folder.id === item.folderId)) folderData.assignments[targetName] = item.folderId;
+      restored.push({ id: item.id, name: targetName });
+    }
+    data.items = data.items.filter(item => !restored.some(entry => entry.id === item.id));
+    writeTrashManifest(data);
+    writeMediaFolders(folderData);
+    res.json({ ok: true, restored });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -518,10 +675,13 @@ app.delete("/api/media/:name", (req, res) => {
     if (safeName !== req.params.name) return res.status(400).json({ error: "文件名无效" });
     const filePath = path.join(IMAGES_DIR, safeName);
     if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
       const folderData = readMediaFolders();
+      const trash = readTrashManifest();
+      const item = moveMediaToTrash(safeName, folderData.assignments[safeName] || "");
+      if (item) trash.items.push(item);
       delete folderData.assignments[safeName];
       writeMediaFolders(folderData);
+      writeTrashManifest(trash);
       res.json({ ok: true });
     } else {
       res.status(404).json({ error: "文件不存在" });
@@ -549,7 +709,8 @@ app.post("/api/sync", (req, res) => {
     const result = sync(cfg, ROOT);
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);
-    res.json({ ok: true, ...result, lastSync: cfg._lastSync, git: autoSyncGitHub("mini program sync") });
+    const ownedPaths = [...(result.files || []), "admin/config.json", ...collectConfigAssetPaths(cfg)];
+    res.json({ ok: true, ...result, lastSync: cfg._lastSync, git: autoSyncGitHub("mini program sync", ownedPaths) });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack });
   }
 });
@@ -595,10 +756,11 @@ app.get("/api/preview/qr", (req, res) => {
   res.sendFile(PREVIEW_QR_PATH);
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`\n  PRIVLAN Admin Panel (WordPress-style)`);
   console.log(`  ──────────────────────────────────────`);
-  console.log(`  Running at  http://localhost:${PORT}`);
+  console.log(`  Running at  http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+  console.log(`  Network     ${HOST === "127.0.0.1" ? "local computer only" : `enabled on ${HOST} with access token ${ADMIN_TOKEN ? "configured" : "missing"}`}`);
   console.log(`  Project    ${ROOT}`);
   console.log(`  ──────────────────────────────────────\n`);
 });

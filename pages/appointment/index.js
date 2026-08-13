@@ -30,6 +30,7 @@ Page({
     if (!nextForm.serviceId && data.services?.[0]) nextForm.serviceId = data.services[0].id;
     if (!nextForm.storeId && data.stores?.[0]) nextForm.storeId = data.stores[0].id;
     if (!nextForm.date && data.dates?.[0]) nextForm.date = data.dates[0].value;
+    if (!nextForm.advisorId && !appointmentConfig.fields.advisor) nextForm.advisorId = data.advisors?.[0]?.id || "unassigned";
     this.setData({
       loading: false,
       services: data.services || [], stores: data.stores || [], dates: data.dates || [],
@@ -81,6 +82,8 @@ Page({
       return;
     }
     this.setData({ success: result.data });
+    const appointments = wx.getStorageSync("privlanAppointments");
+    wx.setStorageSync("privlanAppointments", [{ ...result.data, status: "待确认", savedAt: new Date().toISOString() }, ...(Array.isArray(appointments) ? appointments.filter(item => item.number !== result.data.number) : [])].slice(0, 50));
     wx.vibrateShort?.({ type: "light" });
   },
   hotspotAction(event) {
@@ -91,5 +94,5 @@ Page({
     else if (event.currentTarget.dataset.linkType === "external") wx.navigateTo({ url: "/pages/webview/webview?url=" + encodeURIComponent(value) });
     else if (value) wx.navigateTo({ url: value });
   },
-  finish() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); }
+  finish() { wx.redirectTo({ url: "/pages/my-appointments/index", fail: () => wx.switchTab({ url: "/pages/mine/mine" }) }); }
 });

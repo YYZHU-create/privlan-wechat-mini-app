@@ -2,5 +2,7 @@
   "navigationBarTitleText": "分类",
   "usingComponents": {
     "service-fab": "/components/service-fab/index"
-  }
+  },
+  "enableShareAppMessage": true,
+  "enableShareTimeline": true
 }

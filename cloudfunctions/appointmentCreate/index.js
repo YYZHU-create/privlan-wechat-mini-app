@@ -14,6 +14,7 @@ exports.main = async event => {
     notes: String(event.notes || "").trim().slice(0, 300)
   };
   let slotReserved = false;
+  let intervalLocks = [];
   try {
     await core.enforceRateLimit(openId || core.hash(form.phone), "appointmentCreate", 5, 60 * 60 * 1000);
     if (!form.name || !/^1\d{10}$/.test(form.phone) || !form.serviceId || !form.storeId || !form.date || !form.slotId || !form.advisorId) throw core.createError("INVALID_INPUT", "请完整填写预约信息");
@@ -28,9 +29,17 @@ exports.main = async event => {
       { field: core.fieldName("FEISHU_FIELD_APPOINTMENT_SLOT_ID", "时段ID"), value: form.slotId }
     ], 2);
     if (duplicates.length) throw core.createError("DUPLICATE_APPOINTMENT", "你已经预约过这个时段，请勿重复提交", 409);
+    const slotStart = core.fieldValue(slot, "FEISHU_FIELD_SLOT_START", "开始时间") || core.fieldValue(slot, "FEISHU_FIELD_SLOT_LABEL", "时间");
+    const startTime = /^\d{1,2}:\d{2}$/.test(slotStart) ? slotStart.padStart(5, "0") : "";
+    if (!startTime) throw core.createError("INVALID_INPUT", "时段缺少有效开始时间，请联系门店", 409);
+    const startAt = new Date(`${form.date}T${startTime}:00+08:00`);
+    if (Number.isNaN(startAt.getTime())) throw core.createError("INVALID_INPUT", "预约日期或时间无效", 409);
+    const durationMinutes = Math.max(30, Math.min(480, Number(core.env("APPOINTMENT_DURATION_MINUTES", "135")) || 135));
+    const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
+    const number = `PV${new Date().toISOString().slice(2, 10).replace(/-/g, "")}${Math.random().toString().slice(2, 6)}`;
+    intervalLocks = await core.reserveAppointmentInterval({ appointmentNumber: number, storeId: form.storeId, advisorId: form.advisorId, startAt: startAt.toISOString(), endAt: endAt.toISOString() });
     await core.reserveSlot(form.slotId, capacity);
     slotReserved = true;
-    const number = `PV${new Date().toISOString().slice(2, 10).replace(/-/g, "")}${Math.random().toString().slice(2, 6)}`;
     const fields = {
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_NUMBER", "预约编号")]: number,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_NAME", "姓名")]: form.name,
@@ -39,6 +48,9 @@ exports.main = async event => {
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_STORE_ID", "门店ID")]: form.storeId,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_DATE", "日期")]: form.date,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_SLOT_ID", "时段ID")]: form.slotId,
+      [core.fieldName("FEISHU_FIELD_APPOINTMENT_START_AT", "开始时间")]: startAt.getTime(),
+      [core.fieldName("FEISHU_FIELD_APPOINTMENT_END_AT", "结束时间")]: endAt.getTime(),
+      [core.fieldName("FEISHU_FIELD_APPOINTMENT_DURATION", "服务时长")]: durationMinutes,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_ADVISOR_ID", "顾问ID")]: form.advisorId,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_NOTES", "备注")]: form.notes,
       [core.fieldName("FEISHU_FIELD_APPOINTMENT_STATUS", "状态")]: "待确认",
@@ -55,9 +67,26 @@ exports.main = async event => {
       advisorName = advisors[0] ? core.fieldValue(advisors[0], "FEISHU_FIELD_ADVISOR_NAME", "姓名") : advisorName;
     } catch (error) {}
     await core.audit("appointment_created", openId, { appointmentId: appointment && appointment.record_id, phone: form.phone, slotId: form.slotId });
-    return core.ok({ number, storeName, advisorName, date: form.date, slotLabel: core.fieldValue(slot, "FEISHU_FIELD_SLOT_LABEL", "时间") || core.fieldValue(slot, "FEISHU_FIELD_SLOT_START", "开始时间") }, "预约已提交", id);
+    try {
+      await core.db.collection("privlan_appointment_records").doc(core.hash(number).slice(0, 32)).set({ data: {
+        number,
+        openId,
+        storeName,
+        advisorName,
+        date: form.date,
+        slotLabel: `${startTime}–${endAt.toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false })}`,
+        startAt: startAt.getTime(),
+        endAt: endAt.getTime(),
+        status: "待确认",
+        createdAt: core.db.serverDate()
+      } });
+    } catch (mirrorError) {
+      await core.audit("appointment_reminder_record_failed", openId, { number, message: mirrorError.message });
+    }
+    return core.ok({ number, storeName, advisorName, date: form.date, slotLabel: `${startTime}–${endAt.toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false })}`, startAt: startAt.toISOString(), endAt: endAt.toISOString(), durationMinutes }, "预约已提交", id);
   } catch (error) {
     if (slotReserved) await core.releaseSlot(form.slotId);
+    if (intervalLocks.length) await core.releaseAppointmentInterval(intervalLocks);
     await core.audit("appointment_failed", openId, { code: error.code || "UNKNOWN", phone: form.phone, slotId: form.slotId });
     return core.handleError(error, id);
   }

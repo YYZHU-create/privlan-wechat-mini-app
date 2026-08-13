@@ -139,5 +139,11 @@ Page({
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
   addCart() { cart.add(this.data.block0); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(this.data.block0); wx.switchTab({ url: "/pages/cart/cart" }); }
+  buyNow() { cart.add(this.data.block0); wx.switchTab({ url: "/pages/cart/cart" }); },
+  onShareAppMessage() {
+    return { title: "商品详情", path: "/pages/detail/detail" };
+  },
+  onShareTimeline() {
+    return { title: "商品详情" };
+  }
 });

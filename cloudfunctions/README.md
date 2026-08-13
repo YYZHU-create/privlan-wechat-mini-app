@@ -6,8 +6,11 @@
 - `privlan_rate_limits`
 - `privlan_audit_logs`
 - `privlan_slot_locks`
+- `privlan_appointment_locks`
+- `privlan_appointment_records`
+- `privlan_appointment_reminders`
 
-六个云函数均需配置：
+客服与预约云函数按各自职责配置以下环境变量：
 
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
@@ -21,6 +24,13 @@
 - `AUTH_MODE=test`
 - `TEST_AUTH_CODE`：仅测试环境设置，正式上线前删除
 - `HUMAN_SERVICE_ENABLED=false`
+- `APPOINTMENT_DURATION_MINUTES=135`
+- `APPOINTMENT_REMINDER_TEMPLATE_ID`：微信订阅消息模板 ID
+- `APPOINTMENT_REMINDER_LEAD_MINUTES=1440`：默认提前 24 小时提醒
+- `REMINDER_FIELD_SUBJECT=thing1`
+- `REMINDER_FIELD_TIME=time2`
+- `REMINDER_FIELD_STORE=thing3`
+- `MINIPROGRAM_STATE=formal`：测试阶段可设为 `developer` 或 `trial`
 
 可选字段映射变量见各云函数使用的 `FEISHU_FIELD_*` 名称。未配置时使用中文默认列名。量体字段建议通过 `FEISHU_MEASUREMENT_FIELDS` 明确列出，使用英文逗号分隔。
 
@@ -31,6 +41,8 @@
 - Stores：门店ID、门店名称、地址、启用。
 - Advisors：顾问ID、姓名、职位、头像、门店ID。
 - ScheduleSlots：时段ID、门店ID、日期、时间、容量、已预约、顾问ID、状态。
-- Appointments：预约编号、姓名、手机号、服务、门店ID、日期、时段ID、顾问ID、备注、状态、来源。
+- Appointments：预约编号、姓名、手机号、服务、门店ID、日期、时段ID、开始时间、结束时间、服务时长、顾问ID、备注、状态、来源。
+
+微信公众平台还需创建预约提醒订阅消息模板，并将模板 ID 同时写入 `app.js` 的 `appointmentReminderTemplateId` 和云函数环境变量 `APPOINTMENT_REMINDER_TEMPLATE_ID`。部署 `appointmentReminder` 云函数时启用其 15 分钟定时触发器；用户授权后，系统会登记预约并在默认提前 24 小时发送一次提醒。模板字段名不同时，通过 `REMINDER_FIELD_*` 环境变量映射。
 
 正式认证后将 `AUTH_MODE` 改为 `wechat`，删除 `TEST_AUTH_CODE`，并在微信公众平台开通手机号授权和小程序客服，再将 `HUMAN_SERVICE_ENABLED` 改为 `true`。

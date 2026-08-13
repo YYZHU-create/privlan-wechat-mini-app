@@ -1,4 +1,4 @@
-const { createApp, ref, reactive, computed, watch, nextTick } = Vue;
+﻿const { createApp, ref, reactive, computed, watch, nextTick } = Vue;
 
 createApp({
   setup() {
@@ -28,6 +28,12 @@ createApp({
     const mediaLoading = ref(false);
     const mediaError = ref("");
     const mediaQuery = ref("");
+    const mediaUsageFilter = ref("all");
+    const mediaTypeFilter = ref("all");
+    const mediaSort = ref("newest");
+    const mediaTrash = ref([]);
+    const mediaTrashOpen = ref(false);
+    const helpOpen = ref(false);
     const selectedMedia = ref(null);
     const mediaSelectionMode = ref(false);
     const selectedMediaNames = ref([]);
@@ -52,11 +58,17 @@ createApp({
     const systemFontsLoading = ref(false);
     const productQuery = ref("");
     const productCategory = ref("all");
+    const categoryQuery = ref("");
     const editingProduct = ref(null);
+    const editingProductSnapshot = ref("");
+    const productErrors = reactive({});
+    const pageEditor = reactive({ open: false, id: "", name: "", slug: "", shareTitle: "", shareImage: "", description: "", error: "" });
+    let productDrawerTrigger = null;
     const newPage = reactive({ open: false, name: "", slug: "", error: "" });
     const homeNavOpen = ref(false);
     const blockQuickAddOpen = ref(false);
     const previewDialog = reactive({ open: false, state: "idle", qrUrl: "", error: "" });
+    const themePreview = reactive({ open: false, key: "", preset: null, previousPreset: "", previousColors: null });
     const serviceBotDrag = reactive({ active: false, pointerId: null, startX: 0, startY: 0, startRight: 24, startBottom: 150, moved: false });
     const serviceBotSuppressClick = ref(false);
     const servicePreview = reactive({
@@ -74,6 +86,10 @@ createApp({
     try {
       leftPanelOpen.value = localStorage.getItem("privlan:left-panel") !== "closed";
       rightPanelOpen.value = localStorage.getItem("privlan:right-panel") !== "closed";
+      if (window.innerWidth < 1280) {
+        leftPanelOpen.value = false;
+        rightPanelOpen.value = false;
+      }
     } catch (error) { /* storage is optional */ }
 
     const fontPresets = [
@@ -180,13 +196,20 @@ createApp({
         return inCat && inQuery;
       });
     });
+    const filteredCategories = computed(() => {
+      const query = categoryQuery.value.trim().toLowerCase();
+      return (cfg.value?.categories || []).filter(category => !query || category.name.toLowerCase().includes(query) || category.id.toLowerCase().includes(query));
+    });
+    const isProductDraftDirty = computed(() => Boolean(editingProduct.value) && JSON.stringify(normalizeProduct(editingProduct.value)) !== editingProductSnapshot.value);
 
     const filteredMedia = computed(() => {
       const q = mediaQuery.value.trim().toLowerCase();
       return media.value.filter(item => {
         const inFolder = !mediaFolderId.value || item.folderId === mediaFolderId.value;
-        return inFolder && (!q || item.name.toLowerCase().includes(q));
-      });
+        const inUsage = mediaUsageFilter.value === "all" || (mediaUsageFilter.value === "used" ? item.usageCount > 0 : item.usageCount === 0);
+        const inType = mediaTypeFilter.value === "all" || (mediaTypeFilter.value === "gif" ? /\.gif$/i.test(item.name) : item.kind === mediaTypeFilter.value && !/\.gif$/i.test(item.name));
+        return inFolder && inUsage && inType && (!q || item.name.toLowerCase().includes(q));
+      }).sort((a, b) => mediaSort.value === "size" ? b.size - a.size : mediaSort.value === "name" ? a.name.localeCompare(b.name, "zh-CN") : b.mtime.localeCompare(a.mtime));
     });
     const selectedMediaCount = computed(() => selectedMediaNames.value.length);
     const allFilteredMediaSelected = computed(() => filteredMedia.value.length > 0
@@ -300,7 +323,7 @@ createApp({
       const global = designSystem?.blockDefaults || {};
       const common = {
         backgroundColor: "transparent", textColor: "", fontFamily: "system", fontSize: 14,
-        fontWeight: 400, textAlign: "left", letterSpacing: 0, lineHeight: 1.5,
+        fontWeight: 400, textAlign: "left", letterSpacing: 0, lineHeight: 1.65,
         paddingX: 16, paddingY: 24, marginTop: 0, marginBottom: 0,
         borderColor: "transparent", borderWidth: 0, borderRadius: 0,
         buttonTextColor: "", buttonBackground: "transparent", buttonBorderColor: "", buttonBorderWidth: 1,
@@ -470,14 +493,14 @@ createApp({
       if (!Array.isArray(data.customPages)) data.customPages = [];
       const existingDesignSystem = data.designSystem || {};
       const migratedBlockDefaults = { ...(existingDesignSystem.blockDefaults || {}) };
-      if (Number(migratedBlockDefaults.lineHeight || 1.5) === 1.5) {
-        migratedBlockDefaults.lineHeight = 1.55;
+      if ([1.5, 1.55].includes(Number(migratedBlockDefaults.lineHeight || 1.5))) {
+        migratedBlockDefaults.lineHeight = 1.65;
       }
       data.designSystem = {
         ...existingDesignSystem,
         version: 2,
         blockDefaults: {
-          fontFamily: "system", fontWeight: 400, lineHeight: 1.55,
+          fontFamily: "system", fontWeight: 400, lineHeight: 1.65,
           ...migratedBlockDefaults
         },
         typography: {
@@ -637,6 +660,13 @@ createApp({
       }, 3600);
     }
 
+    function gitFeedback(git, fallback) {
+      if (!git) return fallback;
+      if (!git.ok) return `本地已完成，但 GitHub 自动同步失败：${git.error || "未知错误"}`;
+      if (git.pushed) return `已推送 GitHub · ${git.commit || "最新提交"}`;
+      return "已保存，本次没有需要推送的受管文件变化";
+    }
+
     async function saveConfig(silent = false) {
       if (!cfg.value) return false;
       Object.values(cfg.value.pageLayouts || {}).flat().forEach(section => {
@@ -652,7 +682,7 @@ createApp({
         if (!response.ok || !result.ok) throw new Error(result.error || `保存失败（${response.status}）`);
         savedSnapshot.value = JSON.stringify(cfg.value);
         saveMode.value = "saved";
-        if (!silent) toast("已保存", "所有更改已写入 config.json");
+        if (!silent) toast("已保存", gitFeedback(result.git, "所有更改已写入 config.json"), result.git?.ok === false ? "error" : "success");
         return true;
       } catch (error) {
         saveMode.value = "error";
@@ -673,7 +703,7 @@ createApp({
         cfg.value._lastSync = result.lastSync;
         savedSnapshot.value = JSON.stringify(cfg.value);
         saveMode.value = "saved";
-        toast("同步完成", `已更新 ${result.files?.length || 0} 项小程序文件`);
+        toast("同步完成", `已更新 ${result.files?.length || 0} 项小程序文件；${gitFeedback(result.git, "同步结果已写入本地")}`, result.git?.ok === false ? "error" : "success");
         return true;
       } catch (error) {
         saveMode.value = "error";
@@ -811,12 +841,24 @@ createApp({
     }
 
     function togglePanel(side) {
-      if (side === "left") leftPanelOpen.value = !leftPanelOpen.value;
-      if (side === "right") rightPanelOpen.value = !rightPanelOpen.value;
+      if (side === "left") {
+        leftPanelOpen.value = !leftPanelOpen.value;
+        if (leftPanelOpen.value && window.innerWidth < 1280) rightPanelOpen.value = false;
+      }
+      if (side === "right") {
+        rightPanelOpen.value = !rightPanelOpen.value;
+        if (rightPanelOpen.value && window.innerWidth < 1280) leftPanelOpen.value = false;
+      }
       try {
         localStorage.setItem("privlan:left-panel", leftPanelOpen.value ? "open" : "closed");
         localStorage.setItem("privlan:right-panel", rightPanelOpen.value ? "open" : "closed");
       } catch (error) { /* storage is optional */ }
+    }
+
+    function closeResponsivePanels() {
+      if (window.innerWidth >= 1280) return;
+      leftPanelOpen.value = false;
+      rightPanelOpen.value = false;
     }
 
     function openNewPage() {
@@ -882,12 +924,92 @@ createApp({
       let id = `custom-${slug}`;
       let suffix = 2;
       while (pageDefinitions.value.some(page => page.id === id)) id = `custom-${slug}-${suffix++}`;
-      const page = { id, name, path: `/pages/${id}/${id}`, tab: false, icon: "ph:file-text", custom: true };
+      const page = { id, name, path: `/pages/${id}/${id}`, tab: false, icon: "ph:file-text", custom: true, shareTitle: name, shareImage: "", description: "" };
       cfg.value.customPages.push(page);
       cfg.value.pageLayouts[id] = [];
       newPage.open = false;
       switchPage(id);
       toast("空白页面已创建", `${name} · 现在可以从左侧添加区块`);
+    }
+
+    function pageInboundReferences(page) {
+      const matches = [];
+      const targetPath = page?.path || "";
+      const visit = (value, trail) => {
+        if (value === targetPath || (typeof value === "string" && targetPath && value.startsWith(`${targetPath}?`))) matches.push(trail);
+        else if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${trail}[${index}]`));
+        else if (value && typeof value === "object") Object.entries(value).forEach(([key, item]) => visit(item, trail ? `${trail}.${key}` : key));
+      };
+      visit({ pageLayouts: cfg.value.pageLayouts, memberBenefits: cfg.value.memberBenefits, tabBar: cfg.value.tabBar }, "");
+      return matches;
+    }
+
+    function openPageEditor(page) {
+      if (!page?.custom) return;
+      const slug = page.id.replace(/^custom-/, "");
+      Object.assign(pageEditor, { open: true, id: page.id, name: page.name, slug, shareTitle: page.shareTitle || page.name, shareImage: page.shareImage || "", description: page.description || "", error: "" });
+      nextTick(() => document.querySelector("#page-editor-name")?.focus());
+    }
+
+    function savePageEditor() {
+      const page = cfg.value.customPages.find(item => item.id === pageEditor.id);
+      if (!page) return;
+      const name = pageEditor.name.trim();
+      if (!name) { pageEditor.error = "请输入页面名称"; return; }
+      const slug = normalizePageSlug(pageEditor.slug).replace(/^custom-/, "");
+      if (!slug) { pageEditor.error = "请输入有效的英文页面地址"; return; }
+      const nextId = `custom-${slug}`;
+      if (nextId !== page.id && pageDefinitions.value.some(item => item.id === nextId)) { pageEditor.error = "页面地址已存在"; return; }
+      const oldId = page.id;
+      const oldPath = page.path;
+      if (nextId !== oldId) {
+        const nextPath = `/pages/${nextId}/${nextId}`;
+        const replacePath = value => {
+          if (typeof value === "string") return value === oldPath ? nextPath : value.startsWith(`${oldPath}?`) ? `${nextPath}${value.slice(oldPath.length)}` : value;
+          if (Array.isArray(value)) return value.map(replacePath);
+          if (value && typeof value === "object") Object.keys(value).forEach(key => { value[key] = replacePath(value[key]); });
+          return value;
+        };
+        replacePath({ pageLayouts: cfg.value.pageLayouts, memberBenefits: cfg.value.memberBenefits, tabBar: cfg.value.tabBar });
+        cfg.value.pageLayouts[nextId] = cfg.value.pageLayouts[oldId] || [];
+        delete cfg.value.pageLayouts[oldId];
+        page.id = nextId;
+        page.path = nextPath;
+        currentPage.value = nextId;
+      }
+      page.name = name;
+      page.shareTitle = pageEditor.shareTitle.trim() || name;
+      page.shareImage = pageEditor.shareImage.trim();
+      page.description = pageEditor.description.trim();
+      pageEditor.open = false;
+      toast("页面设置已更新", `${name} 的标题和分享信息已保存到配置`);
+    }
+
+    function duplicateCustomPage(page) {
+      if (!page?.custom) return;
+      const baseSlug = page.id.replace(/^custom-/, "");
+      let suffix = 2;
+      let id = `custom-${baseSlug}-copy`;
+      while (pageDefinitions.value.some(item => item.id === id)) id = `custom-${baseSlug}-copy-${suffix++}`;
+      const copy = { ...JSON.parse(JSON.stringify(page)), id, name: `${page.name} 副本`, path: `/pages/${id}/${id}` };
+      cfg.value.customPages.push(copy);
+      cfg.value.pageLayouts[id] = JSON.parse(JSON.stringify(cfg.value.pageLayouts[page.id] || [])).map(section => ({ ...section, id: makeId(section.type) }));
+      switchPage(id);
+      toast("页面已复制", copy.name);
+    }
+
+    function deleteCustomPage(page) {
+      if (!page?.custom) return;
+      const references = pageInboundReferences(page);
+      if (references.length) {
+        toast("无法删除页面", `仍有 ${references.length} 个跳转或配置引用此页面，请先修改关联目标。`, "error");
+        return;
+      }
+      if (!window.confirm(`确定删除“${page.name}”及其全部区块吗？`)) return;
+      cfg.value.customPages = cfg.value.customPages.filter(item => item.id !== page.id);
+      delete cfg.value.pageLayouts[page.id];
+      switchPage("home");
+      toast("页面已删除", "可使用撤销恢复");
     }
 
     function switchPage(id) {
@@ -1488,6 +1610,30 @@ createApp({
       }
     }
 
+    async function openMediaTrash() {
+      try {
+        const response = await fetch("/api/media/trash");
+        if (!response.ok) throw new Error(`回收站读取失败（${response.status}）`);
+        mediaTrash.value = await response.json();
+        mediaTrashOpen.value = true;
+      } catch (error) {
+        toast("无法打开回收站", error.message, "error");
+      }
+    }
+
+    async function restoreMediaTrash(item) {
+      try {
+        const response = await fetch("/api/media/trash/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [item.id] }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || "恢复失败");
+        mediaTrash.value = mediaTrash.value.filter(entry => entry.id !== item.id);
+        await loadMedia();
+        toast("素材已恢复", result.restored?.[0]?.name || item.name);
+      } catch (error) {
+        toast("恢复素材失败", error.message, "error");
+      }
+    }
+
     async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
       const files = Array.from(fileList || []).filter(file => {
         const extension = String(file.name || "").split(".").pop().toLowerCase();
@@ -1750,7 +1896,7 @@ createApp({
       const usageWarning = referenceCount
         ? `\n\n检测到这些素材在当前配置中共有 ${referenceCount} 处引用，删除后对应页面可能出现空图。`
         : "";
-      if (!window.confirm(`确定永久删除 ${targets.length} 个素材吗？此操作无法撤销。${usageWarning}`)) return;
+      if (!window.confirm(`确定将 ${targets.length} 个素材移入回收站吗？30 天内可以恢复。${usageWarning}`)) return;
       mediaDeleting.value = true;
       try {
         const response = await fetch("/api/media/delete", {
@@ -1760,7 +1906,7 @@ createApp({
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.error || "素材删除失败");
         await loadMedia();
-        toast("素材已删除", `已删除 ${result.deleted.length} 个文件${result.missing.length ? `，${result.missing.length} 个文件不存在` : ""}`);
+        toast("素材已移入回收站", `${result.deleted.length} 个文件可在 30 天内恢复${result.missing.length ? `，${result.missing.length} 个文件不存在` : ""}`);
       } catch (error) {
         toast("素材删除失败", error.message || "请稍后重试", "error");
       } finally {
@@ -1777,19 +1923,48 @@ createApp({
       return deleteMediaItems(media.value.filter(item => selected.has(item.name)));
     }
 
-    function editProduct(product) { editingProduct.value = JSON.parse(JSON.stringify(normalizeProduct(product))); }
+    function openProductDrawer(product) {
+      productDrawerTrigger = document.activeElement;
+      editingProduct.value = JSON.parse(JSON.stringify(normalizeProduct(product)));
+      editingProductSnapshot.value = JSON.stringify(normalizeProduct(editingProduct.value));
+      Object.keys(productErrors).forEach(key => delete productErrors[key]);
+      nextTick(() => document.querySelector("#product-name")?.focus());
+    }
+    function editProduct(product) { openProductDrawer(product); }
     function addProduct() {
       const nextId = Math.max(0, ...cfg.value.products.map(p => Number(p.id) || 0)) + 1;
-      editingProduct.value = normalizeProduct({ id: nextId, cat: cfg.value.categories[0]?.id || "new", name: "新商品", price: 0, img: "" });
+      openProductDrawer({ id: nextId, cat: cfg.value.categories[0]?.id || "new", name: "", price: 0, img: "" });
+    }
+    function closeProductEditor(force = false) {
+      if (!editingProduct.value) return true;
+      if (!force && isProductDraftDirty.value && !window.confirm("商品还有未保存的修改，确定关闭吗？")) return false;
+      editingProduct.value = null;
+      editingProductSnapshot.value = "";
+      Object.keys(productErrors).forEach(key => delete productErrors[key]);
+      nextTick(() => productDrawerTrigger?.focus?.());
+      return true;
     }
     function saveProduct() {
       const product = normalizeProduct(editingProduct.value);
-      if (!product.name.trim()) { toast("请输入商品名称", "商品名称不能为空", "error"); return; }
-      if (!product.gallery.length) { toast("请上传商品主图", "至少需要一张图片作为商品封面。", "error"); return; }
+      Object.keys(productErrors).forEach(key => delete productErrors[key]);
+      if (!product.name.trim()) productErrors.name = "请输入商品名称";
+      if (!Number.isFinite(Number(product.price)) || Number(product.price) < 0) productErrors.price = "价格必须是大于或等于 0 的数字";
+      if (!cfg.value.categories.some(category => category.id === product.cat)) productErrors.cat = "请选择有效分类";
+      if (!product.gallery.length) productErrors.gallery = "至少需要一张图片作为商品封面";
+      const colorNames = product.colors.map(color => color.name.trim().toLowerCase()).filter(Boolean);
+      if (new Set(colorNames).size !== colorNames.length) productErrors.colors = "颜色名称不能重复";
+      const sizeNames = product.sizes.map(size => size.trim().toLowerCase()).filter(Boolean);
+      if (new Set(sizeNames).size !== sizeNames.length) productErrors.sizes = "尺码不能重复";
+      if (Object.keys(productErrors).length) {
+        toast("商品资料未完成", "请检查标红字段后再保存", "error");
+        nextTick(() => document.querySelector(".drawer .form-error")?.scrollIntoView({ block: "center", behavior: "smooth" }));
+        return;
+      }
       const index = cfg.value.products.findIndex(p => p.id === product.id);
       if (index >= 0) cfg.value.products[index] = JSON.parse(JSON.stringify(product));
       else cfg.value.products.unshift(JSON.parse(JSON.stringify(product)));
-      editingProduct.value = null;
+      editingProductSnapshot.value = JSON.stringify(product);
+      closeProductEditor(true);
       toast("商品已更新", "保存或同步后写入项目");
     }
     function removeProductImage(index) {
@@ -1846,10 +2021,55 @@ createApp({
       toast("分类已删除", `“${category.name}”已移除。`);
     }
 
+    function addCategory() {
+      let suffix = cfg.value.categories.length + 1;
+      let id = `category-${suffix}`;
+      while (cfg.value.categories.some(category => category.id === id)) id = `category-${++suffix}`;
+      cfg.value.categories.push({ id, name: "" });
+      nextTick(() => document.querySelector(`[data-category-id="${id}"]`)?.focus());
+    }
+
+    function moveCategory(category, direction) {
+      const index = cfg.value.categories.indexOf(category);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= cfg.value.categories.length) return;
+      const next = [...cfg.value.categories];
+      [next[index], next[target]] = [next[target], next[index]];
+      cfg.value.categories = next;
+    }
+
+    function validateCategory(category) {
+      const name = String(category?.name || "").trim();
+      if (!name) return "分类名称不能为空";
+      if (cfg.value.categories.some(item => item.id !== category.id && String(item.name || "").trim().toLowerCase() === name.toLowerCase())) return "分类名称不能重复";
+      return "";
+    }
+
+    function productCompleteness(product) {
+      const normalized = normalizeProduct(product);
+      const checks = [normalized.name, Number(normalized.price) >= 0, normalized.cat, normalized.gallery.length, normalized.colors.length, normalized.sizes.length, normalized.description || normalized.detail || normalized.detailImages.length];
+      const complete = checks.filter(Boolean).length;
+      return { percent: Math.round(complete / checks.length * 100), gallery: normalized.gallery.length, details: normalized.detailImages.length, options: normalized.colors.length + normalized.sizes.length };
+    }
+
     function applyPreset(key, preset) {
+      themePreview.open = true;
+      themePreview.key = key;
+      themePreview.preset = JSON.parse(JSON.stringify(preset));
+      themePreview.previousPreset = cfg.value.theme.preset;
+      themePreview.previousColors = JSON.parse(JSON.stringify(cfg.value.theme.colors));
       cfg.value.theme.preset = key;
       cfg.value.theme.colors = JSON.parse(JSON.stringify(preset.colors));
-      toast("主题已应用", preset.name);
+    }
+
+    function finishThemePreview(apply) {
+      if (!apply && themePreview.previousColors) {
+        cfg.value.theme.preset = themePreview.previousPreset;
+        cfg.value.theme.colors = JSON.parse(JSON.stringify(themePreview.previousColors));
+      }
+      if (apply) toast("主题已应用", themePreview.preset?.name || "主题预设");
+      themePreview.open = false;
+      themePreview.preset = null;
     }
 
     function statusText() {
@@ -1862,6 +2082,11 @@ createApp({
     }
 
     window.addEventListener("keydown", event => {
+      if (editingProduct.value && event.key === "Escape") {
+        event.preventDefault();
+        closeProductEditor();
+        return;
+      }
       if (tabBarCrop.open && event.key === "Escape") {
         event.preventDefault();
         closeTabBarCrop();
@@ -1875,19 +2100,25 @@ createApp({
       }
     });
 
+    window.addEventListener("beforeunload", event => {
+      if (!isDirty.value && !isProductDraftDirty.value) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+
     loadCart();
     loadConfig();
 
     return {
       cfg, loading, loadError, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, leftPanelOpen, rightPanelOpen,
-      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
+      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
-      mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory,
-      editingProduct, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, servicePreview, toasts, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, undo, redo,
-      statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
-      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
-      selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, saveProduct, removeProduct, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, resetSectionStyle,
+      mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
+      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo,
+      statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
+      selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
       hotspotStyle, addHotspot, removeHotspot, updateHotspotLinkType, normalizeHotspotInPlace, beginHotspotPointer, beginHotspotDraw
     };
@@ -1924,7 +2155,7 @@ createApp({
             </button>
           </nav>
           <div class="nav-spacer"></div>
-          <button class="nav-item" title="帮助"><iconify-icon class="icon" icon="ph:question"></iconify-icon><span>帮助</span></button>
+          <button class="nav-item" title="帮助" @click="helpOpen=true"><iconify-icon class="icon" icon="ph:question"></iconify-icon><span>帮助</span></button>
         </aside>
 
         <main class="workspace-main">
@@ -1934,13 +2165,14 @@ createApp({
             <button class="btn" @click="location.reload()">重新加载</button>
           </div>
 
-          <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen}">
+          <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen,'has-responsive-drawer':leftPanelOpen||rightPanelOpen}">
+            <button v-if="leftPanelOpen || rightPanelOpen" type="button" class="panel-scrim" aria-label="关闭侧栏" @click="closeResponsivePanels"></button>
             <aside class="side-panel left-panel" :class="{open:leftPanelOpen}">
               <div class="panel-header"><div><div class="panel-title">页面区块</div><div class="panel-subtitle">点击添加到当前页面</div></div><button class="icon-btn panel-close" title="收起页面区块" @click="togglePanel('left')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button></div>
               <div class="panel-scroll">
                 <div class="section-label"><span>页面</span><span>{{ pageDefinitions.length }} 个</span></div>
                 <div class="page-navigator">
-                  <button v-for="page in pageDefinitions" :key="page.id" :class="{active:currentPage===page.id}" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span>{{ page.name }}</span></button>
+                  <div v-for="page in pageDefinitions" :key="page.id" class="page-nav-entry" :class="{active:currentPage===page.id}"><button class="page-nav-main" :aria-current="currentPage===page.id ? 'page' : null" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span>{{ page.name }}</span></button><button v-if="page.custom" class="page-nav-more" type="button" :aria-label="page.name + ' 页面设置'" title="页面设置" @click.stop="openPageEditor(page)"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></button></div>
                   <button v-if="currentPage==='home'" class="page-create page-nav-settings" @click="openHomeNavigation"><iconify-icon class="icon" icon="ph:rows"></iconify-icon><span>首页导航 · {{ cfg.homeChannels.length }} 项</span></button>
                   <button class="page-create" @click="openNewPage"><iconify-icon class="icon" icon="ph:plus-circle"></iconify-icon><span>新建空白页</span></button>
                 </div>
@@ -2070,10 +2302,10 @@ createApp({
                     <div class="media-actions"><button class="btn small" @click="openMediaPicker('add')"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传图片/视频<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files,true);$event.target.value=''" /></label></div>
                     <template v-if="selectedHeroSlide">
                       <div class="slide-edit-toolbar"><span>正在编辑第 {{ selectedSlideIndex + 1 }} 张</span><div><button title="前移" @click="moveHeroSlide(selectedSlideIndex,-1)"><iconify-icon class="icon" icon="ph:arrow-left"></iconify-icon></button><button title="后移" @click="moveHeroSlide(selectedSlideIndex,1)"><iconify-icon class="icon" icon="ph:arrow-right"></iconify-icon></button><button title="替换媒体" @click="openMediaPicker('replace')"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button><button class="slide-delete" title="删除当前图片" @click="removeHeroSlide(selectedSlideIndex)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon><span>删除图片</span></button></div></div>
-                      <div class="toggle-row"><span>显示标题与副标题</span><button class="switch" :class="{on:selectedHeroSlide.showContent !== false}" @click="selectedHeroSlide.showContent = selectedHeroSlide.showContent === false"></button></div>
+                      <div class="toggle-row"><span>显示标题与副标题</span><button type="button" class="switch" :class="{on:selectedHeroSlide.showContent !== false}" role="switch" :aria-checked="selectedHeroSlide.showContent !== false" aria-label="显示标题与副标题" @click="selectedHeroSlide.showContent = selectedHeroSlide.showContent === false"></button></div>
                       <div v-if="selectedHeroSlide.showContent !== false" class="field"><label>标题</label><input v-model="selectedHeroSlide.title" type="text"></div>
                       <div v-if="selectedHeroSlide.showContent !== false" class="field"><label>副标题</label><textarea v-model="selectedHeroSlide.subtitle"></textarea></div>
-                      <div class="toggle-row"><span>显示行动按钮</span><button class="switch" :class="{on:selectedHeroSlide.showButton}" @click="selectedHeroSlide.showButton = !selectedHeroSlide.showButton"></button></div>
+                      <div class="toggle-row"><span>显示行动按钮</span><button type="button" class="switch" :class="{on:selectedHeroSlide.showButton}" role="switch" :aria-checked="selectedHeroSlide.showButton" aria-label="显示行动按钮" @click="selectedHeroSlide.showButton = !selectedHeroSlide.showButton"></button></div>
                       <div v-if="selectedHeroSlide.showButton" class="field"><label>按钮文字</label><input v-model="selectedHeroSlide.buttonText" type="text"></div>
                       <div class="field"><label>跳转类型</label><select v-model="selectedHeroSlide.linkType" @change="updateHeroLinkType(selectedHeroSlide)"><option value="page">小程序页面</option><option value="product">商品详情</option><option value="category">商品分类</option><option value="external">网页链接</option></select></div>
                       <div class="field"><label>跳转目标</label><select v-if="selectedHeroSlide.linkType==='page'" v-model="selectedHeroSlide.linkValue"><option v-for="page in pageDefinitions" :key="page.id" :value="page.path">{{ page.name }}</option></select><select v-else-if="selectedHeroSlide.linkType==='product'" v-model="selectedHeroSlide.linkValue"><option v-for="product in cfg.products" :key="product.id" :value="'/pages/detail/detail?id='+product.id">{{ product.name }} · {{ money(product.price) }}</option></select><select v-else-if="selectedHeroSlide.linkType==='category'" v-model="selectedHeroSlide.linkValue"><option v-for="cat in cfg.categories" :key="cat.id" :value="'/pages/category/category?cat='+cat.id">{{ cat.name }}</option></select><input v-else v-model="selectedHeroSlide.linkValue" type="url" placeholder="https://example.com"></div>
@@ -2081,11 +2313,11 @@ createApp({
                   </div>
                   <div v-else-if="selectedSection.type === 'media'" class="field-group"><div class="field-title">背景内容</div><div class="field"><label>背景类型</label><div class="choice-grid"><button :class="{active:selectedSection.props.mode==='color'}" @click="selectedSection.props.mode='color'">纯色</button><button :class="{active:selectedSection.props.mode==='image'}" @click="selectedSection.props.mode='image'">图片</button><button :class="{active:selectedSection.props.mode==='video'}" @click="selectedSection.props.mode='video'">视频</button></div></div><div v-if="selectedSection.props.mode==='color'" class="field"><label>背景颜色</label><div class="color-field"><input v-model="selectedSection.style.backgroundColor" type="color"><input v-model="selectedSection.style.backgroundColor" type="text"></div></div><div v-if="selectedSection.props.mode==='color'" class="media-actions"><button class="btn small" @click="openSectionMediaPicker"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传图片/视频<input type="file" accept="image/*,video/*,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov" hidden @change="uploadSectionMedia($event.target.files);$event.target.value=''" /></label></div><template v-else><div v-if="selectedSection.props.src" class="section-media-preview"><video v-if="selectedSection.props.mode==='video'" :src="mpUrl(selectedSection.props.src)" muted></video><img v-else :src="mpUrl(selectedSection.props.src)" alt=""></div><div class="media-actions"><button class="btn small" @click="openSectionMediaPicker"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传图片/视频<input type="file" accept="image/*,video/*,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov" hidden @change="uploadSectionMedia($event.target.files);$event.target.value=''" /></label></div><div class="field"><label>媒体路径</label><input v-model="selectedSection.props.src" type="text" placeholder="/images/background.jpg"></div><div class="field-row"><div class="field"><label>填充方式</label><select v-model="selectedSection.props.fit"><option value="cover">铺满</option><option value="contain">完整显示</option></select></div><div class="field"><label>画面位置</label><select v-model="selectedSection.props.position"><option value="center">居中</option><option value="top">顶部</option><option value="bottom">底部</option><option value="left">左侧</option><option value="right">右侧</option></select></div></div></template><p class="media-format-note">图片支持 JPG、JPEG、PNG、WebP、GIF；视频支持 MP4（推荐）、WebM、MOV；单个文件不超过 80MB。</p><div class="field"><label>点击跳转</label><select v-model="selectedSection.props.linkType" @change="selectedSection.props.linkType ? updateHeroLinkType(selectedSection.props) : selectedSection.props.linkValue='' "><option value="">不跳转</option><option value="page">小程序页面</option><option value="product">商品详情</option><option value="category">商品分类</option><option value="external">网页链接</option></select></div><div v-if="selectedSection.props.linkType" class="field"><label>跳转目标</label><select v-if="selectedSection.props.linkType==='page'" v-model="selectedSection.props.linkValue"><option v-for="page in pageDefinitions" :key="page.id" :value="page.path">{{ page.name }}</option></select><select v-else-if="selectedSection.props.linkType==='product'" v-model="selectedSection.props.linkValue"><option v-for="product in cfg.products" :key="product.id" :value="'/pages/detail/detail?id='+product.id">{{ product.name }} · {{ money(product.price) }}</option></select><select v-else-if="selectedSection.props.linkType==='category'" v-model="selectedSection.props.linkValue"><option v-for="cat in cfg.categories" :key="cat.id" :value="'/pages/category/category?cat='+cat.id">{{ cat.name }}</option></select><input v-else v-model="selectedSection.props.linkValue" type="url" placeholder="https://example.com"></div></div>
                   <div v-else-if="selectedSection.type === 'categories'" class="field-group"><div class="field-title">分类来源</div><div class="field"><label>显示数量 <span>{{ selectedSection.props.count || 5 }}</span></label><div class="range-row"><input v-model.number="selectedSection.props.count" type="range" min="2" :max="cfg.categories.length"><input v-model.number="selectedSection.props.count" type="number" min="2" :max="cfg.categories.length"></div></div><button class="btn small" @click="switchView('categories')">管理分类</button></div>
-                  <div v-else-if="selectedSection.type === 'product-grid'" class="field-group"><div class="field-title">商品数据</div><div class="field"><label>区块标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>商品分类</label><select v-model="selectedSection.props.category"><option value="all">全部商品</option><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select></div><div class="field"><label>显示数量 <span>{{ selectedSection.props.count || 6 }}</span></label><div class="range-row"><input v-model.number="selectedSection.props.count" type="range" min="1" max="12"><input v-model.number="selectedSection.props.count" type="number" min="1" max="12"></div></div><div class="toggle-row"><span>显示商品名称</span><button class="switch" :class="{on:selectedSection.props.showName}" @click="selectedSection.props.showName = !selectedSection.props.showName"></button></div><div class="toggle-row"><span>显示价格</span><button class="switch" :class="{on:selectedSection.props.showPrice}" @click="selectedSection.props.showPrice = !selectedSection.props.showPrice"></button></div></div>
+                  <div v-else-if="selectedSection.type === 'product-grid'" class="field-group"><div class="field-title">商品数据</div><div class="field"><label>区块标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>商品分类</label><select v-model="selectedSection.props.category"><option value="all">全部商品</option><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select></div><div class="field"><label>显示数量 <span>{{ selectedSection.props.count || 6 }}</span></label><div class="range-row"><input v-model.number="selectedSection.props.count" type="range" min="1" max="12"><input v-model.number="selectedSection.props.count" type="number" min="1" max="12"></div></div><div class="toggle-row"><span>显示商品名称</span><button type="button" class="switch" :class="{on:selectedSection.props.showName}" role="switch" :aria-checked="selectedSection.props.showName" aria-label="显示商品名称" @click="selectedSection.props.showName = !selectedSection.props.showName"></button></div><div class="toggle-row"><span>显示价格</span><button type="button" class="switch" :class="{on:selectedSection.props.showPrice}" role="switch" :aria-checked="selectedSection.props.showPrice" aria-label="显示商品价格" @click="selectedSection.props.showPrice = !selectedSection.props.showPrice"></button></div></div>
                   <div v-else-if="selectedSection.type === 'member-banner'" class="field-group"><div class="field-title">会员内容</div><div class="toggle-row"><span>使用 PRIVLAN 品牌标志</span><button class="switch" :class="{on:selectedSection.props.useBrandLogo !== false}" @click="selectedSection.props.useBrandLogo = selectedSection.props.useBrandLogo === false"></button></div><div v-if="selectedSection.props.useBrandLogo === false" class="field"><label>品牌标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>说明文字</label><textarea v-model="selectedSection.props.subtitle"></textarea></div><div class="field-title benefit-link-title">权益点击跳转</div><div v-for="(benefit,index) in cfg.memberBenefits.slice(0,4)" :key="'benefit-link-' + index" class="field"><label>{{ benefit.text || ('权益 ' + (index + 1)) }}</label><select v-model="benefit.linkValue"><option value="/pages/category/category?cat=new">早秋新品</option><option v-for="page in pageDefinitions" :key="page.id" :value="page.path">{{ page.name }}</option><option value="/pages/service-chat/index">智能客服</option></select></div></div>
                   <div v-else-if="selectedSection.type === 'product-detail'" class="field-group"><div class="field-title">商品详情</div><div class="field"><label>预览商品</label><select v-model.number="selectedSection.props.productId"><option v-for="product in cfg.products" :key="product.id" :value="product.id">{{ product.name }} · {{ money(product.price) }}</option></select></div><div class="toggle-row"><span>显示价格</span><button class="switch" :class="{on:selectedSection.props.showPrice}" @click="selectedSection.props.showPrice=!selectedSection.props.showPrice"></button></div><div class="toggle-row"><span>显示购买按钮</span><button class="switch" :class="{on:selectedSection.props.showActions}" @click="selectedSection.props.showActions=!selectedSection.props.showActions"></button></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-hero'" class="field-group"><div class="field-title">预约页标题</div><div class="field"><label>英文标识</label><input v-model="selectedSection.props.kicker" type="text"></div><div class="field"><label>主标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>说明文字</label><textarea v-model="selectedSection.props.description"></textarea></div><div class="field-title">头图媒体</div><div v-if="selectedSection.props.backgroundSrc" class="section-media-preview"><img :src="mpUrl(selectedSection.props.backgroundSrc)" alt="预约头图"></div><div class="media-actions"><button class="btn small" @click="openSectionMediaPicker"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传图片<input type="file" accept="image/*,.jpg,.jpeg,.png,.webp" hidden @change="uploadSectionMedia($event.target.files);$event.target.value=''" /></label></div><div class="field-row"><div class="field"><label>填充方式</label><select v-model="selectedSection.props.backgroundFit"><option value="cover">铺满</option><option value="contain">完整显示</option></select></div><div class="field"><label>画面位置</label><select v-model="selectedSection.props.backgroundPosition"><option value="center">居中</option><option value="top">顶部</option><option value="bottom">底部</option><option value="left">左侧</option><option value="right">右侧</option></select></div></div></div>
-                  <div v-else-if="selectedSection.type === 'appointment-form'" class="field-group"><div class="field-title">预约字段</div><p class="field-help">字段顺序按预约流程固定，门店、顾问和时段选项由飞书实时提供。关闭字段后，小程序也会跳过对应校验。</p><div v-for="field in [{key:'showName',label:'姓名'},{key:'showPhone',label:'联系电话'},{key:'showService',label:'预约服务'},{key:'showStore',label:'到店门店'},{key:'showDate',label:'预约日期'},{key:'showTime',label:'预约时间'},{key:'showAdvisor',label:'专属顾问'}]" :key="field.key" class="toggle-row"><span>{{ field.label }}</span><button class="switch" :class="{on:selectedSection.props[field.key] !== false}" @click="selectedSection.props[field.key] = selectedSection.props[field.key] === false"></button></div></div>
+                  <div v-else-if="selectedSection.type === 'appointment-form'" class="field-group"><div class="field-title">预约字段</div><p class="field-help">字段顺序按预约流程固定，门店、顾问和时段选项由飞书实时提供。关闭字段后，小程序也会跳过对应校验。</p><div v-for="field in [{key:'showName',label:'姓名'},{key:'showPhone',label:'联系电话'},{key:'showService',label:'预约服务'},{key:'showStore',label:'到店门店'},{key:'showDate',label:'预约日期'},{key:'showTime',label:'预约时间'},{key:'showAdvisor',label:'专属顾问'}]" :key="field.key" class="toggle-row"><span>{{ field.label }}</span><button type="button" class="switch" :class="{on:selectedSection.props[field.key] !== false}" role="switch" :aria-checked="selectedSection.props[field.key] !== false" :aria-label="'显示' + field.label" @click="selectedSection.props[field.key] = selectedSection.props[field.key] === false"></button></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-notes'" class="field-group"><div class="field-title">备注字段</div><div class="field"><label>字段标题</label><input v-model="selectedSection.props.label" type="text"></div><div class="field"><label>输入提示</label><textarea v-model="selectedSection.props.placeholder"></textarea></div></div>
                   <div v-else-if="selectedSection.type === 'appointment-submit'" class="field-group"><div class="field-title">提交与成功反馈</div><div class="field"><label>按钮文字</label><input v-model="selectedSection.props.buttonText" type="text"></div><div class="field"><label>成功标题</label><input v-model="selectedSection.props.successTitle" type="text"></div><div class="field"><label>成功说明</label><textarea v-model="selectedSection.props.successCopy"></textarea></div></div>
                   <div v-else-if="selectedSection.type === 'text'" class="field-group"><div class="field-title">文字内容</div><div class="field"><label>标题</label><input v-model="selectedSection.props.title" type="text"></div><div class="field"><label>正文</label><textarea v-model="selectedSection.props.text"></textarea></div></div>
@@ -2128,8 +2360,8 @@ createApp({
                 </template>
 
                 <template v-else>
-                  <div class="field-group"><div class="field-title">显示状态</div><div class="toggle-row"><span>启用区块</span><button class="switch" :class="{on:selectedSection.enabled}" @click="selectedSection.enabled = !selectedSection.enabled"></button></div></div>
-                  <div class="field-group"><div class="field-title">设备可见性</div><div v-for="item in [{id:'mobile',name:'手机'},{id:'tablet',name:'平板'},{id:'desktop',name:'桌面'}]" :key="item.id" class="toggle-row"><span>{{ item.name }}</span><button class="switch" :class="{on:selectedSection.visibility[item.id]}" @click="selectedSection.visibility[item.id] = !selectedSection.visibility[item.id]"></button></div></div>
+                  <div class="field-group"><div class="field-title">显示状态</div><div class="toggle-row"><span>启用区块</span><button type="button" class="switch" :class="{on:selectedSection.enabled}" role="switch" :aria-checked="selectedSection.enabled" aria-label="启用区块" @click="selectedSection.enabled = !selectedSection.enabled"></button></div></div>
+                  <div class="field-group"><div class="field-title">设备可见性</div><div v-for="item in [{id:'mobile',name:'手机'},{id:'tablet',name:'平板'},{id:'desktop',name:'桌面'}]" :key="item.id" class="toggle-row"><span>{{ item.name }}</span><button type="button" class="switch" :class="{on:selectedSection.visibility[item.id]}" role="switch" :aria-checked="selectedSection.visibility[item.id]" :aria-label="item.name + '设备显示区块'" @click="selectedSection.visibility[item.id] = !selectedSection.visibility[item.id]"></button></div></div>
                   <div class="field-group"><button class="btn" @click="resetSectionStyle()"><iconify-icon class="icon" icon="ph:arrow-counter-clockwise"></iconify-icon>恢复全局默认</button></div>
                   <div class="field-group"><button class="btn danger" @click="deleteSection(selectedSection.id)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>删除此区块</button></div>
                 </template>
@@ -2142,23 +2374,23 @@ createApp({
             <div class="stats-grid"><div class="stat-card"><div class="stat-label"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon>商品总数</div><div class="stat-value">{{ cfg.products.length }}</div></div><div class="stat-card"><div class="stat-label"><iconify-icon class="icon" icon="ph:tree-structure"></iconify-icon>商品分类</div><div class="stat-value">{{ cfg.categories.length }}</div></div><div class="stat-card"><div class="stat-label"><iconify-icon class="icon" icon="ph:image"></iconify-icon>首屏画面</div><div class="stat-value">{{ cfg.heroes.length }}</div></div><div class="stat-card"><div class="stat-label"><iconify-icon class="icon" icon="ph:clock-counter-clockwise"></iconify-icon>待保存</div><div class="stat-value">{{ isDirty ? '1' : '0' }}</div></div></div>
             <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="productQuery" class="search-input" type="search" placeholder="搜索名称或商品编号"></div><div class="filter-row"><select v-model="productCategory"><option value="all">全部分类</option><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select></div></div>
               <div v-if="!filteredProducts.length" class="empty-state"><iconify-icon class="icon" icon="ph:package"></iconify-icon><h3>没有匹配的商品</h3><p>调整搜索条件，或创建一个新商品。</p><button class="btn" @click="productQuery='';productCategory='all'">清除筛选</button></div>
-              <table v-else class="data-table"><thead><tr><th>商品</th><th>分类</th><th>价格</th><th>图片路径</th><th></th></tr></thead><tbody><tr v-for="product in filteredProducts" :key="product.id"><td><div class="product-cell"><img class="product-thumb" :src="mpUrl(product.img)" :alt="product.name"><div><div class="product-main">{{ product.name }}</div><div class="product-id">#{{ product.id }}</div></div></div></td><td><span class="badge">{{ categoryName(product.cat) }}</span></td><td>{{ money(product.price) }}</td><td class="product-id">{{ product.img }}</td><td><div class="row-actions"><button title="编辑" @click="editProduct(product)"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button title="删除" @click="removeProduct(product)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></td></tr></tbody></table>
+              <table v-else class="data-table"><thead><tr><th>商品</th><th>分类</th><th>价格</th><th>资料状态</th><th></th></tr></thead><tbody><tr v-for="product in filteredProducts" :key="product.id"><td><div class="product-cell"><img class="product-thumb" :src="mpUrl(product.img)" :alt="product.name"><div><div class="product-main">{{ product.name }}</div><div class="product-id">#{{ product.id }}</div></div></div></td><td><span class="badge">{{ categoryName(product.cat) }}</span></td><td>{{ money(product.price) }}</td><td><div class="product-completeness"><strong>{{ productCompleteness(product).percent }}%</strong><span>{{ productCompleteness(product).gallery }} 主图 · {{ productCompleteness(product).options }} 选项 · {{ productCompleteness(product).details }} 详情图</span></div></td><td><div class="row-actions"><button title="编辑商品" aria-label="编辑商品" @click="editProduct(product)"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button title="删除商品" aria-label="删除商品" @click="removeProduct(product)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></td></tr></tbody></table>
               <div class="table-footer"><span>显示 {{ filteredProducts.length }} / {{ cfg.products.length }} 个商品</span><span>价格单位：人民币</span></div>
             </div>
           </section>
 
           <section v-else-if="currentView === 'categories'" class="management">
-            <div class="management-header"><div><h1>分类管理</h1><p>编辑名称与排序，商品和页面筛选会自动使用这里的数据。</p></div><button class="btn primary" @click="cfg.categories.push({id:'cat-'+Date.now().toString(36),name:'新分类'})"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新建分类</button></div>
-            <div class="data-card"><table class="data-table"><thead><tr><th>排序</th><th>分类名称</th><th>分类标识</th><th>商品数量</th><th></th></tr></thead><tbody><tr v-for="(cat,index) in cfg.categories" :key="cat.id"><td><div class="row-actions" style="justify-content:flex-start"><button :disabled="index===0" @click="[cfg.categories[index-1],cfg.categories[index]]=[cfg.categories[index],cfg.categories[index-1]]"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button :disabled="index===cfg.categories.length-1" @click="[cfg.categories[index+1],cfg.categories[index]]=[cfg.categories[index],cfg.categories[index+1]]"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button></div></td><td><div class="field" style="margin:0"><input v-model="cat.name" type="text"></div></td><td><span class="badge">{{ cat.id }}</span></td><td>{{ cfg.products.filter(p => p.cat === cat.id).length }}</td><td><div class="row-actions"><button title="删除分类" @click="removeCategory(cat)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></td></tr></tbody></table><div class="table-footer"><span>点击删除可查看分类的关联内容；处理完成后即可删除。</span><span>{{ cfg.categories.length }} 个分类</span></div></div>
+            <div class="management-header"><div><h1>分类管理</h1><p>编辑名称与排序，商品和页面筛选会自动使用这里的数据。</p></div><button class="btn primary" @click="addCategory"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新建分类</button></div>
+            <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="categoryQuery" class="search-input" type="search" placeholder="搜索分类名称或标识"></div></div><table class="data-table"><thead><tr><th>排序</th><th>分类名称</th><th>分类标识</th><th>使用情况</th><th></th></tr></thead><tbody><tr v-for="cat in filteredCategories" :key="cat.id"><td><div class="row-actions" style="justify-content:flex-start"><button title="上移" aria-label="上移分类" :disabled="cfg.categories.indexOf(cat)===0" @click="moveCategory(cat,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button title="下移" aria-label="下移分类" :disabled="cfg.categories.indexOf(cat)===cfg.categories.length-1" @click="moveCategory(cat,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button></div></td><td><div class="field category-name-field" style="margin:0"><input v-model.trim="cat.name" type="text" :data-category-id="cat.id" :aria-invalid="!!validateCategory(cat)"><div v-if="validateCategory(cat)" class="form-error" role="alert">{{ validateCategory(cat) }}</div></div></td><td><span class="badge">{{ cat.id }}</span></td><td><div class="category-usage"><strong>{{ cfg.products.filter(p => p.cat === cat.id).length }} 个商品</strong><span>{{ Object.values(cfg.pageLayouts||{}).flat().filter(section => section.type==='product-grid' && section.props?.category===cat.id).length }} 个页面区块</span></div></td><td><div class="row-actions"><button title="删除分类" aria-label="删除分类" @click="removeCategory(cat)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></td></tr></tbody></table><div class="table-footer"><span>分类名称不能为空或重复；删除前会检查商品与页面引用。</span><span>{{ filteredCategories.length }} / {{ cfg.categories.length }} 个分类</span></div></div>
           </section>
 
           <section v-else-if="currentView === 'media'" class="management">
-            <div class="management-header"><div><h1>媒体库</h1><p>统一管理轮播图片、视频和商品素材，可直接用于页面区块。</p></div><div class="management-actions"><button class="btn" @click="loadMedia"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>刷新</button><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传媒体<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files);$event.target.value=''" /></label></div></div>
-             <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索文件名"></div><div class="media-toolbar-actions"><span class="crumb">{{ mediaSelectionMode ? '已选择 ' + selectedMediaCount + ' 个' : filteredMedia.length + ' 个文件' }}</span><select v-if="mediaSelectionMode && selectedMediaCount" v-model="mediaMoveTarget" class="media-move-select" aria-label="移动到文件夹"><option value="">移到全部素材</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">移到 {{ folder.name }}</option></select><button v-if="mediaSelectionMode && selectedMediaCount" type="button" class="btn subtle" @click="moveSelectedMedia()"><iconify-icon class="icon" icon="ph:folder-notch-open"></iconify-icon>移动</button><button v-if="mediaSelectionMode" type="button" class="btn subtle" @click="toggleAllFilteredMedia">{{ allFilteredMediaSelected ? '取消当前全选' : '选择当前结果' }}</button><button v-if="mediaSelectionMode" type="button" class="btn danger" :disabled="!selectedMediaCount || mediaDeleting" @click="deleteSelectedMedia"><iconify-icon class="icon" :icon="mediaDeleting ? 'ph:spinner-gap' : 'ph:trash'"></iconify-icon>{{ mediaDeleting ? '正在删除' : '删除所选 (' + selectedMediaCount + ')' }}</button><button type="button" class="btn" :class="{primary:mediaSelectionMode}" @click="toggleMediaSelectionMode"><iconify-icon class="icon" :icon="mediaSelectionMode ? 'ph:check' : 'ph:checks'"></iconify-icon>{{ mediaSelectionMode ? '完成' : '批量管理' }}</button></div></div><div class="media-folder-row"><div class="media-folder-list"><button type="button" class="media-folder-pill" :class="{active:!mediaFolderId}" @click="mediaFolderId=''">全部素材 <span>{{ media.length }}</span></button><button v-for="folder in mediaFolders" :key="folder.id" type="button" class="media-folder-pill" :class="{active:mediaFolderId===folder.id}" @click="mediaFolderId=folder.id">{{ folder.name }} <span>{{ folder.count }}</span></button></div><div class="media-folder-actions"><button type="button" class="btn small" @click="createMediaFolder"><iconify-icon class="icon" icon="ph:folder-plus"></iconify-icon>新建文件夹</button><button v-if="mediaFolderId" type="button" class="icon-btn small" title="重命名文件夹" @click="renameMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button v-if="mediaFolderId" type="button" class="icon-btn small danger" title="删除文件夹" @click="deleteMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
+            <div class="management-header"><div><h1>媒体库</h1><p>统一管理轮播图片、视频和商品素材，可直接用于页面区块。</p></div><div class="management-actions"><button class="btn" @click="openMediaTrash"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>回收站</button><button class="btn" @click="loadMedia"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>刷新</button><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传媒体<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files);$event.target.value=''" /></label></div></div>
+             <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索文件名"></div><div class="media-filter-row"><select v-model="mediaUsageFilter" aria-label="素材使用状态"><option value="all">全部状态</option><option value="used">正在使用</option><option value="unused">未使用</option></select><select v-model="mediaTypeFilter" aria-label="素材类型"><option value="all">全部类型</option><option value="image">图片</option><option value="gif">GIF</option><option value="video">视频</option></select><select v-model="mediaSort" aria-label="素材排序"><option value="newest">最新上传</option><option value="size">文件大小</option><option value="name">文件名称</option></select></div><div class="media-toolbar-actions"><span class="crumb">{{ mediaSelectionMode ? '已选择 ' + selectedMediaCount + ' 个' : filteredMedia.length + ' 个文件' }}</span><select v-if="mediaSelectionMode && selectedMediaCount" v-model="mediaMoveTarget" class="media-move-select" aria-label="移动到文件夹"><option value="">移到全部素材</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">移到 {{ folder.name }}</option></select><button v-if="mediaSelectionMode && selectedMediaCount" type="button" class="btn subtle" @click="moveSelectedMedia()"><iconify-icon class="icon" icon="ph:folder-notch-open"></iconify-icon>移动</button><button v-if="mediaSelectionMode" type="button" class="btn subtle" @click="toggleAllFilteredMedia">{{ allFilteredMediaSelected ? '取消当前全选' : '选择当前结果' }}</button><button v-if="mediaSelectionMode" type="button" class="btn danger" :disabled="!selectedMediaCount || mediaDeleting" @click="deleteSelectedMedia"><iconify-icon class="icon" :icon="mediaDeleting ? 'ph:spinner-gap' : 'ph:trash'"></iconify-icon>{{ mediaDeleting ? '正在删除' : '删除所选 (' + selectedMediaCount + ')' }}</button><button type="button" class="btn" :class="{primary:mediaSelectionMode}" @click="toggleMediaSelectionMode"><iconify-icon class="icon" :icon="mediaSelectionMode ? 'ph:check' : 'ph:checks'"></iconify-icon>{{ mediaSelectionMode ? '完成' : '批量管理' }}</button></div></div><div class="media-folder-row"><div class="media-folder-list"><button type="button" class="media-folder-pill" :class="{active:!mediaFolderId}" @click="mediaFolderId=''">全部素材 <span>{{ media.length }}</span></button><button v-for="folder in mediaFolders" :key="folder.id" type="button" class="media-folder-pill" :class="{active:mediaFolderId===folder.id}" @click="mediaFolderId=folder.id">{{ folder.name }} <span>{{ folder.count }}</span></button></div><div class="media-folder-actions"><button type="button" class="btn small" @click="createMediaFolder"><iconify-icon class="icon" icon="ph:folder-plus"></iconify-icon>新建文件夹</button><button v-if="mediaFolderId" type="button" class="icon-btn small" title="重命名文件夹" @click="renameMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button v-if="mediaFolderId" type="button" class="icon-btn small danger" title="删除文件夹" @click="deleteMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
               <div v-if="mediaLoading" class="skeleton-grid"><div v-for="n in 8" :key="n" class="skeleton"></div></div>
               <div v-else-if="mediaError" class="empty-state"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>媒体库加载失败</h3><p>{{ mediaError }}</p><button class="btn" @click="loadMedia">重试</button></div>
               <div v-else-if="!filteredMedia.length" class="empty-state"><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><h3>没有找到媒体</h3><p>上传 JPG、PNG、WebP、MP4 或 WebM 文件。</p></div>
-               <div v-else class="media-grid"><article v-for="item in filteredMedia" :key="item.name" class="media-card" :class="{selected:isMediaSelected(item) || selectedMedia?.name===item.name}" tabindex="0" :aria-label="'素材 ' + item.name" @click="selectMedia(item)" @keydown.enter.prevent="selectMedia(item)" @keydown.space.prevent="selectMedia(item)"><div class="media-image"><video v-if="item.kind==='video'" :src="item.path" muted preload="metadata"></video><img v-else :src="item.path" :alt="item.name"><span class="media-kind-badge" :title="'素材类型：' + mediaKindLabel(item)"><iconify-icon class="icon" :icon="item.kind==='video' ? 'ph:video-camera' : 'ph:image'"></iconify-icon>{{ mediaKindLabel(item) }}</span></div><div class="media-meta"><div class="media-name">{{ item.name }}</div><div class="media-size">{{ item.sizeKB }} KB · {{ item.mpPath }}</div></div><span v-if="mediaSelectionMode && (isMediaSelected(item) || selectedMedia?.name === item.name)" class="media-check" aria-hidden="true"><iconify-icon class="icon" icon="ph:check"></iconify-icon></span><button v-if="!mediaSelectionMode && selectedMedia?.name === item.name" type="button" class="media-delete-btn" :aria-label="'删除素材 ' + item.name" title="删除素材" :disabled="mediaDeleting" @click.stop="deleteMediaItem(item)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></article></div>
+               <div v-else class="media-grid"><article v-for="item in filteredMedia" :key="item.name" class="media-card" :class="{selected:isMediaSelected(item) || selectedMedia?.name===item.name}" tabindex="0" :aria-label="'素材 ' + item.name" @click="selectMedia(item)" @keydown.enter.prevent="selectMedia(item)" @keydown.space.prevent="selectMedia(item)"><div class="media-image"><video v-if="item.kind==='video'" :src="item.path" muted preload="metadata"></video><img v-else :src="item.path" :alt="item.name"><span class="media-kind-badge" :title="'素材类型：' + mediaKindLabel(item)"><iconify-icon class="icon" :icon="item.kind==='video' ? 'ph:video-camera' : 'ph:image'"></iconify-icon>{{ mediaKindLabel(item) }}</span></div><div class="media-meta"><div class="media-name">{{ item.name }}</div><div class="media-size">{{ item.sizeKB }} KB · {{ item.usageCount ? "使用 " + item.usageCount + " 处" : "未使用" }}</div><div v-if="item.large" class="media-warning">大文件，建议压缩后使用</div></div><span v-if="mediaSelectionMode && (isMediaSelected(item) || selectedMedia?.name === item.name)" class="media-check" aria-hidden="true"><iconify-icon class="icon" icon="ph:check"></iconify-icon></span><button v-if="!mediaSelectionMode && selectedMedia?.name === item.name" type="button" class="media-delete-btn" :aria-label="'删除素材 ' + item.name" title="删除素材" :disabled="mediaDeleting" @click.stop="deleteMediaItem(item)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></article></div>
             </div>
           </section>
 
@@ -2212,6 +2444,34 @@ createApp({
           <div v-else-if="!mediaPickerItems.length" class="empty-state"><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><h3>{{ mediaPickerMode==='tabbar' ? '还没有可用图片' : '还没有可用素材' }}</h3><p>{{ mediaPickerMode==='product' ? '上传一张商品图片，马上用于当前商品。' : mediaPickerMode==='section-media' ? '上传图片或视频，马上作为区块背景。' : mediaPickerMode==='tabbar' ? '上传一张图片，马上作为导航图标。' : '上传首张图片或视频，马上加入轮播。' }}</p></div>
           <div v-else class="media-picker-grid"><button v-for="item in mediaPickerItems" :key="item.name" class="media-picker-card" @click="addMediaToHero(item)"><video v-if="item.kind==='video'" :src="item.path" muted preload="metadata"></video><img v-else :src="item.path" :alt="item.name"><span class="media-kind-badge" :title="'素材类型：' + mediaKindLabel(item)"><iconify-icon class="icon" :icon="item.kind==='video' ? 'ph:video-camera' : 'ph:image'"></iconify-icon>{{ mediaKindLabel(item) }}</span><span class="media-picker-name">{{ item.name }}</span></button></div>
         </aside>
+      </template>
+
+      <template v-if="mediaTrashOpen">
+        <div class="drawer-backdrop" @click="mediaTrashOpen=false"></div>
+        <section class="media-trash-dialog" role="dialog" aria-modal="true" aria-labelledby="media-trash-title">
+          <div class="drawer-header"><div><h2 id="media-trash-title">媒体回收站</h2><p>删除后的素材保留 30 天，可恢复到原文件夹。</p></div><button type="button" class="icon-btn" title="关闭回收站" aria-label="关闭回收站" @click="mediaTrashOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div v-if="!mediaTrash.length" class="empty-state"><iconify-icon class="icon" icon="ph:trash"></iconify-icon><h3>回收站为空</h3><p>移除的素材会暂存在这里。</p></div>
+          <div v-else class="media-trash-list"><article v-for="item in mediaTrash" :key="item.id"><div><strong>{{ item.name }}</strong><span>删除于 {{ new Date(item.deletedAt).toLocaleString('zh-CN') }} · {{ new Date(item.expiresAt).toLocaleDateString('zh-CN') }} 后过期</span></div><button type="button" class="btn" @click="restoreMediaTrash(item)"><iconify-icon class="icon" icon="ph:arrow-counter-clockwise"></iconify-icon>恢复</button></article></div>
+          <div class="drawer-footer"><button type="button" class="btn primary" @click="mediaTrashOpen=false">完成</button></div>
+        </section>
+      </template>
+
+      <template v-if="themePreview.open">
+        <div class="drawer-backdrop" @click="finishThemePreview(false)"></div>
+        <section class="theme-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="theme-preview-title">
+          <div class="drawer-header"><div><h2 id="theme-preview-title">预览主题：{{ themePreview.preset?.name }}</h2><p>画布已临时应用此配色。确认前不会成为正式主题。</p></div><button type="button" class="icon-btn" aria-label="取消主题预览" @click="finishThemePreview(false)"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="theme-preview-body"><div class="theme-role-preview" :style="{background:cfg.theme.colors.bgPrimary,color:cfg.theme.colors.textPrimary,borderColor:cfg.theme.colors.border}"><strong>主标题与正文</strong><span :style="{color:cfg.theme.colors.textSecondary}">次要说明文字用于辅助信息</span><button :style="{background:cfg.theme.colors.accent,color:cfg.theme.colors.bgPrimary,borderColor:cfg.theme.colors.accent}">主要行动</button></div><p>请确认标题、次文字、按钮和边框在浅色及深色表面上清晰可读。</p></div>
+          <div class="drawer-footer"><button type="button" class="btn subtle" @click="finishThemePreview(false)">取消</button><button type="button" class="btn primary" @click="finishThemePreview(true)">应用主题</button></div>
+        </section>
+      </template>
+
+      <template v-if="helpOpen">
+        <div class="drawer-backdrop" @click="helpOpen=false"></div>
+        <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+          <div class="drawer-header"><div><h2 id="help-title">PRIVLAN 编辑帮助</h2><p>按当前工作流程快速定位功能。</p></div><button type="button" class="icon-btn" aria-label="关闭帮助" @click="helpOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="help-grid"><article><iconify-icon class="icon" icon="ph:squares-four"></iconify-icon><div><strong>页面与区块</strong><p>左侧选择页面和层级，点页面右上角菜单可重命名、复制、删除并设置分享信息。</p></div></article><article><iconify-icon class="icon" icon="ph:floppy-disk"></iconify-icon><div><strong>保存与同步</strong><p>保存写入配置并同步受管文件到 GitHub；同步会继续生成微信小程序代码。</p></div></article><article><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><div><strong>媒体安全</strong><p>媒体库可筛选未使用文件。删除后进入 30 天回收站，不会立即永久清除。</p></div></article><article><iconify-icon class="icon" icon="ph:calendar-check"></iconify-icon><div><strong>预约服务</strong><p>每次服务默认占用 135 分钟。请在云开发配置飞书字段、订阅消息模板和预约锁集合。</p></div></article></div>
+          <div class="drawer-footer"><button type="button" class="btn primary" @click="helpOpen=false">知道了</button></div>
+        </section>
       </template>
 
       <template v-if="tabBarCrop.open">
@@ -2269,6 +2529,16 @@ createApp({
         </form>
       </template>
 
+      <template v-if="pageEditor.open">
+        <div class="drawer-backdrop" @click="pageEditor.open=false"></div>
+        <form class="new-page-dialog page-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="page-editor-title" @submit.prevent="savePageEditor">
+          <div class="drawer-header"><div><h2 id="page-editor-title">页面设置</h2><p>维护页面名称、地址和微信分享信息。</p></div><button type="button" class="icon-btn" title="关闭页面设置" aria-label="关闭页面设置" @click="pageEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="new-page-body"><div class="field"><label for="page-editor-name">页面名称</label><input id="page-editor-name" v-model.trim="pageEditor.name" type="text" maxlength="24" @input="pageEditor.error=''" /></div><div class="field"><label for="page-editor-slug">页面地址</label><div class="page-path-input"><span>/pages/custom-</span><input id="page-editor-slug" v-model.trim="pageEditor.slug" type="text" /></div><small>修改地址时会同步更新当前配置里的页面跳转。</small></div><div class="field"><label>分享标题</label><input v-model.trim="pageEditor.shareTitle" type="text" maxlength="40"></div><div class="field"><label>分享图片路径</label><input v-model.trim="pageEditor.shareImage" type="text" placeholder="/images/share-cover.jpg"></div><div class="field"><label>页面说明</label><textarea v-model.trim="pageEditor.description" maxlength="120"></textarea></div><div v-if="pageEditor.error" class="form-error" role="alert">{{ pageEditor.error }}</div></div>
+          <div class="page-editor-actions"><button type="button" class="btn" @click="duplicateCustomPage(pageDefinitions.find(page=>page.id===pageEditor.id));pageEditor.open=false"><iconify-icon class="icon" icon="ph:copy"></iconify-icon>复制页面</button><button type="button" class="btn danger" @click="deleteCustomPage(pageDefinitions.find(page=>page.id===pageEditor.id));pageEditor.open=false"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>删除页面</button></div>
+          <div class="drawer-footer"><button type="button" class="btn subtle" @click="pageEditor.open=false">取消</button><button type="submit" class="btn primary">保存页面设置</button></div>
+        </form>
+      </template>
+
       <template v-if="homeNavOpen">
         <div class="drawer-backdrop" @click="finishHomeNavigation"></div>
         <aside class="drawer home-nav-drawer">
@@ -2279,11 +2549,11 @@ createApp({
       </template>
 
       <template v-if="editingProduct">
-        <div class="drawer-backdrop" @click="editingProduct=null"></div>
-        <aside class="drawer">
-          <div class="drawer-header"><h2>{{ cfg.products.some(p=>p.id===editingProduct.id) ? '编辑商品' : '新建商品' }}</h2><button class="icon-btn" @click="editingProduct=null"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
-          <div class="drawer-body"><div class="field-group product-media-group"><div class="field-title">商品图片 <span class="field-hint">{{ productImages(editingProduct).length }}/5 张主图</span></div><div class="product-gallery-grid"><button v-for="slot in 5" :key="slot" type="button" class="product-gallery-slot" :class="{filled:productImages(editingProduct)[slot-1]}" @click="openProductMediaPicker(productImages(editingProduct)[slot-1] ? slot-1 : null, 'gallery')"><img v-if="productImages(editingProduct)[slot-1]" :src="mpUrl(productImages(editingProduct)[slot-1])" :alt="editingProduct.name + ' 主图 ' + slot"><iconify-icon v-else class="icon" icon="ph:plus"></iconify-icon><span>{{ slot === 1 ? '封面' : '主图 ' + slot }}</span><i v-if="productImages(editingProduct)[slot-1]" class="product-gallery-remove" title="删除主图" @click.stop="removeProductImage(slot-1)"><iconify-icon class="icon" icon="ph:x"></iconify-icon></i></button></div><div class="product-media-actions"><button class="btn small" type="button" @click="openProductMediaPicker(null, 'gallery')"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传主图<input type="file" accept="image/*" multiple hidden @change="uploadProductImages($event.target.files,'gallery');$event.target.value=''" /></label></div><p class="product-editor-note">第一张作为商品封面，最多 5 张。点击已有图片可替换。</p></div><div class="field"><label>商品名称</label><input v-model="editingProduct.name" type="text"></div><div class="field"><label>商品编号</label><input v-model.number="editingProduct.id" type="number" disabled></div><div class="field"><label>所属分类</label><select v-model="editingProduct.cat"><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select></div><div class="field"><label>价格（元）</label><input v-model.number="editingProduct.price" type="number" min="0"></div><div class="field"><label>简短描述</label><textarea v-model="editingProduct.description" placeholder="用于商品详情页首段"></textarea></div><div class="field-group"><div class="field-title">颜色</div><div v-for="(color,index) in editingProduct.colors" :key="index" class="product-option-row"><input v-model="color.name" type="text" placeholder="颜色名称"><div class="color-field"><input v-model="color.value" type="color"><input v-model="color.value" type="text"></div><button class="icon-btn small" type="button" title="删除颜色" @click="removeProductColor(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div><button class="btn small" type="button" @click="addProductColor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加颜色</button></div><div class="field-group"><div class="field-title">尺码</div><div class="product-chip-editor"><div v-for="(size,index) in editingProduct.sizes" :key="index" class="product-chip-row"><input v-model="editingProduct.sizes[index]" type="text" placeholder="如 S / M / L"><button class="icon-btn small" type="button" title="删除尺码" @click="removeProductSize(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div><button class="btn small" type="button" @click="addProductSize"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加尺码</button></div><div class="field-group"><div class="field-title">详情页内容</div><div class="field"><label>商品详情说明</label><textarea v-model="editingProduct.detail" placeholder="材质、工艺、护理与设计细节"></textarea></div><div class="field-title">详情图片 <span class="field-hint">{{ editingProduct.detailImages.length }}/12 张</span></div><div class="detail-image-list"><div v-for="(image,index) in editingProduct.detailImages" :key="image" class="detail-image-item"><img :src="mpUrl(image)" :alt="editingProduct.name + ' 详情图'"><button class="icon-btn small" type="button" title="删除详情图" @click="removeProductDetailImage(index)"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div></div><div class="product-media-actions"><button class="btn small" type="button" @click="openProductMediaPicker(null, 'detail')"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传详情图<input type="file" accept="image/*" multiple hidden @change="uploadProductImages($event.target.files,'detail');$event.target.value=''" /></label></div></div></div>
-          <div class="drawer-footer"><button class="btn subtle" @click="editingProduct=null">取消</button><button class="btn primary" @click="saveProduct">保存商品</button></div>
+        <div class="drawer-backdrop" @click="closeProductEditor()"></div>
+        <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="product-drawer-title">
+          <div class="drawer-header"><div><h2 id="product-drawer-title">{{ cfg.products.some(p=>p.id===editingProduct.id) ? '编辑商品' : '新建商品' }}</h2><p v-if="isProductDraftDirty">有未保存的商品修改</p></div><button class="icon-btn" type="button" title="关闭商品编辑" aria-label="关闭商品编辑" @click="closeProductEditor()"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-body"><div class="field-group product-media-group"><div class="field-title">商品图片 <span class="field-hint">{{ productImages(editingProduct).length }}/5 张主图</span></div><div class="product-gallery-grid"><button v-for="slot in 5" :key="slot" type="button" class="product-gallery-slot" :class="{filled:productImages(editingProduct)[slot-1]}" @click="openProductMediaPicker(productImages(editingProduct)[slot-1] ? slot-1 : null, 'gallery')"><img v-if="productImages(editingProduct)[slot-1]" :src="mpUrl(productImages(editingProduct)[slot-1])" :alt="editingProduct.name + ' 主图 ' + slot"><iconify-icon v-else class="icon" icon="ph:plus"></iconify-icon><span>{{ slot === 1 ? '封面' : '主图 ' + slot }}</span><i v-if="productImages(editingProduct)[slot-1]" class="product-gallery-remove" title="删除主图" @click.stop="removeProductImage(slot-1)"><iconify-icon class="icon" icon="ph:x"></iconify-icon></i></button></div><div v-if="productErrors.gallery" class="form-error" role="alert">{{ productErrors.gallery }}</div><div class="product-media-actions"><button class="btn small" type="button" @click="openProductMediaPicker(null, 'gallery')"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传主图<input type="file" accept="image/*" multiple hidden @change="uploadProductImages($event.target.files,'gallery');$event.target.value=''" /></label></div><p class="product-editor-note">第一张作为商品封面，最多 5 张。点击已有图片可替换。</p></div><div class="field"><label for="product-name">商品名称</label><input id="product-name" v-model.trim="editingProduct.name" type="text" :aria-invalid="!!productErrors.name" aria-describedby="product-name-error"><div v-if="productErrors.name" id="product-name-error" class="form-error" role="alert">{{ productErrors.name }}</div></div><div class="field"><label>商品编号</label><input v-model.number="editingProduct.id" type="number" disabled></div><div class="field"><label>所属分类</label><select v-model="editingProduct.cat" :aria-invalid="!!productErrors.cat"><option v-for="cat in cfg.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option></select><div v-if="productErrors.cat" class="form-error" role="alert">{{ productErrors.cat }}</div></div><div class="field"><label>价格（元）</label><input v-model.number="editingProduct.price" type="number" min="0" step="0.01" :aria-invalid="!!productErrors.price"><div v-if="productErrors.price" class="form-error" role="alert">{{ productErrors.price }}</div></div><div class="field"><label>简短描述</label><textarea v-model.trim="editingProduct.description" placeholder="用于商品详情页首段"></textarea></div><div class="field-group"><div class="field-title">颜色</div><div v-if="productErrors.colors" class="form-error" role="alert">{{ productErrors.colors }}</div><div v-for="(color,index) in editingProduct.colors" :key="index" class="product-option-row"><input v-model.trim="color.name" type="text" placeholder="颜色名称"><div class="color-field"><input v-model="color.value" type="color"><input v-model.trim="color.value" type="text"></div><button class="icon-btn small" type="button" title="删除颜色" aria-label="删除颜色" @click="removeProductColor(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div><button class="btn small" type="button" @click="addProductColor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加颜色</button></div><div class="field-group"><div class="field-title">尺码</div><div v-if="productErrors.sizes" class="form-error" role="alert">{{ productErrors.sizes }}</div><div class="product-chip-editor"><div v-for="(size,index) in editingProduct.sizes" :key="index" class="product-chip-row"><input v-model.trim="editingProduct.sizes[index]" type="text" placeholder="如 S / M / L"><button class="icon-btn small" type="button" title="删除尺码" aria-label="删除尺码" @click="removeProductSize(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div><button class="btn small" type="button" @click="addProductSize"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加尺码</button></div><div class="field-group"><div class="field-title">详情页内容</div><div class="field"><label>商品详情说明</label><textarea v-model.trim="editingProduct.detail" placeholder="材质、工艺、护理与设计细节"></textarea></div><div class="field-title">详情图片 <span class="field-hint">{{ editingProduct.detailImages.length }}/12 张</span></div><div class="detail-image-list"><div v-for="(image,index) in editingProduct.detailImages" :key="image" class="detail-image-item"><img :src="mpUrl(image)" :alt="editingProduct.name + ' 详情图'"><button class="icon-btn small" type="button" title="删除详情图" aria-label="删除详情图" @click="removeProductDetailImage(index)"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div></div><div class="product-media-actions"><button class="btn small" type="button" @click="openProductMediaPicker(null, 'detail')"><iconify-icon class="icon" icon="ph:images"></iconify-icon>从媒体库选择</button><label class="btn small"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传详情图<input type="file" accept="image/*" multiple hidden @change="uploadProductImages($event.target.files,'detail');$event.target.value=''" /></label></div></div></div>
+          <div class="drawer-footer"><button class="btn subtle" type="button" @click="closeProductEditor()">取消</button><button class="btn primary" type="button" @click="saveProduct">保存商品</button></div>
         </aside>
       </template>
 

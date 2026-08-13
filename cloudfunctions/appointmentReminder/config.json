@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "openapi": [
+      "subscribeMessage.send"
+    ]
+  },
+  "triggers": [
+    {
+      "name": "appointment-reminder-every-15-minutes",
+      "type": "timer",
+      "config": "0 */15 * * * * *"
+    }
+  ]
+}

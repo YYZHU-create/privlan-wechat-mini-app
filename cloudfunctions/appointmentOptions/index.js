@@ -9,6 +9,11 @@ function dateParts(value) {
   return { value: iso, day: parts.day, month: `${Number(parts.month)}月`, weekday: new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", weekday: "short" }).format(date) };
 }
 
+function minutesFromLabel(value) {
+  const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : -1;
+}
+
 exports.main = async event => {
   const id = core.requestId();
   try {
@@ -38,7 +43,23 @@ exports.main = async event => {
     const selectedDate = String(event.date || normalizedSlots.find(item => item.available)?.date.value || "");
     const dateMap = new Map();
     normalizedSlots.filter(item => item.available).forEach(item => dateMap.set(item.date.value, item.date));
-    const visibleSlots = normalizedSlots.filter(item => item.date.value === selectedDate);
+    const durationMinutes = Math.max(30, Math.min(480, Number(core.env("APPOINTMENT_DURATION_MINUTES", "135")) || 135));
+    const appointmentRecords = selectedDate ? await core.searchRecords("FEISHU_APPOINTMENTS_TABLE_ID", [
+      { field: core.fieldName("FEISHU_FIELD_APPOINTMENT_STORE_ID", "门店ID"), value: storeId },
+      { field: core.fieldName("FEISHU_FIELD_APPOINTMENT_DATE", "日期"), value: selectedDate }
+    ], 500) : [];
+    const intervals = appointmentRecords.filter(record => !["已取消", "取消"].includes(core.fieldValue(record, "FEISHU_FIELD_APPOINTMENT_STATUS", "状态"))).map(record => {
+      const start = Number(core.fieldValue(record, "FEISHU_FIELD_APPOINTMENT_START_AT", "开始时间"));
+      const end = Number(core.fieldValue(record, "FEISHU_FIELD_APPOINTMENT_END_AT", "结束时间"));
+      return { start, end: end || start + durationMinutes * 60000 };
+    }).filter(item => Number.isFinite(item.start));
+    const visibleSlots = normalizedSlots.filter(item => item.date.value === selectedDate).map(item => {
+      const startMinutes = minutesFromLabel(item.label);
+      const start = startMinutes >= 0 ? new Date(`${selectedDate}T${String(Math.floor(startMinutes / 60)).padStart(2, "0")}:${String(startMinutes % 60).padStart(2, "0")}:00+08:00`).getTime() : NaN;
+      const end = start + durationMinutes * 60000;
+      const conflicts = intervals.some(interval => start < interval.end && end > interval.start);
+      return { ...item, available: item.available && !conflicts, endLabel: Number.isFinite(end) ? new Date(end).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }) : "" };
+    });
     let advisorRecords = storeId ? await core.searchRecords("FEISHU_ADVISORS_TABLE_ID", [{ field: core.fieldName("FEISHU_FIELD_ADVISOR_STORE_ID", "门店ID"), value: storeId }], 100) : [];
     const allowedAdvisorIds = new Set(visibleSlots.flatMap(item => item.advisorIds));
     const advisors = advisorRecords.map(record => ({
@@ -51,7 +72,7 @@ exports.main = async event => {
       const [name, description] = entry.split("|");
       return { id: `service-${index + 1}`, name, description: description || "" };
     }).filter(item => item.name);
-    return core.ok({ services, stores: storeItems, dates: [...dateMap.values()].sort((a, b) => a.value.localeCompare(b.value)), slots: visibleSlots.map(({ recordId, advisorIds, capacity, booked, date, ...slot }) => slot), advisors }, "预约选项读取成功", id);
+    return core.ok({ services, stores: storeItems, dates: [...dateMap.values()].sort((a, b) => a.value.localeCompare(b.value)), slots: visibleSlots.map(({ recordId, advisorIds, capacity, booked, date, ...slot }) => ({ ...slot, label: slot.endLabel ? `${slot.label}–${slot.endLabel}` : slot.label })), advisors, durationMinutes }, "预约选项读取成功", id);
   } catch (error) {
     return core.handleError(error, id);
   }

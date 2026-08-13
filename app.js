@@ -2,7 +2,8 @@ App({
   globalData: {
     cart: [],
     cloudReady: false,
-    customerSessionToken: ""
+    customerSessionToken: "",
+    appointmentReminderTemplateId: ""
   },
 
   onLaunch() {

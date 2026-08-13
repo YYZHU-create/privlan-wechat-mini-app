@@ -203,6 +203,38 @@ async function releaseSlot(slotId) {
   try { await db.collection("privlan_slot_locks").doc(documentId).update({ data: { booked: command.inc(-1), updatedAt: db.serverDate() } }); } catch (error) {}
 }
 
+function intervalBucketIds(storeId, startAt, endAt) {
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw createError("INVALID_INPUT", "预约时间无效");
+  const ids = [];
+  for (let cursor = Math.floor(start / 900000) * 900000; cursor < end; cursor += 900000) ids.push(hash(`${storeId}|${cursor}`).slice(0, 32));
+  return ids;
+}
+
+async function reserveAppointmentInterval({ appointmentNumber, storeId, advisorId, startAt, endAt }) {
+  const ids = intervalBucketIds(storeId, startAt, endAt);
+  await db.runTransaction(async transaction => {
+    for (const id of ids) {
+      const reference = transaction.collection("privlan_appointment_locks").doc(id);
+      try {
+        const existing = (await reference.get()).data;
+        if (existing && new Date(existing.endAt).getTime() > Date.now()) throw createError("SLOT_UNAVAILABLE", "该时间段刚刚被预约，请选择其他时间", 409);
+      } catch (error) {
+        if (error.code === "SLOT_UNAVAILABLE") throw error;
+      }
+    }
+    for (const id of ids) {
+      await transaction.collection("privlan_appointment_locks").doc(id).set({ data: { appointmentNumber, storeId, advisorId, startAt, endAt, createdAt: db.serverDate() } });
+    }
+  });
+  return ids;
+}
+
+async function releaseAppointmentInterval(ids = []) {
+  await Promise.all(ids.map(id => db.collection("privlan_appointment_locks").doc(id).remove().catch(() => null)));
+}
+
 function handleError(error, id = requestId()) {
   console.error(id, error);
   const publicCodes = new Set(["AUTH_REQUIRED", "SESSION_EXPIRED", "RATE_LIMITED", "INVALID_INPUT", "CUSTOMER_NOT_FOUND", "INVALID_CODE", "SLOT_UNAVAILABLE", "DUPLICATE_APPOINTMENT", "FEISHU_NOT_CONFIGURED", "FEISHU_TABLE_NOT_CONFIGURED", "FEISHU_BASE_NOT_CONFIGURED", "WECHAT_PHONE_UNAVAILABLE"]);
@@ -214,5 +246,5 @@ function handleError(error, id = requestId()) {
 module.exports = {
   cloud, db, command, ok, fail, createError, env, hash, requestId, escapeFilterValue,
   searchRecords, getRecord, createRecord, updateRecord, plainValue, fieldName, fieldValue,
-  currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot, handleError
+  currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot, reserveAppointmentInterval, releaseAppointmentInterval, handleError
 };

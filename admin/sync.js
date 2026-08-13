@@ -9,6 +9,17 @@ function sync(cfg, root) {
   const path = require("path");
   const updated = [];
 
+  cfg.designSystem ||= {};
+  cfg.designSystem.blockDefaults ||= {};
+  if ([undefined, 1.5, 1.55].includes(cfg.designSystem.blockDefaults.lineHeight)) cfg.designSystem.blockDefaults.lineHeight = 1.65;
+  Object.values(cfg.pageLayouts || {}).forEach(blocks => {
+    if (!Array.isArray(blocks)) return;
+    blocks.forEach(block => {
+      if (!block || !block.style || (Array.isArray(block.overrideKeys) && block.overrideKeys.includes("lineHeight"))) return;
+      if ([undefined, 1.5, 1.55].includes(block.style.lineHeight)) block.style.lineHeight = 1.65;
+    });
+  });
+
   // ---- 1. mock.js ----
   const mockPath = path.join(root, "utils", "mock.js");
   const mockContent = `// 由管理面板自动生成 —— 请勿手动编辑
@@ -106,7 +117,7 @@ page {
   appJson.tabBar.selectedColor = c.accent;
   appJson.tabBar.backgroundColor = c.bgPrimary;
   appJson.pages = Array.isArray(appJson.pages) ? appJson.pages : [];
-  ["pages/service-chat/index", "pages/appointment/index"].forEach(route => {
+  ["pages/service-chat/index", "pages/appointment/index", "pages/my-appointments/index"].forEach(route => {
     if (!appJson.pages.includes(route)) appJson.pages.push(route);
   });
   // 更新 tabBar 文字
@@ -266,24 +277,31 @@ page {
       fs.mkdirSync(pageDir, { recursive: true });
       const jsonPath = path.join(pageDir, `${page.id}.json`);
       fs.writeFileSync(jsonPath, JSON.stringify({ navigationStyle: "custom", usingComponents: { "service-fab": "/components/service-fab/index" } }, null, 2) + "\n", "utf-8");
-      pageMeta[page.id] = { name: page.name || "自定义页面" };
+      pageMeta[page.id] = { name: page.name || "自定义页面", path: page.path || `/pages/${page.id}/${page.id}`, shareTitle: page.shareTitle || page.name || cfg.brand.name, shareImage: page.shareImage || "", description: page.description || "" };
       customRoutes.push(`pages/${page.id}/${page.id}`);
       updated.push(`pages/${page.id}/${page.id}.json`);
+    }
+    const customPageRoot = path.join(root, "pages");
+    if (fs.existsSync(customPageRoot)) {
+      const activeCustomIds = new Set(customRoutes.map(route => route.split("/")[1]));
+      for (const entry of fs.readdirSync(customPageRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !entry.name.startsWith("custom-") || activeCustomIds.has(entry.name)) continue;
+        fs.rmSync(path.join(customPageRoot, entry.name), { recursive: true, force: true });
+        updated.push(`pages/${entry.name} (removed)`);
+      }
     }
     for (const [pageId, blocks] of Object.entries(cfg.pageLayouts)) {
       if (!Array.isArray(blocks) || !pageMeta[pageId]) continue;
       updated.push(...syncPageLayout(cfg, root, pageId, pageMeta[pageId]));
     }
-    if (customRoutes.length) {
-      const appJsonPath = path.join(root, "app.json");
-      const appConfig = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
-      appConfig.pages = Array.isArray(appConfig.pages) ? appConfig.pages : [];
-      for (const route of customRoutes) {
-        if (!appConfig.pages.includes(route)) appConfig.pages.push(route);
-      }
-      fs.writeFileSync(appJsonPath, JSON.stringify(appConfig, null, 2) + "\n", "utf-8");
-      updated.push("app.json");
+    const appJsonPath = path.join(root, "app.json");
+    const appConfig = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
+    appConfig.pages = (Array.isArray(appConfig.pages) ? appConfig.pages : []).filter(route => !/^pages\/custom-[a-z0-9-]+\/custom-[a-z0-9-]+$/.test(route) || customRoutes.includes(route));
+    for (const route of customRoutes) {
+      if (!appConfig.pages.includes(route)) appConfig.pages.push(route);
     }
+    fs.writeFileSync(appJsonPath, JSON.stringify(appConfig, null, 2) + "\n", "utf-8");
+    updated.push("app.json");
   }
 
   return { files: updated };

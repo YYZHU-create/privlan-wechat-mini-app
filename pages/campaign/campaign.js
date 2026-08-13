@@ -88,5 +88,11 @@ Page({
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
   addCart() { cart.add(null); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(null); wx.switchTab({ url: "/pages/cart/cart" }); }
+  buyNow() { cart.add(null); wx.switchTab({ url: "/pages/cart/cart" }); },
+  onShareAppMessage() {
+    return { title: "系列活动", path: "/pages/campaign/campaign" };
+  },
+  onShareTimeline() {
+    return { title: "系列活动" };
+  }
 });

@@ -2,5 +2,8 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "service-fab": "/components/service-fab/index"
-  }
+  },
+  "navigationBarTitleText": "系列活动",
+  "enableShareAppMessage": true,
+  "enableShareTimeline": true
 }

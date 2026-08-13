@@ -204,7 +204,7 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
         "/pages/category/category?cat=new",
         "/pages/service-chat/index",
         "/pages/appointment/index",
-        "/pages/mine/mine"
+        "/pages/my-appointments/index"
       ];
       data[key] = (cfg.memberBenefits || []).map((benefit, benefitIndex) => ({
         ...benefit,
@@ -308,7 +308,13 @@ ${cartImport}Page({
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
   addCart() { cart.add(${cartProductExpression}); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(${cartProductExpression}); wx.switchTab({ url: "/pages/cart/cart" }); }
+  buyNow() { cart.add(${cartProductExpression}); wx.switchTab({ url: "/pages/cart/cart" }); },
+  onShareAppMessage() {
+    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}, path: ${JSON.stringify(pageMeta.path || `/pages/${pageId}/${pageId}`)}${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
+  },
+  onShareTimeline() {
+    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
+  }
 });
 `;
 
@@ -322,7 +328,13 @@ ${cartImport}Page({
   fs.writeFileSync(path.join(pageDir, `${pageId}.wxml`), wxml, "utf-8");
   fs.writeFileSync(path.join(pageDir, `${pageId}.js`), js, "utf-8");
   fs.writeFileSync(path.join(pageDir, `${pageId}.wxss`), wxss + memberLogoStyles + productDetailStyles + mediaStyles + cartStyles, "utf-8");
-  return [`pages/${pageId}/${pageId}.wxml`, `pages/${pageId}/${pageId}.js`, `pages/${pageId}/${pageId}.wxss`];
+  const jsonPath = path.join(pageDir, `${pageId}.json`);
+  const pageJson = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, "utf-8")) : {};
+  pageJson.navigationBarTitleText = pageMeta.name || cfg.brand.name;
+  pageJson.enableShareAppMessage = true;
+  pageJson.enableShareTimeline = true;
+  fs.writeFileSync(jsonPath, JSON.stringify(pageJson, null, 2) + "\n", "utf-8");
+  return [`pages/${pageId}/${pageId}.wxml`, `pages/${pageId}/${pageId}.js`, `pages/${pageId}/${pageId}.wxss`, `pages/${pageId}/${pageId}.json`];
 }
 
 function syncAppointmentLayout(cfg, root, pageMeta = {}) {

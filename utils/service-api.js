@@ -48,5 +48,6 @@ module.exports = {
   verifyWechatPhone: phoneCode => callFunction("customerAuth", { action: "verifyWechatPhone", phoneCode }),
   loadMeasurements: sessionToken => callFunction("customerMeasurements", { sessionToken }),
   loadAppointmentOptions: data => callFunction("appointmentOptions", data),
-  createAppointment: data => callFunction("appointmentCreate", data)
+  createAppointment: data => callFunction("appointmentCreate", data),
+  enableAppointmentReminder: data => callFunction("appointmentReminder", { action: "register", ...data })
 };

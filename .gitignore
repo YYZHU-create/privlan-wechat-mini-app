@@ -9,4 +9,6 @@ miniprogram_npm/
 dist/
 tmp/
 admin/config-backups/
+admin/media-trash/
+admin/qa/final-*.png
 .DS_Store
