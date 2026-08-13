@@ -4,31 +4,31 @@ Component({
     list: [
     {
         "path": "/pages/home/home",
-        "text": "??",
+        "text": "首页",
         "icon": "/images/tab-home.png",
         "iconOn": "/images/tab-home-on.png"
     },
     {
         "path": "/pages/category/category",
-        "text": "??",
+        "text": "分类",
         "icon": "/images/tab-grid.png",
         "iconOn": "/images/tab-grid-on.png"
     },
     {
         "path": "/pages/campaign/campaign",
-        "text": "????",
+        "text": "夏季系列",
         "center": true,
         "centerIcon": "/images/tab-3-centerIcon-pinterest.gif"
     },
     {
         "path": "/pages/cart/cart",
-        "text": "???",
+        "text": "购物车",
         "icon": "/images/tab-bag.png",
         "iconOn": "/images/tab-bag-on.png"
     },
     {
         "path": "/pages/mine/mine",
-        "text": "??",
+        "text": "我的",
         "icon": "/images/tab-user.png",
         "iconOn": "/images/tab-user-on.png"
     }

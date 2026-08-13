@@ -9,6 +9,7 @@ const { execSync, execFileSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const CONFIG_PATH = path.join(__dirname, "config.json");
+const CONFIG_BACKUP_DIR = path.join(__dirname, "config-backups");
 const IMAGES_DIR = path.join(ROOT, "images");
 const FONTS_DIR = path.join(ROOT, "fonts");
 const MEDIA_FOLDERS_PATH = path.join(__dirname, "media-folders.json");
@@ -21,6 +22,7 @@ const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 let previewBuildCount = 0;
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
 fs.mkdirSync(FONTS_DIR, { recursive: true });
+fs.mkdirSync(CONFIG_BACKUP_DIR, { recursive: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
@@ -36,7 +38,40 @@ app.use("/mp-fonts", express.static(FONTS_DIR));
 function readConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
 }
+function suspiciousQuestionPaths(value, currentPath = "", result = []) {
+  if (typeof value === "string") {
+    if (/\?{2,}/.test(value)) result.push(currentPath || "config");
+    return result;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => suspiciousQuestionPaths(item, `${currentPath}[${index}]`, result));
+    return result;
+  }
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, item]) => suspiciousQuestionPaths(item, currentPath ? `${currentPath}.${key}` : key, result));
+  }
+  return result;
+}
+function assertConfigEncoding(cfg) {
+  const paths = suspiciousQuestionPaths(cfg);
+  if (!paths.length) return;
+  const error = new Error(`检测到中文可能被转换为问号，已阻止保存。异常字段：${paths.slice(0, 6).join("、")}${paths.length > 6 ? " 等" : ""}`);
+  error.code = "CONFIG_ENCODING_CORRUPTION";
+  throw error;
+}
+function backupConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.copyFileSync(CONFIG_PATH, path.join(CONFIG_BACKUP_DIR, `config-${stamp}.json`));
+  const backups = fs.readdirSync(CONFIG_BACKUP_DIR)
+    .filter(name => /^config-.*\.json$/.test(name))
+    .sort()
+    .reverse();
+  backups.slice(20).forEach(name => fs.rmSync(path.join(CONFIG_BACKUP_DIR, name), { force: true }));
+}
 function writeConfig(cfg) {
+  assertConfigEncoding(cfg);
+  backupConfig();
   const tempPath = `${CONFIG_PATH}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(cfg, null, 2), "utf-8");
   fs.renameSync(tempPath, CONFIG_PATH);

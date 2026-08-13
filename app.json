@@ -24,23 +24,23 @@
     "list": [
       {
         "pagePath": "pages/home/home",
-        "text": "??"
+        "text": "首页"
       },
       {
         "pagePath": "pages/category/category",
-        "text": "??"
+        "text": "分类"
       },
       {
         "pagePath": "pages/campaign/campaign",
-        "text": "????"
+        "text": "夏季系列"
       },
       {
         "pagePath": "pages/cart/cart",
-        "text": "???"
+        "text": "购物车"
       },
       {
         "pagePath": "pages/mine/mine",
-        "text": "??"
+        "text": "我的"
       }
     ]
   },

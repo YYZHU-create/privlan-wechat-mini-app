@@ -3,10 +3,10 @@ Page({
   data: {
     "navPadTop": 20,
     "channels": [
-        "??",
+        "推荐",
         "LAKE MAGGIORE"
     ],
-    "channel": "??",
+    "channel": "推荐",
     "pageTitle": "系列活动",
     "cartItems": [],
     "cartSummary": {
@@ -28,7 +28,7 @@ Page({
             "src": "/images/d5f9cfe54e41e6dda2cf77987cb75749.jpg",
             "title": "",
             "subtitle": "",
-            "buttonText": "????",
+            "buttonText": "探索更多",
             "showContent": false,
             "showButton": false,
             "linkType": "page",
@@ -43,8 +43,8 @@ Page({
             "kind": "image",
             "src": "/images/hero2.jpg",
             "title": "LAKE MAGGIORE",
-            "subtitle": "??????",
-            "buttonText": "????",
+            "subtitle": "湖畔假日系列",
+            "buttonText": "探索更多",
             "showContent": true,
             "showButton": true,
             "linkType": "page",
