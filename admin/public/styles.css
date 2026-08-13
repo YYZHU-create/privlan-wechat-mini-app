@@ -37,11 +37,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-bottom: 1px solid var(--line); backdrop-filter: blur(18px);
 }
 .brand-lockup { display: grid; justify-items: start; align-content: center; gap: 0; min-width: 0; }
-.atelier-wordmark { color: #151612; font-family: "Noto Serif SC", "Songti SC", Georgia, serif; font-size: 17px; font-weight: 600; letter-spacing: .08em; line-height: 1; }
-.atelier-wordmark span { color: #89704c; font-family: "Segoe UI", "PingFang SC", sans-serif; font-size: 10px; letter-spacing: .08em; vertical-align: 4px; }
+.atelier-wordmark { display: inline-flex; align-items: flex-start; gap: 6px; color: #151612; font-family: "Segoe UI Variable Display", "Aptos Display", "PingFang SC", sans-serif; line-height: 1; white-space: nowrap; }
+.atelier-name { font-size: 14px; font-weight: 650; letter-spacing: .17em; }
+.atelier-os { margin-top: -1px; color: #8c704c; font-size: 8px; font-weight: 750; letter-spacing: .04em; }
 .brand-logo { width: 132px; height: 28px; object-fit: contain; object-position: center; display: block; background: #fff; }
 .brand-word { font-size: 17px; letter-spacing: .16em; font-weight: 600; }
-.brand-edition { color: var(--muted); font-size: 8px; letter-spacing: .14em; margin-top: 5px; }
+.brand-edition { display: none; }
 .workspace-switcher { min-width: 152px; display: grid; grid-template-columns: 28px minmax(0,1fr) 16px; align-items: center; gap: 8px; padding: 4px 8px 4px 4px; border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
 .workspace-switcher:hover { background: #f3f3f0; }
 .workspace-switcher .workspace-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; background: #11120f; color: #d8c4a1; font-family: "Noto Serif SC", serif; font-size: 13px; }
@@ -1287,13 +1288,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .app-shell { grid-template-rows: 64px minmax(0, 1fr); }
 .topbar {
-  grid-template-columns: minmax(220px, 286px) minmax(180px, 1fr) auto;
+  grid-template-columns: 174px minmax(180px, 1fr) auto;
   padding: 0 20px;
   border-bottom: 1px solid var(--ui-line);
   background: rgba(255,255,255,.96);
   box-shadow: 0 1px 0 rgba(22,22,20,.02);
 }
-.brand-lockup { align-items: center; grid-template-columns: auto auto; gap: 14px; }
+.brand-lockup { display: flex; align-items: center; min-width: 0; }
 .brand-logo { width: 120px; height: 30px; object-fit: contain; background: #fff; }
 .brand-edition { margin: 0; padding-left: 14px; border-left: 1px solid var(--ui-line); color: var(--ui-text-tertiary); font-size: 12px; line-height: 1.2; letter-spacing: .06em; }
 .top-context { gap: 8px; }
@@ -1481,9 +1482,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .phone-canvas .preview-service-head strong { font-size: 12px; }
 
 @media (max-width: 1279px) {
-  .topbar { grid-template-columns: 210px minmax(140px,1fr) auto; padding: 0 16px; }
+  .topbar { grid-template-columns: 148px minmax(120px,1fr) auto; padding: 0 14px; }
   .brand-logo { width: 108px; }
-  .brand-edition { font-size: 12px; }
+  .workspace-switcher { min-width: 124px; }
   .editor-layout, .editor-layout.left-closed, .editor-layout.right-closed, .editor-layout.left-closed.right-closed { grid-template-columns: minmax(0,1fr); }
   .left-panel, .right-panel { position: absolute; top: 0; bottom: 0; width: min(360px, calc(100vw - 96px)); opacity: 0; pointer-events: none; box-shadow: var(--ui-shadow-lg); }
   .left-panel { left: 0; transform: translateX(-102%); }
@@ -1497,6 +1498,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .editor-layout.has-responsive-drawer .canvas-wrap { transition: transform 180ms ease-out; }
   .editor-layout.has-responsive-drawer:has(.right-panel.open) .canvas-wrap { transform: translateX(-80px) scale(.9); transform-origin: center top; }
   .editor-layout.has-responsive-drawer:has(.left-panel.open) .canvas-wrap { transform: translateX(80px) scale(.9); transform-origin: center top; }
+}
+
+@media (max-width: 1080px) {
+  .topbar { grid-template-columns: 126px minmax(110px,1fr) auto; gap: 6px; padding-inline: 12px; }
+  .atelier-name { font-size: 13px; letter-spacing: .13em; }
+  .workspace-switcher { min-width: 0; width: 42px; grid-template-columns: 28px 0 14px; gap: 0; overflow: hidden; }
+  .workspace-switcher > span:nth-child(2) { opacity: 0; pointer-events: none; }
+  .top-context { gap: 6px; }
+  .crumb-current { max-width: 74px; }
+  .save-state { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top-actions { gap: 5px; }
+  .top-actions .btn { padding-inline: 10px; }
 }
 
 @media (max-width: 900px) {

@@ -2191,8 +2191,7 @@ createApp({
     <div class="app-shell" :class="{'editor-mode': currentView === 'editor'}">
       <header class="topbar">
         <div class="brand-lockup">
-          <div class="atelier-wordmark" translate="no">ATELIER <span>OS</span></div>
-          <div class="brand-edition">RETAIL COMMERCE SYSTEM</div>
+          <div class="atelier-wordmark" translate="no" aria-label="ATELIER OS"><span class="atelier-name">ATELIER</span><span class="atelier-os">OS</span></div>
         </div>
         <div class="top-context">
           <button type="button" class="workspace-switcher" aria-label="切换工作区"><span class="workspace-mark">P</span><span><strong>{{ platform.workspace?.storeName || 'PRIVLAN' }}</strong><small>{{ platform.workspace?.planName || 'Professional' }}</small></span><iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></button>
