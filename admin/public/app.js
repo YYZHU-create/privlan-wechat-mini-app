@@ -136,12 +136,15 @@ createApp({
       { id: "overview", label: "概览", icon: "ph:gauge" },
       { id: "editor", label: "设计", icon: "ph:bounding-box" },
       { id: "products", label: "商品", icon: "ph:handbag" },
+      { id: "categories", label: "分类", icon: "ph:tree-structure" },
+      { id: "media", label: "媒体", icon: "ph:image-square" },
       { id: "orders", label: "订单", icon: "ph:receipt" },
       { id: "customers", label: "客户", icon: "ph:users-three" },
       { id: "marketing", label: "营销", icon: "ph:megaphone" },
       { id: "ai-service", label: "客服", icon: "ph:chat-circle-text" },
       { id: "analytics", label: "数据", icon: "ph:chart-line-up" },
       { id: "channels", label: "发布", icon: "ph:broadcast" },
+      { id: "theme", label: "主题", icon: "ph:paint-brush" },
       { id: "settings", label: "设置", icon: "ph:sliders-horizontal" }
     ];
 
