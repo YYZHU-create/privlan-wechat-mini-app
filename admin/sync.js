@@ -33,13 +33,18 @@ module.exports = { categories, products, heroes, memberBenefits };
   // ---- 2. app.wxss (主题配色) ----
   const wxssPath = path.join(root, "app.wxss");
   const c = cfg.theme.colors;
+  const typography = {
+    caption: 22, meta: 24, body: 28, sectionTitle: 34, pageTitle: 42, heroTitle: 54,
+    bodyLineHeight: 1.65, headingLineHeight: 1.3,
+    ...(cfg.designSystem?.miniProgramTypography || {})
+  };
   const wxssContent = `/* 全局样式 —— 由管理面板自动生成 */
 page {
   background: ${c.bgPrimary};
   color: ${c.textPrimary};
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
-  font-size: 28rpx;
-  line-height: 1.6;
+  font-size: ${typography.body}rpx;
+  line-height: ${typography.bodyLineHeight};
 }
 
 .serif {
@@ -50,7 +55,7 @@ page {
 .btn-black {
   background: ${c.accent};
   color: ${c.bgPrimary};
-  font-size: 28rpx;
+  font-size: ${typography.body}rpx;
   letter-spacing: 6rpx;
   border-radius: 0;
   padding: 0 80rpx;
@@ -62,10 +67,13 @@ page {
 .btn-outline {
   border: 1rpx solid ${c.accent};
   color: ${c.accent};
-  font-size: 26rpx;
+  font-size: ${typography.body}rpx;
   letter-spacing: 4rpx;
-  padding: 14rpx 60rpx;
-  display: inline-block;
+  min-height: 88rpx;
+  padding: 0 60rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .hairline {
@@ -74,8 +82,9 @@ page {
 }
 
 .section-title {
-  font-size: 32rpx;
-  letter-spacing: 8rpx;
+  font-size: ${typography.sectionTitle}rpx;
+  line-height: ${typography.headingLineHeight};
+  letter-spacing: 0;
   text-align: center;
   padding: 48rpx 0 32rpx;
   font-weight: 500;

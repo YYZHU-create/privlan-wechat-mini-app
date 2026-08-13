@@ -10,6 +10,8 @@ createApp({
     const loadError = ref("");
     const currentView = ref("editor");
     const currentPage = ref("home");
+    const leftPanelOpen = ref(true);
+    const rightPanelOpen = ref(true);
     const selectedId = ref(null);
     const inspectorTab = ref("content");
     const device = ref("mobile");
@@ -68,6 +70,11 @@ createApp({
     let dragSlideIndex = -1;
     let tabBarCropImage = null;
     let tabBarCropDrag = null;
+
+    try {
+      leftPanelOpen.value = localStorage.getItem("privlan:left-panel") !== "closed";
+      rightPanelOpen.value = localStorage.getItem("privlan:right-panel") !== "closed";
+    } catch (error) { /* storage is optional */ }
 
     const fontPresets = [
       { id: "system", name: "现代系统体", stack: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif' },
@@ -150,10 +157,7 @@ createApp({
       ...(cfg.value.customFonts || []).map(font => ({ id: font.id, name: font.name, stack: `"${font.id}", "PingFang SC", sans-serif`, custom: true })),
       ...systemFonts.value.map(font => ({ id: `system:${font.name}`, name: `电脑 · ${font.name}`, stack: `"${font.name}", "PingFang SC", sans-serif`, system: true, file: font.file }))
     ]);
-    const hasStyleOverrides = computed(() => {
-      if (!selectedSection.value) return false;
-      return JSON.stringify(selectedSection.value.style) !== JSON.stringify(sectionStyleDefaults(selectedSection.value.type));
-    });
+    const hasStyleOverrides = computed(() => Boolean(selectedSection.value?.overrideKeys?.length));
     const isDirty = computed(() => cfg.value && JSON.stringify(cfg.value) !== savedSnapshot.value);
     const canUndo = computed(() => historyIndex.value > 0);
     const canRedo = computed(() => historyIndex.value >= 0 && historyIndex.value < history.value.length - 1);
@@ -292,8 +296,8 @@ createApp({
       };
     }
 
-    function sectionStyleDefaults(type) {
-      const global = cfg.value?.designSystem?.blockDefaults || {};
+    function sectionStyleDefaults(type, designSystem = cfg.value?.designSystem) {
+      const global = designSystem?.blockDefaults || {};
       const common = {
         backgroundColor: "transparent", textColor: "", fontFamily: "system", fontSize: 14,
         fontWeight: 400, textAlign: "left", letterSpacing: 0, lineHeight: 1.5,
@@ -305,7 +309,7 @@ createApp({
       const typeDefaults = {
         hero: { height: 420, paddingX: 0, paddingY: 0, textAlign: "center", fontFamily: "luxury-serif", fontSize: 28, textColor: "#c9a97e", overlay: 40 },
         media: { height: 360, paddingX: 0, paddingY: 0, backgroundColor: "#ffffff", overlay: 0 },
-        categories: { paddingX: 14, paddingY: 17, fontSize: 10 },
+        categories: { paddingX: 16, paddingY: 20, fontSize: 14 },
         "product-grid": { paddingX: 15, paddingY: 25, gap: 10, fontFamily: "system" },
         "member-banner": { paddingX: 18, paddingY: 28, textAlign: "center", fontFamily: "luxury-serif", backgroundColor: "#000000", textColor: "#ffffff" },
         "product-detail": { paddingX: 18, paddingY: 24, fontFamily: "system", fontSize: 14 },
@@ -319,8 +323,34 @@ createApp({
       return { ...common, ...global, ...(typeDefaults[type] || {}) };
     }
 
-    function normalizeSectionStyle(style = {}, type = "text") {
-      const defaults = sectionStyleDefaults(type);
+    function legacySectionStyleDefaults(type) {
+      const common = {
+        backgroundColor: "transparent", textColor: "", fontFamily: "system", fontSize: 14,
+        fontWeight: 400, textAlign: "left", letterSpacing: 0, lineHeight: 1.5,
+        paddingX: 16, paddingY: 24, marginTop: 0, marginBottom: 0,
+        borderColor: "transparent", borderWidth: 0, borderRadius: 0,
+        buttonTextColor: "", buttonBackground: "transparent", buttonBorderColor: "", buttonBorderWidth: 1,
+        buttonRadius: 0, buttonFontSize: 12, buttonFontWeight: 500
+      };
+      const types = {
+        hero: { height: 420, paddingX: 0, paddingY: 0, textAlign: "center", fontFamily: "luxury-serif", fontSize: 28, textColor: "#c9a97e", overlay: 40 },
+        media: { height: 360, paddingX: 0, paddingY: 0, backgroundColor: "#ffffff", overlay: 0 },
+        categories: { paddingX: 14, paddingY: 17, fontSize: 10 },
+        "product-grid": { paddingX: 15, paddingY: 25, gap: 10, fontFamily: "system" },
+        "member-banner": { paddingX: 18, paddingY: 28, textAlign: "center", fontFamily: "luxury-serif", backgroundColor: "#000000", textColor: "#ffffff" },
+        "product-detail": { paddingX: 18, paddingY: 24, fontFamily: "system", fontSize: 14 },
+        "appointment-hero": { paddingX: 24, paddingY: 28, fontFamily: "luxury-serif", backgroundColor: "#171717", textColor: "#ffffff" },
+        "appointment-form": { paddingX: 16, paddingY: 20, backgroundColor: "#f4f3f0", textColor: "#171717" },
+        "appointment-notes": { paddingX: 16, paddingY: 20, backgroundColor: "#ffffff", textColor: "#171717" },
+        "appointment-submit": { paddingX: 16, paddingY: 20, backgroundColor: "#ffffff", textColor: "#171717" },
+        text: { paddingX: 22, paddingY: 30, textAlign: "center", fontFamily: "luxury-serif", fontSize: 18 },
+        spacer: { height: 30, paddingX: 0, paddingY: 0 }
+      };
+      return { ...common, ...(types[type] || {}) };
+    }
+
+    function normalizeSectionStyle(style = {}, type = "text", designSystem) {
+      const defaults = sectionStyleDefaults(type, designSystem);
       const merged = { ...defaults, ...(style || {}) };
       const numeric = (value, fallback, min, max) => {
         const number = Number(value);
@@ -331,6 +361,17 @@ createApp({
       merged.paddingX = numeric(merged.paddingX, defaults.paddingX, 0, 120);
       merged.paddingY = numeric(merged.paddingY, defaults.paddingY, 0, 180);
       return merged;
+    }
+
+    function refreshStyleOverrides(section) {
+      if (!section) return;
+      const defaults = sectionStyleDefaults(section.type);
+      const keys = new Set(Array.isArray(section.overrideKeys) ? section.overrideKeys : []);
+      Object.keys(section.style || {}).forEach(key => {
+        if (section.style[key] !== defaults[key]) keys.add(key);
+        else keys.delete(key);
+      });
+      section.overrideKeys = [...keys];
     }
 
     function makeSlide(hero, index = 0) {
@@ -387,6 +428,7 @@ createApp({
     }
 
     function normalizeConfig(data) {
+      const previousDesignVersion = Number(data.designSystem?.version || 1);
       data.brand ||= { name: "PRIVLAN", slogan: "成为会员，享受更多礼遇" };
       data.theme ||= {};
       data.theme.colors ||= {
@@ -426,7 +468,33 @@ createApp({
       };
       data.customFonts ||= [];
       if (!Array.isArray(data.customPages)) data.customPages = [];
-      data.designSystem ||= { blockDefaults: { fontFamily: "system", fontWeight: 400, lineHeight: 1.5 } };
+      const existingDesignSystem = data.designSystem || {};
+      data.designSystem = {
+        ...existingDesignSystem,
+        version: 2,
+        blockDefaults: {
+          fontFamily: "system", fontWeight: 400, lineHeight: 1.55,
+          ...(existingDesignSystem.blockDefaults || {})
+        },
+        typography: {
+          caption: 12, meta: 13, body: 14, panelTitle: 16, pageTitle: 20, display: 28,
+          bodyLineHeight: 1.55, displayLineHeight: 1.3,
+          ...(existingDesignSystem.typography || {})
+        },
+        miniProgramTypography: {
+          caption: 22, meta: 24, body: 28, sectionTitle: 34, pageTitle: 42, heroTitle: 54,
+          bodyLineHeight: 1.65, headingLineHeight: 1.3,
+          ...(existingDesignSystem.miniProgramTypography || {})
+        },
+        spacing: {
+          unit: 4, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, section: 48,
+          ...(existingDesignSystem.spacing || {})
+        },
+        surfaces: {
+          radius: 8, shadow: "0 12px 36px rgba(31,30,27,.08)",
+          ...(existingDesignSystem.surfaces || {})
+        }
+      };
       data.pageLayouts ||= {};
       if (!Array.isArray(data.pageLayouts.home)) {
       data.pageLayouts.home = [
@@ -453,7 +521,20 @@ createApp({
       });
       Object.values(data.pageLayouts).flat().forEach(section => {
         section.props ||= {};
-        section.style = normalizeSectionStyle(section.style, section.type);
+        const rawStyle = section.style || {};
+        const legacyDefaults = legacySectionStyleDefaults(section.type);
+        section.overrideKeys = Array.isArray(section.overrideKeys)
+          ? section.overrideKeys
+          : Object.keys(rawStyle).filter(key => rawStyle[key] !== legacyDefaults[key]);
+        if (previousDesignVersion < 2) {
+          const migratedStyle = sectionStyleDefaults(section.type, data.designSystem);
+          section.overrideKeys.forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(rawStyle, key)) migratedStyle[key] = rawStyle[key];
+          });
+          section.style = normalizeSectionStyle(migratedStyle, section.type, data.designSystem);
+        } else {
+          section.style = normalizeSectionStyle(section.style, section.type, data.designSystem);
+        }
         section.visibility ||= { mobile: true, tablet: true, desktop: true };
         if (section.enabled === undefined) section.enabled = true;
         if (section.type === "hero") {
@@ -528,6 +609,10 @@ createApp({
       }, 380);
     }, { deep: true });
     watch(selectedId, () => { selectedSlideIndex.value = 0; selectedHotspotId.value = null; hotspotEditMode.value = false; });
+    watch(() => selectedSection.value?.style, () => {
+      if (!selectedSection.value || loading.value || restoring.value) return;
+      refreshStyleOverrides(selectedSection.value);
+    }, { deep: true });
     watch(() => cfg.value.customFonts, fonts => installCustomFonts(fonts || []), { deep: true });
 
     function restoreHistory(index) {
@@ -556,6 +641,7 @@ createApp({
       if (!cfg.value) return false;
       Object.values(cfg.value.pageLayouts || {}).flat().forEach(section => {
         section.style = normalizeSectionStyle(section.style, section.type);
+        refreshStyleOverrides(section);
       });
       saveMode.value = "saving";
       try {
@@ -722,6 +808,15 @@ createApp({
     function switchView(id) {
       currentView.value = id;
       if (id === "media" && !media.value.length) loadMedia();
+    }
+
+    function togglePanel(side) {
+      if (side === "left") leftPanelOpen.value = !leftPanelOpen.value;
+      if (side === "right") rightPanelOpen.value = !rightPanelOpen.value;
+      try {
+        localStorage.setItem("privlan:left-panel", leftPanelOpen.value ? "open" : "closed");
+        localStorage.setItem("privlan:right-panel", rightPanelOpen.value ? "open" : "closed");
+      } catch (error) { /* storage is optional */ }
     }
 
     function openNewPage() {
@@ -946,6 +1041,7 @@ createApp({
     function resetSectionStyle(section = selectedSection.value) {
       if (!section) return;
       section.style = sectionStyleDefaults(section.type);
+      section.overrideKeys = [];
       toast("已恢复全局默认", `${blockLabel(section)} 的独立样式已清除`);
     }
 
@@ -1783,12 +1879,12 @@ createApp({
     loadConfig();
 
     return {
-      cfg, loading, loadError, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode,
+      cfg, loading, loadError, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, leftPanelOpen, rightPanelOpen,
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory,
       editingProduct, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, servicePreview, toasts, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, undo, redo,
+      canUndo, canRedo, filteredProducts, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, undo, redo,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, saveProduct, removeProduct, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, resetSectionStyle,
@@ -1838,9 +1934,9 @@ createApp({
             <button class="btn" @click="location.reload()">重新加载</button>
           </div>
 
-          <div v-else-if="currentView === 'editor'" class="editor-layout">
-            <aside class="side-panel">
-              <div class="panel-header"><div><div class="panel-title">页面区块</div><div class="panel-subtitle">点击添加到当前页面</div></div></div>
+          <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen}">
+            <aside class="side-panel left-panel" :class="{open:leftPanelOpen}">
+              <div class="panel-header"><div><div class="panel-title">页面区块</div><div class="panel-subtitle">点击添加到当前页面</div></div><button class="icon-btn panel-close" title="收起页面区块" @click="togglePanel('left')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button></div>
               <div class="panel-scroll">
                 <div class="section-label"><span>页面</span><span>{{ pageDefinitions.length }} 个</span></div>
                 <div class="page-navigator">
@@ -1873,8 +1969,8 @@ createApp({
 
             <section class="canvas-wrap">
               <div class="canvas-toolbar">
-                <div class="canvas-meta"><iconify-icon class="icon" :icon="currentPageMeta.icon"></iconify-icon><select :value="currentPage" @change="switchPage($event.target.value)"><option v-for="page in pageDefinitions" :key="page.id" :value="page.id">{{ page.name }}</option></select><span>·</span><span>{{ sections.length }} 个区块</span></div>
-                <div class="canvas-tools"><span>{{ device === 'mobile' ? '390 × 自适应' : device === 'tablet' ? '640 × 自适应' : '桌面预览' }}</span></div>
+                <div class="canvas-meta"><button class="icon-btn canvas-panel-toggle" title="页面与区块" @click="togglePanel('left')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button><iconify-icon class="icon" :icon="currentPageMeta.icon"></iconify-icon><select :value="currentPage" @change="switchPage($event.target.value)"><option v-for="page in pageDefinitions" :key="page.id" :value="page.id">{{ page.name }}</option></select><span>·</span><span>{{ sections.length }} 个区块</span></div>
+                <div class="canvas-tools"><span>{{ device === 'mobile' ? '390 × 自适应' : device === 'tablet' ? '640 × 自适应' : '桌面预览' }}</span><button class="icon-btn canvas-panel-toggle" title="属性面板" @click="togglePanel('right')"><iconify-icon class="icon" icon="ph:sliders-horizontal"></iconify-icon></button></div>
               </div>
               <div class="canvas-stage">
                 <div class="phone-canvas" :class="device" :style="{ transform: 'scale(' + zoom / 100 + ')' }">
@@ -1954,8 +2050,8 @@ createApp({
               </div>
             </section>
 
-            <aside class="side-panel right">
-              <div class="panel-header"><div><div class="panel-title">属性面板</div><div class="panel-subtitle">{{ selectedSection ? blockLabel(selectedSection) : '未选择区块' }}</div></div><button v-if="selectedSection" class="icon-btn" title="取消选择区块" aria-label="取消选择区块" @click="selectedId = null"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+            <aside class="side-panel right right-panel" :class="{open:rightPanelOpen}">
+              <div class="panel-header"><div><div class="panel-title">属性面板</div><div class="panel-subtitle">{{ selectedSection ? blockLabel(selectedSection) : '未选择区块' }}</div></div><div class="panel-header-actions"><button v-if="selectedSection" class="icon-btn" title="取消选择区块" aria-label="取消选择区块" @click="selectedId = null"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button><button class="icon-btn panel-close" title="收起属性面板" @click="togglePanel('right')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button></div></div>
               <div v-if="selectedSection" class="inspector-status"><div><span class="status-ring"></span>{{ hasStyleOverrides ? '全局样式已覆盖' : '跟随全局样式' }}</div><button @click="resetSectionStyle()">恢复全局</button></div>
               <div class="inspector-tabs"><button v-for="tab in [{id:'content',name:'内容'},{id:'style',name:'样式'},{id:'motion',name:'动效'},{id:'advanced',name:'高级'}]" :key="tab.id" class="inspector-tab" :class="{active: inspectorTab === tab.id}" @click="inspectorTab = tab.id">{{ tab.name }}</button></div>
               <div v-if="!selectedSection" class="selection-empty"><iconify-icon class="icon" icon="ph:cursor-click"></iconify-icon><div>在画布中选择一个区块</div></div>
