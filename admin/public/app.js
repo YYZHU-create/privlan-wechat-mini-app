@@ -469,12 +469,16 @@ createApp({
       data.customFonts ||= [];
       if (!Array.isArray(data.customPages)) data.customPages = [];
       const existingDesignSystem = data.designSystem || {};
+      const migratedBlockDefaults = { ...(existingDesignSystem.blockDefaults || {}) };
+      if (Number(migratedBlockDefaults.lineHeight || 1.5) === 1.5) {
+        migratedBlockDefaults.lineHeight = 1.55;
+      }
       data.designSystem = {
         ...existingDesignSystem,
         version: 2,
         blockDefaults: {
           fontFamily: "system", fontWeight: 400, lineHeight: 1.55,
-          ...(existingDesignSystem.blockDefaults || {})
+          ...migratedBlockDefaults
         },
         typography: {
           caption: 12, meta: 13, body: 14, panelTitle: 16, pageTitle: 20, display: 28,
@@ -526,15 +530,11 @@ createApp({
         section.overrideKeys = Array.isArray(section.overrideKeys)
           ? section.overrideKeys
           : Object.keys(rawStyle).filter(key => rawStyle[key] !== legacyDefaults[key]);
-        if (previousDesignVersion < 2) {
-          const migratedStyle = sectionStyleDefaults(section.type, data.designSystem);
-          section.overrideKeys.forEach(key => {
-            if (Object.prototype.hasOwnProperty.call(rawStyle, key)) migratedStyle[key] = rawStyle[key];
-          });
-          section.style = normalizeSectionStyle(migratedStyle, section.type, data.designSystem);
-        } else {
-          section.style = normalizeSectionStyle(section.style, section.type, data.designSystem);
-        }
+        const resolvedStyle = sectionStyleDefaults(section.type, data.designSystem);
+        section.overrideKeys.forEach(key => {
+          if (Object.prototype.hasOwnProperty.call(rawStyle, key)) resolvedStyle[key] = rawStyle[key];
+        });
+        section.style = normalizeSectionStyle(resolvedStyle, section.type, data.designSystem);
         section.visibility ||= { mobile: true, tablet: true, desktop: true };
         if (section.enabled === undefined) section.enabled = true;
         if (section.type === "hero") {
