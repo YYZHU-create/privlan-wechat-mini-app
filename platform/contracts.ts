@@ -33,7 +33,9 @@ export interface PublishJob extends ScopedResource {
 export interface AiResponse {
   ok: boolean;
   requestId: string;
-  provider: "deepseek" | "rules" | "tools";
+  provider: string;
+  providerId?: string;
+  billingMode?: "byok" | "platform" | "rules";
   type: "answer" | "faq" | "action" | "error";
   content: string;
   confidence: number;
@@ -42,6 +44,30 @@ export interface AiResponse {
   usage?: { promptTokens: number; completionTokens: number; weightedPoints: number };
   fallback?: boolean;
 }
+
+export interface AiConnection extends ScopedResource {
+  id: string;
+  ownerType: "merchant" | "platform";
+  protocol: "openai";
+  providerPreset: string;
+  providerName: string;
+  baseUrl: string;
+  model: string;
+  status: "active" | "disabled";
+  hasSecret: boolean;
+  lastTestOk: boolean | null;
+  lastTestAt?: string;
+}
+
+export interface AiPolicy extends ScopedResource {
+  mode: "rules" | "byok" | "platform";
+  connectionId?: string | null;
+  platformConnectionId?: string | null;
+  dailyPointLimit: number;
+  fallbackToRules: boolean;
+}
+
+export type OperatorRole = "super_admin" | "operations" | "support" | "finance" | "auditor";
 
 export interface PlanEntitlement {
   planId: "trial" | "starter" | "professional" | "enterprise";

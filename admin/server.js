@@ -7,6 +7,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { execSync, execFileSync } = require("child_process");
+const platformStore = require("./platform-store");
+const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 
 const ROOT = path.join(__dirname, "..");
 const CONFIG_PATH = path.join(__dirname, "config.json");
@@ -24,9 +26,10 @@ const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
 const TRASH_DIR = path.join(__dirname, "media-trash");
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
-const SAAS_STATE_PATH = path.join(__dirname, "saas-state.json");
+const OPS_BOOTSTRAP_PATH = path.join(__dirname, ".ops-bootstrap.json");
 let previewBuildCount = 0;
 const aiUsage = { inputTokens: 0, outputTokens: 0, requests: 0, fallbackRequests: 0, errors: 0 };
+const operatorSessions = new Map();
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
 fs.mkdirSync(FONTS_DIR, { recursive: true });
 fs.mkdirSync(CONFIG_BACKUP_DIR, { recursive: true });
@@ -71,7 +74,36 @@ app.use("/api", (req, res, next) => {
   mutationRequests.set(client, recent);
   next();
 });
+app.use("/v1", (req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (req.path === "/ai/query") return next();
+  const origin = String(req.get("origin") || "");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) return res.status(403).json({ ok: false, error: "请求来源不受信任" });
+    } catch (error) {
+      return res.status(403).json({ ok: false, error: "请求来源无效" });
+    }
+  }
+  if (HOST !== "127.0.0.1" && HOST !== "localhost" && HOST !== "::1") {
+    const suppliedToken = String(req.get("x-privlan-token") || "");
+    if (!ADMIN_TOKEN || suppliedToken !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
+  }
+  const client = `v1:${req.ip || req.socket.remoteAddress || "local"}`;
+  const now = Date.now();
+  const recent = (mutationRequests.get(client) || []).filter(time => now - time < 60_000);
+  if (recent.length >= 120) return res.status(429).json({ ok: false, error: "操作过于频繁，请稍后重试" });
+  recent.push(now);
+  mutationRequests.set(client, recent);
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/ops", express.static(path.join(__dirname, "ops-public")));
+app.use("/ops/v1", (req, res, next) => {
+  const localHost = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+  if (!localHost && !process.env.ATELIER_OPS_PASSWORD) return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });
+  next();
+});
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
 app.use("/mp-fonts", express.static(FONTS_DIR));
@@ -119,61 +151,175 @@ function writeConfig(cfg) {
   fs.renameSync(tempPath, CONFIG_PATH);
 }
 
-function defaultSaasState() {
-  return {
-    schemaVersion: 1,
-    workspace: {
-      tenantId: "tenant_privlan_demo",
-      workspaceId: "workspace_privlan_cn",
-      storeId: "store_privlan_main",
-      workspaceName: "PRIVLAN Retail",
-      storeName: "PRIVLAN",
-      planId: "professional",
-      planName: "Professional",
-      channelMode: "shared",
-      roles: ["owner", "admin", "designer", "operator", "customer_service"]
-    },
-    plans: [
-      { id: "trial", name: "14 天试用", monthlyPrice: 0, yearlyPrice: 0, stores: 1, skuLimit: 50, storageGb: 1, aiPoints: 100000 },
-      { id: "starter", name: "Starter", monthlyPrice: 299, yearlyPrice: 2990, stores: 1, skuLimit: 500, storageGb: 5, aiPoints: 1000000 },
-      { id: "professional", name: "Professional", monthlyPrice: 899, yearlyPrice: 8990, stores: 3, skuLimit: 5000, storageGb: 50, aiPoints: 5000000 },
-      { id: "enterprise", name: "Enterprise", monthlyPrice: 2999, yearlyPrice: null, stores: 10, skuLimit: null, storageGb: null, aiPoints: null }
-    ],
-    publishJobs: []
-  };
-}
-
 function readSaasState() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(SAAS_STATE_PATH, "utf-8"));
-    return { ...defaultSaasState(), ...parsed, workspace: { ...defaultSaasState().workspace, ...(parsed.workspace || {}) } };
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    return defaultSaasState();
-  }
+  return platformStore.readState();
 }
 
 function writeSaasState(state) {
-  const tempPath = `${SAAS_STATE_PATH}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), "utf-8");
-  fs.renameSync(tempPath, SAAS_STATE_PATH);
+  return platformStore.writeState(state);
 }
 
 function requestId(prefix = "req") {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
-function publicAiStatus() {
-  const configured = Boolean(String(process.env.DEEPSEEK_API_KEY || "").trim());
+function parseCookies(req) {
+  return String(req.headers.cookie || "").split(";").reduce((result, part) => {
+    const index = part.indexOf("=");
+    if (index < 0) return result;
+    result[decodeURIComponent(part.slice(0, index).trim())] = decodeURIComponent(part.slice(index + 1).trim());
+    return result;
+  }, {});
+}
+
+function ensureLocalOperator() {
+  const state = readSaasState();
+  const email = String(process.env.ATELIER_OPS_EMAIL || "ops-admin@localhost").trim().toLowerCase();
+  let password = String(process.env.ATELIER_OPS_PASSWORD || "");
+  if (!password && (HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1")) {
+    try {
+      const bootstrap = JSON.parse(fs.readFileSync(OPS_BOOTSTRAP_PATH, "utf8"));
+      password = String(bootstrap.password || "");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (!password) {
+      password = `${crypto.randomBytes(15).toString("base64url")}!A7`;
+      fs.writeFileSync(OPS_BOOTSTRAP_PATH, JSON.stringify({ email, password, createdAt: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
+      console.log(`  Local ops   ${email} / ${password}`);
+    }
+  }
+  const existing = state.operatorUsers.find(item => item.email === email);
+  if (existing) {
+    const passwordSource = process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap";
+    const passwordFingerprint = crypto.createHash("sha256").update(password).digest("hex");
+    if (password && (existing.passwordSource !== passwordSource || existing.passwordFingerprint !== passwordFingerprint)) {
+      existing.passwordHash = platformStore.hashPassword(password);
+      existing.passwordSource = passwordSource;
+      existing.passwordFingerprint = passwordFingerprint;
+      existing.updatedAt = new Date().toISOString();
+      platformStore.appendAudit(state, { actorType: "system", actorId: "bootstrap", action: "operator.password_bootstrap", resourceType: "operator_user", resourceId: existing.id, tenantId: null, metadata: { source: "environment" } });
+      writeSaasState(state);
+    }
+    return;
+  }
+  if (HOST !== "127.0.0.1" && HOST !== "localhost" && !process.env.ATELIER_OPS_PASSWORD) {
+    console.warn("ATELIER_OPS_PASSWORD 未配置，运营后台登录已禁用");
+    return;
+  }
+  state.operatorUsers.push({ id: requestId("operator"), email, name: "ATELIER OS 管理员", role: "super_admin", passwordHash: platformStore.hashPassword(password), passwordSource: process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap", passwordFingerprint: crypto.createHash("sha256").update(password).digest("hex"), status: "active", createdAt: new Date().toISOString() });
+  platformStore.appendAudit(state, { actorType: "system", actorId: "bootstrap", action: "operator.create", resourceType: "operator_user", resourceId: state.operatorUsers[0].id, tenantId: null, metadata: { localBootstrap: !process.env.ATELIER_OPS_PASSWORD } });
+  writeSaasState(state);
+}
+
+function operatorSession(req) {
+  const token = parseCookies(req).atelier_ops_session || String(req.get("x-atelier-ops-session") || "");
+  const session = operatorSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    if (token) operatorSessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+function requireOperator(req, res, next) {
+  const session = operatorSession(req);
+  if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 ATELIER OS 运营后台" });
+  req.operator = session;
+  next();
+}
+
+function safeOperatorUser(user) {
+  if (!user) return null;
+  const { passwordHash, ...safe } = user;
+  return safe;
+}
+
+function appendAuditAndWrite(state, event) {
+  platformStore.appendAudit(state, event);
+  return writeSaasState(state);
+}
+
+function connectionFromInput(input, scope) {
+  const providerPreset = String(input.providerPreset || "openai-compatible");
+  const preset = platformStore.PROVIDER_PRESETS.find(item => item.id === providerPreset) || platformStore.PROVIDER_PRESETS.at(-1);
+  const baseUrl = normalizeBaseUrl(input.baseUrl || preset.baseUrl);
+  const model = String(input.model || preset.model || "").trim().slice(0, 120);
+  const apiKey = String(input.apiKey || "").trim();
+  if (!model) throw new Error("请输入模型名称");
+  if (!apiKey) throw new Error("请输入 API Key");
   return {
-    configured,
-    provider: configured ? "deepseek" : "rules",
-    status: configured ? "online" : "fallback",
-    model: String(process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"),
-    endpoint: configured ? "configured" : "missing",
-    retention: "session_only",
-    answerProvider: configured ? "deepseek_rag" : "rules"
+    id: requestId("aic"),
+    tenantId: scope.tenantId,
+    storeId: scope.storeId || null,
+    ownerType: scope.ownerType,
+    providerPreset,
+    providerName: String(input.providerName || preset.name || "自定义模型").trim().slice(0, 60),
+    protocol: "openai",
+    baseUrl,
+    model,
+    timeoutMs: Math.min(60000, Math.max(3000, Number(input.timeoutMs) || 12000)),
+    maxTokens: Math.min(2000, Math.max(100, Number(input.maxTokens) || 500)),
+    temperature: Math.min(1, Math.max(0, Number(input.temperature) || 0.2)),
+    status: "active",
+    lastTestOk: null,
+    lastTestAt: null,
+    lastError: "",
+    secret: platformStore.encryptSecret(apiKey),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
+}
+
+function currentScopedIds(req, state) {
+  const requestedTenant = String(req.get("x-tenant-id") || req.query.tenantId || req.body?.tenantId || state.workspace.tenantId);
+  const requestedStore = String(req.get("x-store-id") || req.query.storeId || req.body?.storeId || state.workspace.storeId);
+  if (requestedTenant !== state.workspace.tenantId || requestedStore !== state.workspace.storeId) return null;
+  return { tenantId: requestedTenant, storeId: requestedStore };
+}
+
+function weightedPoints(usage) {
+  return Math.max(0, Number(usage?.prompt_tokens || 0) + Number(usage?.completion_tokens || 0) * 4);
+}
+
+ensureLocalOperator();
+
+function publicAiStatus() {
+  const state = readSaasState();
+  migrateLegacyAiConnection(state);
+  const policy = platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId);
+  const selectedId = policy.mode === "platform" ? policy.platformConnectionId : policy.connectionId;
+  const connection = state.aiConnections.find(item => item.id === selectedId && item.status !== "disabled");
+  return {
+    configured: Boolean(connection),
+    provider: connection?.providerName || "rules",
+    status: connection ? (connection.lastTestOk === false ? "error" : "online") : "fallback",
+    model: connection?.model || "rules",
+    mode: connection ? policy.mode : "rules",
+    connectionId: connection?.id || null,
+    endpoint: connection ? "configured" : "missing",
+    retention: "session_only",
+    answerProvider: connection ? "tenant_ai_rag" : "rules"
+  };
+}
+
+function migrateLegacyAiConnection(state) {
+  if (!process.env.DEEPSEEK_API_KEY || state.aiConnections.some(item => item.migratedFrom === "DEEPSEEK_API_KEY")) return state;
+  const connection = {
+    id: requestId("aic"), tenantId: "platform", storeId: null, ownerType: "platform", providerPreset: "deepseek",
+    providerName: "DeepSeek", protocol: "openai", baseUrl: String(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"),
+    model: String(process.env.DEEPSEEK_MODEL || "deepseek-chat"), status: "active", lastTestOk: null, lastTestAt: null,
+    secret: platformStore.encryptSecret(process.env.DEEPSEEK_API_KEY), migratedFrom: "DEEPSEEK_API_KEY", createdAt: new Date().toISOString()
+  };
+  state.aiConnections.push(connection);
+  const policy = platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId);
+  policy.mode = "platform";
+  policy.platformConnectionId = connection.id;
+  const existing = state.aiPolicies.findIndex(item => item.tenantId === policy.tenantId && item.storeId === policy.storeId);
+  if (existing >= 0) state.aiPolicies[existing] = policy; else state.aiPolicies.push(policy);
+  platformStore.appendAudit(state, { actorType: "system", actorId: "migration", action: "ai.connection.migrate", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { source: "DEEPSEEK_API_KEY" } });
+  writeSaasState(state);
+  return state;
 }
 
 function fallbackFaq(text, cfg) {
@@ -204,39 +350,52 @@ function knowledgeContext(cfg) {
   return JSON.stringify({ brand: cfg.brand, products, categories, quickPrompts: cfg.serviceBot?.quickPrompts || [] });
 }
 
-async function queryDeepSeek(text, cfg) {
-  const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
-  if (!apiKey) return null;
-  const endpoint = String(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
-  const model = String(process.env.DEEPSEEK_MODEL || "deepseek-v4-flash");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.max(3000, Number(process.env.DEEPSEEK_TIMEOUT_MS) || 12000));
+function selectedAiConnection(state, tenantId, storeId) {
+  migrateLegacyAiConnection(state);
+  const policy = platformStore.findScopedPolicy(state, tenantId, storeId);
+  const connectionId = policy.mode === "platform" ? policy.platformConnectionId : policy.connectionId;
+  const connection = state.aiConnections.find(item => item.id === connectionId && item.status !== "disabled");
+  return { policy, connection };
+}
+
+async function queryConfiguredModel(text, cfg, state, tenantId, storeId) {
+  const { policy, connection } = selectedAiConnection(state, tenantId, storeId);
+  if (!connection || policy.mode === "rules") return null;
+  let reservationId = null;
+  if (policy.mode === "platform") {
+    const plan = state.plans.find(item => item.id === state.workspace.planId);
+    const used = state.aiUsageEvents.filter(item => item.tenantId === tenantId && item.billingMode === "platform").reduce((total, item) => total + Number(item.weightedPoints || 0), 0);
+    const reserved = state.aiReservations.filter(item => item.tenantId === tenantId).reduce((total, item) => total + Number(item.points || 0), 0);
+    const estimatedPoints = Math.max(2000, Number(connection.maxTokens || 500) * 4 + 2000);
+    if (Number.isFinite(plan?.aiPoints) && used + reserved + estimatedPoints > plan.aiPoints) throw Object.assign(new Error("平台托管 AI 额度不足，请改用自带 API 或购买额度"), { code: "AI_QUOTA_EXHAUSTED" });
+    reservationId = requestId("air");
+    state.aiReservations.push({ id: reservationId, tenantId, storeId, points: estimatedPoints, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() });
+    writeSaasState(state);
+  }
   try {
-    const response = await fetch(`${endpoint}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 500,
-        messages: [
-          { role: "system", content: "你是零售品牌客服。只能依据提供的知识回答；不得编造价格、库存、订单、量体或承诺；不得执行交易和敏感数据操作；资料不足时明确说明并建议人工。回答简洁、中文、无营销夸张。" },
-          { role: "system", content: `店铺知识：${knowledgeContext(cfg)}` },
-          { role: "user", content: text }
-        ]
-      })
+    const answer = await callOpenAiCompatible({
+      baseUrl: connection.baseUrl,
+      apiKey: platformStore.decryptSecret(connection.secret),
+      model: connection.model,
+      text,
+      context: knowledgeContext(cfg),
+      timeoutMs: connection.timeoutMs || 12000,
+      temperature: connection.temperature ?? 0.2,
+      maxTokens: connection.maxTokens || 500
     });
-    if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`);
-    const data = await response.json();
-    const content = String(data.choices?.[0]?.message?.content || "").trim();
-    if (!content) throw new Error("DeepSeek 未返回内容");
-    aiUsage.requests += 1;
-    aiUsage.inputTokens += Number(data.usage?.prompt_tokens || 0);
-    aiUsage.outputTokens += Number(data.usage?.completion_tokens || 0);
-    return { content, model, usage: data.usage || null };
-  } finally {
-    clearTimeout(timer);
+    if (reservationId) {
+      const latest = readSaasState();
+      latest.aiReservations = latest.aiReservations.filter(item => item.id !== reservationId);
+      writeSaasState(latest);
+    }
+    return { ...answer, connection, policy };
+  } catch (error) {
+    if (reservationId) {
+      const latest = readSaasState();
+      latest.aiReservations = latest.aiReservations.filter(item => item.id !== reservationId);
+      writeSaasState(latest);
+    }
+    throw error;
   }
 }
 
@@ -528,6 +687,7 @@ app.get("/api/dashboard", (req, res) => {
 app.get("/api/platform/bootstrap", (req, res) => {
   try {
     const state = readSaasState();
+    migrateLegacyAiConnection(state);
     const cfg = readConfig();
     const plan = state.plans.find(item => item.id === state.workspace.planId) || state.plans[0];
     const imageBytes = fs.readdirSync(IMAGES_DIR).reduce((total, name) => {
@@ -544,8 +704,12 @@ app.get("/api/platform/bootstrap", (req, res) => {
       plans: state.plans,
       publishJobs: jobs.slice(0, 20),
       ai: publicAiStatus(),
+      aiConnections: state.aiConnections.filter(item => item.tenantId === state.workspace.tenantId).map(platformStore.publicConnection),
+      platformAiConnections: state.aiConnections.filter(item => item.ownerType === "platform" && item.status !== "disabled").map(item => ({ id: item.id, providerName: item.providerName, providerPreset: item.providerPreset, model: item.model, status: item.status, lastTestOk: item.lastTestOk, lastTestAt: item.lastTestAt })),
+      aiPolicy: platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId),
+      providerCatalog: state.providerCatalog,
       usage: {
-        aiPointsUsed: aiUsage.inputTokens + aiUsage.outputTokens * 4,
+        aiPointsUsed: state.aiUsageEvents.filter(item => item.tenantId === state.workspace.tenantId && item.billingMode === "platform").reduce((total, item) => total + Number(item.weightedPoints || 0), 0),
         aiPointsLimit: plan.aiPoints || 0,
         storageGbUsed: Number((imageBytes / 1024 / 1024 / 1024).toFixed(2)),
         storageGbLimit: plan.storageGb || 0,
@@ -558,23 +722,43 @@ app.get("/api/platform/bootstrap", (req, res) => {
   }
 });
 
-app.post("/api/ai/query", async (req, res) => {
+app.post(["/api/ai/query", "/v1/ai/query"], async (req, res) => {
   const id = requestId("ai");
   try {
+    if (req.path === "/v1/ai/query") {
+      const expectedToken = String(process.env.ATELIER_AI_GATEWAY_TOKEN || "").trim();
+      const suppliedToken = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!expectedToken) return res.status(503).json({ ok: false, requestId: id, code: "AI_GATEWAY_TOKEN_MISSING", error: "平台尚未配置云函数网关凭证" });
+      if (!suppliedToken || suppliedToken !== expectedToken) return res.status(401).json({ ok: false, requestId: id, code: "AI_GATEWAY_UNAUTHORIZED", error: "AI 网关凭证无效" });
+    }
     const text = String(req.body?.text || "").trim().slice(0, 400);
     if (!text) return res.status(400).json({ ok: false, requestId: id, error: "请输入问题" });
     const state = readSaasState();
-    const tenantId = String(req.body?.tenantId || state.workspace.tenantId);
-    const storeId = String(req.body?.storeId || state.workspace.storeId);
-    if (tenantId !== state.workspace.tenantId || storeId !== state.workspace.storeId) return res.status(403).json({ ok: false, requestId: id, error: "工作区权限不匹配" });
+    const scope = currentScopedIds(req, state);
+    if (!scope) return res.status(403).json({ ok: false, requestId: id, error: "工作区权限不匹配" });
+    const { tenantId, storeId } = scope;
     const action = deterministicServiceAction(text);
     if (action) return res.json({ ok: true, requestId: id, provider: "tools", confidence: 1, citations: [], ...action });
     const cfg = readConfig();
     try {
-      const answer = await queryDeepSeek(text, cfg);
-      if (answer) return res.json({ ok: true, requestId: id, provider: "deepseek", type: "answer", confidence: 0.78, citations: ["店铺商品与页面知识"], content: answer.content, usage: answer.usage, model: answer.model });
+      const answer = await queryConfiguredModel(text, cfg, state, tenantId, storeId);
+      if (answer) {
+        const points = weightedPoints(answer.usage);
+        const latest = readSaasState();
+        latest.aiUsageEvents.unshift({ id, tenantId, storeId, provider: answer.connection.providerName, model: answer.model, billingMode: answer.policy.mode, resultCode: "ok", inputTokens: answer.usage.prompt_tokens, outputTokens: answer.usage.completion_tokens, weightedPoints: points, createdAt: new Date().toISOString() });
+        latest.aiUsageEvents = latest.aiUsageEvents.slice(0, 5000);
+        writeSaasState(latest);
+        aiUsage.requests += 1;
+        aiUsage.inputTokens += answer.usage.prompt_tokens;
+        aiUsage.outputTokens += answer.usage.completion_tokens;
+        return res.json({ ok: true, requestId: id, provider: answer.connection.providerName, providerId: answer.connection.providerPreset, billingMode: answer.policy.mode, type: "answer", confidence: 0.78, citations: ["店铺商品与页面知识"], content: answer.content, usage: { promptTokens: answer.usage.prompt_tokens, completionTokens: answer.usage.completion_tokens, weightedPoints: points }, model: answer.model, fallback: false });
+      }
     } catch (error) {
       aiUsage.errors += 1;
+      const latest = readSaasState();
+      latest.aiUsageEvents.unshift({ id, tenantId, storeId, provider: "gateway", model: null, billingMode: platformStore.findScopedPolicy(latest, tenantId, storeId).mode, resultCode: error.code || "provider_error", inputTokens: 0, outputTokens: 0, weightedPoints: 0, createdAt: new Date().toISOString() });
+      writeSaasState(latest);
+      if (error.code === "AI_QUOTA_EXHAUSTED") return res.status(402).json({ ok: false, requestId: id, code: error.code, error: error.message });
     }
     aiUsage.fallbackRequests += 1;
     const fallback = fallbackFaq(text, cfg);
@@ -587,6 +771,88 @@ app.post("/api/ai/query", async (req, res) => {
 
 app.get("/api/ai/status", (req, res) => {
   res.json({ ok: true, ...publicAiStatus(), usage: { ...aiUsage, weightedPoints: aiUsage.inputTokens + aiUsage.outputTokens * 4 } });
+});
+
+app.get("/v1/ai/connections", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  res.json({ ok: true, data: state.aiConnections.filter(item => item.tenantId === state.workspace.tenantId).map(platformStore.publicConnection), providerCatalog: state.providerCatalog });
+});
+
+app.post("/v1/ai/connections", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  try {
+    const connection = connectionFromInput(req.body || {}, { tenantId: state.workspace.tenantId, storeId: state.workspace.storeId, ownerType: "merchant" });
+    state.aiConnections.push(connection);
+    platformStore.appendAudit(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.create", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { provider: connection.providerName, model: connection.model } });
+    writeSaasState(state);
+    res.status(201).json({ ok: true, data: platformStore.publicConnection(connection) });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/v1/ai/connections/:id/test", async (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const connection = state.aiConnections.find(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
+  if (!connection) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  try {
+    const result = await callOpenAiCompatible({ baseUrl: connection.baseUrl, apiKey: platformStore.decryptSecret(connection.secret), model: connection.model, text: "请只回答：连接成功", context: "这是连接测试。", timeoutMs: connection.timeoutMs, maxTokens: 50 });
+    connection.lastTestOk = true; connection.lastTestAt = new Date().toISOString(); connection.lastError = ""; connection.updatedAt = connection.lastTestAt;
+    appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { ok: true } });
+    res.json({ ok: true, data: { connection: platformStore.publicConnection(connection), sample: result.content.slice(0, 80) } });
+  } catch (error) {
+    connection.lastTestOk = false; connection.lastTestAt = new Date().toISOString(); connection.lastError = error.message.slice(0, 240); connection.updatedAt = connection.lastTestAt;
+    appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { ok: false, code: "PROVIDER_TEST_FAILED" } });
+    res.status(502).json({ ok: false, error: `${error.message}。请检查接口地址、模型名称和 API Key。`, data: platformStore.publicConnection(connection) });
+  }
+});
+
+app.post("/v1/ai/connections/:id/rotate-secret", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const connection = state.aiConnections.find(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
+  if (!connection) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  const apiKey = String(req.body?.apiKey || "").trim();
+  if (!apiKey) return res.status(400).json({ ok: false, error: "请输入新的 API Key" });
+  connection.secret = platformStore.encryptSecret(apiKey); connection.lastTestOk = null; connection.lastError = ""; connection.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.rotate_secret", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: {} });
+  res.json({ ok: true, data: platformStore.publicConnection(connection) });
+});
+
+app.delete("/v1/ai/connections/:id", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const index = state.aiConnections.findIndex(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
+  if (index < 0) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  const [connection] = state.aiConnections.splice(index, 1);
+  state.aiPolicies.forEach(policy => { if (policy.connectionId === connection.id) { policy.connectionId = null; policy.mode = "rules"; } });
+  appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.delete", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: {} });
+  res.json({ ok: true });
+});
+
+app.get("/v1/ai/policy", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId) });
+});
+
+app.put("/v1/ai/policy", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const mode = ["rules", "byok", "platform"].includes(req.body?.mode) ? req.body.mode : "rules";
+  const policy = platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId);
+  const candidateId = mode === "platform" ? req.body?.platformConnectionId : req.body?.connectionId;
+  if (mode !== "rules") {
+    const valid = state.aiConnections.some(item => item.id === candidateId && (mode === "platform" ? item.ownerType === "platform" : item.tenantId === state.workspace.tenantId));
+    if (!valid) return res.status(400).json({ ok: false, error: "请选择有效的模型连接" });
+  }
+  Object.assign(policy, { mode, connectionId: mode === "byok" ? candidateId : null, platformConnectionId: mode === "platform" ? candidateId : null, dailyPointLimit: Math.max(0, Number(req.body?.dailyPointLimit) || policy.dailyPointLimit || 100000), fallbackToRules: req.body?.fallbackToRules !== false, updatedAt: new Date().toISOString() });
+  const index = state.aiPolicies.findIndex(item => item.tenantId === policy.tenantId && item.storeId === policy.storeId);
+  if (index >= 0) state.aiPolicies[index] = policy; else state.aiPolicies.push(policy);
+  appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.policy.update", resourceType: "ai_policy", resourceId: state.workspace.storeId, tenantId: state.workspace.tenantId, metadata: { mode } });
+  res.json({ ok: true, data: policy });
 });
 
 function scopedWorkspace(req, res) {
@@ -642,6 +908,277 @@ app.get("/v1/billing/entitlements", (req, res) => {
   if (!state) return;
   const plan = state.plans.find(item => item.id === state.workspace.planId) || state.plans[0];
   res.json({ ok: true, data: { planId: plan.id, stores: plan.stores, skuLimit: plan.skuLimit, storageGb: plan.storageGb, aiPoints: plan.aiPoints, features: { sharedAppId: true, merchantAppId: ["professional", "enterprise"].includes(plan.id), aiWorkspace: plan.id !== "trial", feishu: ["professional", "enterprise"].includes(plan.id), audit: plan.id === "enterprise" } } });
+});
+
+// ---- ATELIER OS operator control plane ----
+app.post("/ops/v1/auth/login", (req, res) => {
+  const state = readSaasState();
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const user = state.operatorUsers.find(item => item.email === email && item.status === "active");
+  if (!user || !platformStore.verifyPassword(password, user.passwordHash)) {
+    platformStore.appendAudit(state, { actorType: "operator", actorId: email || "unknown", action: "operator.login_failed", resourceType: "operator_session", resourceId: null, tenantId: null, metadata: { ip: req.ip } });
+    writeSaasState(state);
+    return res.status(401).json({ ok: false, error: "邮箱或密码不正确" });
+  }
+  const token = crypto.randomBytes(32).toString("base64url");
+  const session = { id: requestId("ops_session"), token, userId: user.id, email: user.email, name: user.name, role: user.role, createdAt: Date.now(), expiresAt: Date.now() + 8 * 60 * 60 * 1000 };
+  operatorSessions.set(token, session);
+  platformStore.appendAudit(state, { actorType: "operator", actorId: user.id, action: "operator.login", resourceType: "operator_session", resourceId: session.id, tenantId: null, metadata: { ip: req.ip } });
+  writeSaasState(state);
+  res.setHeader("Set-Cookie", `atelier_ops_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/ops; Max-Age=28800${req.secure ? "; Secure" : ""}`);
+  res.json({ ok: true, data: safeOperatorUser(user) });
+});
+
+app.post("/ops/v1/auth/logout", (req, res) => {
+  const session = operatorSession(req);
+  if (session) operatorSessions.delete(session.token);
+  res.setHeader("Set-Cookie", "atelier_ops_session=; HttpOnly; SameSite=Strict; Path=/ops; Max-Age=0");
+  res.json({ ok: true });
+});
+
+app.get("/ops/v1/auth/session", (req, res) => {
+  const session = operatorSession(req);
+  res.json({ ok: true, data: session ? { id: session.userId, email: session.email, name: session.name, role: session.role } : null });
+});
+
+app.use("/ops/v1", (req, res, next) => {
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    const origin = String(req.get("origin") || "");
+    if (origin) {
+      try { if (new URL(origin).host !== req.get("host")) return res.status(403).json({ ok: false, error: "请求来源不受信任" }); }
+      catch (error) { return res.status(403).json({ ok: false, error: "请求来源无效" }); }
+    }
+  }
+  next();
+});
+app.use("/ops/v1", requireOperator);
+
+app.get("/ops/v1/session", (req, res) => {
+  res.json({ ok: true, data: { id: req.operator.userId, email: req.operator.email, name: req.operator.name, role: req.operator.role } });
+});
+
+app.get("/ops/v1/bootstrap", (req, res) => {
+  const state = readSaasState();
+  migrateLegacyAiConnection(state);
+  const cfg = readConfig();
+  const platformUsage = state.aiUsageEvents.filter(item => item.billingMode === "platform");
+  const metrics = {
+    tenants: state.tenants.length,
+    activeTenants: state.tenants.filter(item => item.status === "active").length,
+    trials: state.tenants.filter(item => item.status === "trial").length,
+    publishSuccessRate: state.publishJobs.length ? Math.round(state.publishJobs.filter(item => item.status === "succeeded").length / state.publishJobs.length * 100) : 100,
+    aiPoints: platformUsage.reduce((total, item) => total + Number(item.weightedPoints || 0), 0),
+    aiErrors: state.aiUsageEvents.filter(item => item.resultCode !== "ok").length,
+    openTickets: state.supportTickets.filter(item => !["resolved", "closed"].includes(item.status)).length,
+    activeIncidents: state.incidents.filter(item => item.status !== "resolved").length,
+    products: (cfg.products || []).length
+  };
+  res.json({
+    ok: true,
+    data: {
+      operator: { id: req.operator.userId, email: req.operator.email, name: req.operator.name, role: req.operator.role },
+      metrics,
+      tenants: state.tenants,
+      workspace: state.workspace,
+      plans: state.plans,
+      subscriptions: state.subscriptions,
+      providerCatalog: state.providerCatalog,
+      platformConnections: state.aiConnections.filter(item => item.ownerType === "platform").map(platformStore.publicConnection),
+      tenantConnections: state.aiConnections.filter(item => item.ownerType === "merchant").map(platformStore.publicConnection),
+      aiPolicies: state.aiPolicies,
+      aiUsage: state.aiUsageEvents.slice(0, 200),
+      publishJobs: state.publishJobs.slice(0, 100),
+      featureFlags: state.featureFlags,
+      supportTickets: state.supportTickets,
+      incidents: state.incidents,
+      impersonationSessions: state.impersonationSessions.filter(item => Date.parse(item.expiresAt) > Date.now()),
+      auditEvents: state.auditEvents.slice(0, 300)
+    }
+  });
+});
+
+app.patch("/ops/v1/tenants/:id", (req, res) => {
+  const state = readSaasState();
+  const tenant = state.tenants.find(item => item.id === req.params.id);
+  if (!tenant) return res.status(404).json({ ok: false, error: "未找到租户" });
+  if (req.body?.status && !["trial", "active", "past_due", "suspended", "closed"].includes(req.body.status)) return res.status(400).json({ ok: false, error: "租户状态无效" });
+  if (req.body?.planId && !state.plans.some(item => item.id === req.body.planId)) return res.status(400).json({ ok: false, error: "套餐不存在" });
+  if (req.body?.status) tenant.status = req.body.status;
+  if (req.body?.planId) {
+    tenant.planId = req.body.planId;
+    if (tenant.id === state.workspace.tenantId) {
+      const plan = state.plans.find(item => item.id === req.body.planId);
+      state.workspace.planId = plan.id; state.workspace.planName = plan.name;
+    }
+  }
+  tenant.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "tenant.update", resourceType: "tenant", resourceId: tenant.id, tenantId: tenant.id, metadata: { status: tenant.status, planId: tenant.planId } });
+  res.json({ ok: true, data: tenant });
+});
+
+app.post("/ops/v1/ai/connections", (req, res) => {
+  const state = readSaasState();
+  try {
+    const connection = connectionFromInput(req.body || {}, { tenantId: "platform", storeId: null, ownerType: "platform" });
+    connection.costInputPerMillion = Math.max(0, Number(req.body?.costInputPerMillion) || 0);
+    connection.costOutputPerMillion = Math.max(0, Number(req.body?.costOutputPerMillion) || 0);
+    connection.saleMultiplier = Math.max(1, Number(req.body?.saleMultiplier) || 1.5);
+    state.aiConnections.push(connection);
+    appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.create", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { provider: connection.providerName, model: connection.model } });
+    res.status(201).json({ ok: true, data: platformStore.publicConnection(connection) });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.post("/ops/v1/ai/connections/:id/test", async (req, res) => {
+  const state = readSaasState();
+  const connection = state.aiConnections.find(item => item.id === req.params.id && item.ownerType === "platform");
+  if (!connection) return res.status(404).json({ ok: false, error: "未找到平台模型连接" });
+  try {
+    const result = await callOpenAiCompatible({ baseUrl: connection.baseUrl, apiKey: platformStore.decryptSecret(connection.secret), model: connection.model, text: "请只回答：连接成功", context: "这是平台连接测试。", timeoutMs: connection.timeoutMs, maxTokens: 50 });
+    connection.lastTestOk = true; connection.lastTestAt = new Date().toISOString(); connection.lastError = "";
+    appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { ok: true } });
+    res.json({ ok: true, data: { connection: platformStore.publicConnection(connection), sample: result.content.slice(0, 80) } });
+  } catch (error) {
+    connection.lastTestOk = false; connection.lastTestAt = new Date().toISOString(); connection.lastError = error.message.slice(0, 240);
+    appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { ok: false } });
+    res.status(502).json({ ok: false, error: `${error.message}。请检查模型配置。` });
+  }
+});
+
+app.post("/ops/v1/ai/connections/:id/rotate-secret", (req, res) => {
+  const state = readSaasState();
+  const connection = state.aiConnections.find(item => item.id === req.params.id && item.ownerType === "platform");
+  if (!connection) return res.status(404).json({ ok: false, error: "未找到平台模型连接" });
+  const apiKey = String(req.body?.apiKey || "").trim();
+  if (!apiKey) return res.status(400).json({ ok: false, error: "请输入新的 API Key" });
+  connection.secret = platformStore.encryptSecret(apiKey);
+  connection.lastTestOk = null;
+  connection.lastError = "";
+  connection.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.rotate_secret", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: {} });
+  res.json({ ok: true, data: platformStore.publicConnection(connection) });
+});
+
+app.patch("/ops/v1/ai/connections/:id", (req, res) => {
+  const state = readSaasState();
+  const connection = state.aiConnections.find(item => item.id === req.params.id && item.ownerType === "platform");
+  if (!connection) return res.status(404).json({ ok: false, error: "未找到平台模型连接" });
+  if (req.body?.status && !["active", "disabled"].includes(req.body.status)) return res.status(400).json({ ok: false, error: "连接状态无效" });
+  if (req.body?.status) connection.status = req.body.status;
+  ["costInputPerMillion", "costOutputPerMillion", "saleMultiplier"].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) connection[key] = Math.max(key === "saleMultiplier" ? 1 : 0, Number(req.body[key]) || 0);
+  });
+  connection.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.update", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { status: connection.status } });
+  res.json({ ok: true, data: platformStore.publicConnection(connection) });
+});
+
+app.delete("/ops/v1/ai/connections/:id", (req, res) => {
+  const state = readSaasState();
+  const index = state.aiConnections.findIndex(item => item.id === req.params.id && item.ownerType === "platform");
+  if (index < 0) return res.status(404).json({ ok: false, error: "未找到平台模型连接" });
+  const connection = state.aiConnections[index];
+  const usedBy = state.aiPolicies.filter(item => item.platformConnectionId === connection.id);
+  if (usedBy.length) return res.status(409).json({ ok: false, error: `仍有 ${usedBy.length} 个店铺使用此平台模型，请先切换这些店铺的客服路由` });
+  state.aiConnections.splice(index, 1);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.delete", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: {} });
+  res.json({ ok: true });
+});
+
+app.patch("/ops/v1/plans/:id", (req, res) => {
+  const state = readSaasState();
+  const plan = state.plans.find(item => item.id === req.params.id);
+  if (!plan) return res.status(404).json({ ok: false, error: "未找到套餐" });
+  ["monthlyPrice", "yearlyPrice", "stores", "skuLimit", "storageGb", "aiPoints"].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) plan[key] = req.body[key] === null ? null : Math.max(0, Number(req.body[key]) || 0);
+  });
+  if (req.body?.features && typeof req.body.features === "object") plan.features = { ...(plan.features || {}), ...req.body.features };
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "plan.update", resourceType: "plan", resourceId: plan.id, tenantId: null, metadata: {} });
+  res.json({ ok: true, data: plan });
+});
+
+app.patch("/ops/v1/feature-flags/:id", (req, res) => {
+  const state = readSaasState();
+  const flag = state.featureFlags.find(item => item.id === req.params.id);
+  if (!flag) return res.status(404).json({ ok: false, error: "未找到功能开关" });
+  flag.enabled = Boolean(req.body?.enabled); flag.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "feature_flag.update", resourceType: "feature_flag", resourceId: flag.id, tenantId: flag.scope === "tenant" ? flag.targetId : null, metadata: { enabled: flag.enabled } });
+  res.json({ ok: true, data: flag });
+});
+
+app.post("/ops/v1/publish-jobs/:id/retry", (req, res) => {
+  const state = readSaasState();
+  const source = state.publishJobs.find(item => item.id === req.params.id);
+  if (!source) return res.status(404).json({ ok: false, error: "未找到发布任务" });
+  if (source.status !== "failed") return res.status(409).json({ ok: false, error: "只有失败任务可以重试" });
+  const job = { ...source, id: requestId("publish"), requestId: requestId("release"), status: "queued", statusLabel: "等待重试", retryCount: Number(source.retryCount || 0) + 1, sourceJobId: source.id, createdAt: new Date().toISOString(), createdAtLabel: new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()) };
+  state.publishJobs.unshift(job);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "publish_job.retry", resourceType: "publish_job", resourceId: job.id, tenantId: state.workspace.tenantId, metadata: { sourceJobId: source.id } });
+  res.status(201).json({ ok: true, data: job });
+});
+
+app.post("/ops/v1/publish-jobs/:id/rollback", (req, res) => {
+  const state = readSaasState();
+  const source = state.publishJobs.find(item => item.id === req.params.id);
+  if (!source) return res.status(404).json({ ok: false, error: "未找到发布版本" });
+  if (source.status !== "succeeded") return res.status(409).json({ ok: false, error: "只能回滚到成功发布的版本" });
+  const job = { id: requestId("publish"), requestId: requestId("rollback"), version: `rollback-${source.version}`, rollbackVersion: source.version, environment: source.environment, channel: source.channel, status: "queued", statusLabel: "等待回滚", retryCount: 0, sourceJobId: source.id, createdAt: new Date().toISOString(), createdAtLabel: new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()) };
+  state.publishJobs.unshift(job);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "publish_job.rollback", resourceType: "publish_job", resourceId: job.id, tenantId: state.workspace.tenantId, metadata: { targetVersion: source.version } });
+  res.status(201).json({ ok: true, data: job });
+});
+
+app.post("/ops/v1/support-tickets", (req, res) => {
+  const state = readSaasState();
+  const title = String(req.body?.title || "").trim().slice(0, 120);
+  if (!title) return res.status(400).json({ ok: false, error: "请输入工单标题" });
+  const ticket = { id: requestId("ticket"), tenantId: String(req.body?.tenantId || state.workspace.tenantId), title, priority: ["low", "normal", "high", "urgent"].includes(req.body?.priority) ? req.body.priority : "normal", status: "open", createdAt: new Date().toISOString(), createdBy: req.operator.userId };
+  state.supportTickets.unshift(ticket);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "support_ticket.create", resourceType: "support_ticket", resourceId: ticket.id, tenantId: ticket.tenantId, metadata: { priority: ticket.priority } });
+  res.status(201).json({ ok: true, data: ticket });
+});
+
+app.patch("/ops/v1/support-tickets/:id", (req, res) => {
+  const state = readSaasState();
+  const ticket = state.supportTickets.find(item => item.id === req.params.id);
+  if (!ticket) return res.status(404).json({ ok: false, error: "未找到工单" });
+  if (req.body?.status && ["open", "in_progress", "resolved", "closed"].includes(req.body.status)) ticket.status = req.body.status;
+  ticket.updatedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "support_ticket.update", resourceType: "support_ticket", resourceId: ticket.id, tenantId: ticket.tenantId, metadata: { status: ticket.status } });
+  res.json({ ok: true, data: ticket });
+});
+
+app.post("/ops/v1/incidents", (req, res) => {
+  const state = readSaasState();
+  const title = String(req.body?.title || "").trim().slice(0, 120);
+  if (!title) return res.status(400).json({ ok: false, error: "请输入事件标题" });
+  const incident = { id: requestId("incident"), title, severity: ["minor", "major", "critical"].includes(req.body?.severity) ? req.body.severity : "minor", status: "investigating", createdAt: new Date().toISOString(), createdBy: req.operator.userId };
+  state.incidents.unshift(incident);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "incident.create", resourceType: "incident", resourceId: incident.id, tenantId: null, metadata: { severity: incident.severity } });
+  res.status(201).json({ ok: true, data: incident });
+});
+
+app.post("/ops/v1/impersonation-sessions", (req, res) => {
+  const state = readSaasState();
+  const tenantId = String(req.body?.tenantId || "");
+  const reason = String(req.body?.reason || "").trim().slice(0, 240);
+  const minutes = Math.min(60, Math.max(5, Number(req.body?.minutes) || 30));
+  if (!state.tenants.some(item => item.id === tenantId)) return res.status(404).json({ ok: false, error: "未找到租户" });
+  if (reason.length < 6) return res.status(400).json({ ok: false, error: "请填写至少 6 个字的代操作原因" });
+  const session = { id: requestId("imp"), tenantId, operatorId: req.operator.userId, reason, status: "active", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + minutes * 60 * 1000).toISOString() };
+  state.impersonationSessions.unshift(session);
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "impersonation.start", resourceType: "impersonation_session", resourceId: session.id, tenantId, metadata: { reason, minutes } });
+  res.status(201).json({ ok: true, data: session });
+});
+
+app.delete("/ops/v1/impersonation-sessions/:id", (req, res) => {
+  const state = readSaasState();
+  const session = state.impersonationSessions.find(item => item.id === req.params.id && item.operatorId === req.operator.userId);
+  if (!session) return res.status(404).json({ ok: false, error: "未找到代操作会话" });
+  session.status = "ended"; session.endedAt = new Date().toISOString();
+  appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "impersonation.end", resourceType: "impersonation_session", resourceId: session.id, tenantId: session.tenantId, metadata: {} });
+  res.json({ ok: true });
 });
 
 // ---- Config API ----

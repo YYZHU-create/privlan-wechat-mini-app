@@ -38,27 +38,22 @@ async function searchFaq(text) {
   }
 }
 
-async function queryDeepSeek(text, faqContext = "") {
-  const apiKey = core.env("DEEPSEEK_API_KEY");
-  if (!apiKey) return null;
-  const baseUrl = core.env("DEEPSEEK_BASE_URL", "https://api.deepseek.com").replace(/\/$/, "");
-  const model = core.env("DEEPSEEK_MODEL", "deepseek-v4-flash");
-  const response = await core.httpJson(`${baseUrl}/chat/completions`, {
-    timeout: Number(core.env("DEEPSEEK_TIMEOUT_MS", "12000")),
-    headers: { Authorization: `Bearer ${apiKey}` },
+async function queryModelGateway(text, faqContext = "") {
+  const gatewayUrl = core.env("ATELIER_AI_GATEWAY_URL").replace(/\/$/, "");
+  const gatewayToken = core.env("ATELIER_AI_GATEWAY_TOKEN");
+  if (!gatewayUrl || !gatewayToken) return null;
+  const response = await core.httpJson(`${gatewayUrl}/v1/ai/query`, {
+    timeout: Number(core.env("ATELIER_AI_TIMEOUT_MS", "15000")),
+    headers: { Authorization: `Bearer ${gatewayToken}` },
     body: {
-      model,
-      temperature: 0.2,
-      max_tokens: 500,
-      messages: [
-        { role: "system", content: "你是零售品牌客服。只能依据店铺知识回答，不得编造价格、库存、订单、量体、退款或承诺；不得执行交易和敏感数据操作；资料不足时说明并建议人工。回答简洁、中文。" },
-        { role: "system", content: `可用知识：${faqContext || "暂无额外知识"}` },
-        { role: "user", content: text }
-      ]
+      tenantId: core.env("ATELIER_TENANT_ID"),
+      storeId: core.env("ATELIER_STORE_ID"),
+      text,
+      faqContext
     }
   });
-  const answer = String(response.choices?.[0]?.message?.content || "").trim();
-  return answer ? { type: "faq", text: answer, provider: "deepseek", model, citations: faqContext ? ["店铺 FAQ"] : [] } : null;
+  const answer = String(response.content || "").trim();
+  return answer ? { type: response.type || "faq", text: answer, provider: response.provider || "gateway", model: response.model || "", citations: response.citations || (faqContext ? ["店铺 FAQ"] : []), usage: response.usage || null } : null;
 }
 
 exports.main = async event => {
@@ -74,7 +69,7 @@ exports.main = async event => {
 
     const matchedFaq = await searchFaq(text);
     try {
-      const aiAnswer = await queryDeepSeek(text, matchedFaq?.text || builtinFaq.map(item => `${item.keywords[0]}：${item.answer}`).join("\n"));
+      const aiAnswer = await queryModelGateway(text, matchedFaq?.text || builtinFaq.map(item => `${item.keywords[0]}：${item.answer}`).join("\n"));
       if (aiAnswer) return core.ok(aiAnswer, "已生成回答", id);
     } catch (error) {
       await core.audit("service_ai_fallback", openId, { code: String(error.code || "AI_ERROR"), requestId: id });

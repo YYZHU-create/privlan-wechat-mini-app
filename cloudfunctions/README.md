@@ -24,10 +24,12 @@
 - `AUTH_MODE=test`
 - `TEST_AUTH_CODE`：仅测试环境设置，正式上线前删除
 - `HUMAN_SERVICE_ENABLED=false`
-- `DEEPSEEK_API_KEY`：平台托管的模型密钥；未配置时自动使用飞书 FAQ 和内置知识
-- `DEEPSEEK_BASE_URL=https://api.deepseek.com`
-- `DEEPSEEK_MODEL=deepseek-v4-flash`：按实际账户可用型号配置，不在客户端硬编码
-- `DEEPSEEK_TIMEOUT_MS=12000`
+- `ATELIER_AI_GATEWAY_URL`：ATELIER OS 服务端 AI 网关地址；未配置时自动使用飞书 FAQ 和内置知识
+- `ATELIER_AI_GATEWAY_TOKEN`：云函数访问网关的服务凭证，只存放在云环境变量
+- `ATELIER_TENANT_ID`、`ATELIER_STORE_ID`：当前小程序对应的租户和店铺作用域
+- `ATELIER_AI_TIMEOUT_MS=15000`
+
+模型供应商地址、模型名称和 API Key 由商户后台或平台运营后台配置。小程序与云函数不直接保存商户模型密钥。
 - `APPOINTMENT_DURATION_MINUTES=135`
 - `APPOINTMENT_REMINDER_TEMPLATE_ID`：微信订阅消息模板 ID
 - `APPOINTMENT_REMINDER_LEAD_MINUTES=1440`：默认提前 24 小时提醒

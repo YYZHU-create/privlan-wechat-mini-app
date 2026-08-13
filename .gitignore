@@ -12,5 +12,9 @@ admin/config-backups/
 admin/media-trash/
 admin/qa/final-*.png
 admin/qa/atelier-*.png
+admin/qa/merchant-*-final.png
+admin/qa/ops-*-final.png
 admin/saas-state.json
+admin/.platform-master-key
+admin/.ops-bootstrap.json
 .DS_Store

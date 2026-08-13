@@ -5,9 +5,9 @@ The current Express/Vue editor remains the compatibility application. The files 
 ## Implemented locally
 
 - ATELIER OS merchant shell and platform-operations workspace.
-- Tenant/store scoped `/v1` read APIs.
+- Tenant/store scoped `/v1` merchant APIs and isolated `/ops/v1` operator APIs.
 - Configurable plan entitlements and publishing records.
-- DeepSeek proxy with FAQ fallback and deterministic sensitive actions.
+- Provider-neutral OpenAI-compatible AI gateway with merchant BYOK, platform-managed quota, FAQ fallback and deterministic sensitive actions.
 - Shared and merchant AppID channel states in the release workspace.
 - PostgreSQL/pgvector schema and TypeScript public contracts.
 
@@ -21,4 +21,4 @@ The current Express/Vue editor remains the compatibility application. The files 
 - RAG document ingestion, malware scanning, embeddings and Feishu sync jobs.
 - Monitoring, immutable audit export, backups, recovery drills and legal pages.
 
-Never place DeepSeek, Feishu, WeChat or payment secrets in frontend configuration or generated mini-program files.
+Never place model-provider, Feishu, WeChat or payment secrets in frontend configuration or generated mini-program files. Merchant model keys are write-only after creation and must be envelope-encrypted with KMS in production.

@@ -12,9 +12,9 @@ exports.main = async () => {
     }
     return core.ok({
       faqVersion,
-      answerProvider: core.env("DEEPSEEK_API_KEY") ? "deepseek_rag" : "rules",
-      modelProvider: core.env("DEEPSEEK_API_KEY") ? "deepseek" : "rules",
-      model: core.env("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+      answerProvider: core.env("ATELIER_AI_GATEWAY_URL") ? "tenant_ai_gateway" : "rules",
+      modelProvider: core.env("ATELIER_AI_GATEWAY_URL") ? "merchant_or_platform" : "rules",
+      model: core.env("ATELIER_AI_GATEWAY_URL") ? "由商户后台路由" : "rules",
       authMode: core.env("AUTH_MODE", "test") === "wechat" ? "wechat" : "test",
       humanServiceEnabled: core.env("HUMAN_SERVICE_ENABLED", "false") === "true"
     }, "客服配置已加载", id);

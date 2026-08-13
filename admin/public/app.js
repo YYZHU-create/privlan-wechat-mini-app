@@ -85,9 +85,15 @@ createApp({
       plans: [],
       publishJobs: [],
       ai: null,
-      usage: null
+      usage: null,
+      aiConnections: [],
+      platformAiConnections: [],
+      aiPolicy: null,
+      providerCatalog: []
     });
     const aiConsole = reactive({ question: "", sending: false, answer: null, error: "" });
+    const aiConnectionEditor = reactive({ open: false, saving: false, error: "", providerPreset: "deepseek", providerName: "", baseUrl: "", model: "", apiKey: "", timeoutMs: 12000, maxTokens: 500 });
+    const aiConnectionBusy = ref("");
     let historyTimer;
     let dragSlideIndex = -1;
     let tabBarCropImage = null;
@@ -136,7 +142,6 @@ createApp({
       { id: "ai-service", label: "客服", icon: "ph:chat-circle-text" },
       { id: "analytics", label: "数据", icon: "ph:chart-line-up" },
       { id: "channels", label: "发布", icon: "ph:broadcast" },
-      { id: "platform-ops", label: "运营", icon: "ph:buildings" },
       { id: "settings", label: "设置", icon: "ph:sliders-horizontal" }
     ];
 
@@ -165,7 +170,7 @@ createApp({
       return ({
         overview: "店铺概览", products: "商品管理", categories: "分类管理", media: "媒体库",
         theme: "主题设置", orders: "订单管理", customers: "客户管理", marketing: "营销中心",
-        "ai-service": "智能客服", analytics: "经营数据", channels: "渠道与发布", "platform-ops": "平台运营", settings: "全局设置"
+        "ai-service": "智能客服", analytics: "经营数据", channels: "渠道与发布", settings: "全局设置"
       })[currentView.value] || "工作台";
     });
 
@@ -646,6 +651,10 @@ createApp({
         platform.publishJobs = result.publishJobs || [];
         platform.ai = result.ai || null;
         platform.usage = result.usage || null;
+        platform.aiConnections = result.aiConnections || [];
+        platform.platformAiConnections = result.platformAiConnections || [];
+        platform.aiPolicy = result.aiPolicy || null;
+        platform.providerCatalog = result.providerCatalog || [];
       } catch (error) {
         platform.error = error.message || "平台资料读取失败";
       } finally {
@@ -669,12 +678,111 @@ createApp({
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.error || `客服请求失败（${response.status}）`);
         aiConsole.answer = result;
-        platform.ai = { ...(platform.ai || {}), status: result.provider === "deepseek" ? "online" : "fallback", provider: result.provider };
+        platform.ai = { ...(platform.ai || {}), status: result.provider === "rules" ? "fallback" : "online", provider: result.provider, model: result.model || platform.ai?.model };
       } catch (error) {
         aiConsole.error = error.message || "客服请求失败";
       } finally {
         aiConsole.sending = false;
       }
+    }
+
+    function selectedProviderPreset() {
+      return platform.providerCatalog.find(item => item.id === aiConnectionEditor.providerPreset) || platform.providerCatalog.at(-1) || {};
+    }
+
+    function openAiConnectionEditor() {
+      const preset = platform.providerCatalog.find(item => item.id === "deepseek") || platform.providerCatalog[0] || {};
+      Object.assign(aiConnectionEditor, { open: true, saving: false, error: "", providerPreset: preset.id || "openai-compatible", providerName: preset.name || "", baseUrl: preset.baseUrl || "", model: preset.model || "", apiKey: "", timeoutMs: 12000, maxTokens: 500 });
+    }
+
+    function applyAiProviderPreset() {
+      const preset = selectedProviderPreset();
+      aiConnectionEditor.providerName = preset.name || "";
+      if (preset.baseUrl) aiConnectionEditor.baseUrl = preset.baseUrl;
+      if (preset.model) aiConnectionEditor.model = preset.model;
+    }
+
+    async function saveAiConnection() {
+      if (aiConnectionEditor.saving) return;
+      aiConnectionEditor.error = "";
+      if (!aiConnectionEditor.baseUrl.trim() || !aiConnectionEditor.model.trim() || !aiConnectionEditor.apiKey.trim()) {
+        aiConnectionEditor.error = "请完整填写接口地址、模型名称和 API Key。";
+        return;
+      }
+      aiConnectionEditor.saving = true;
+      try {
+        const response = await fetch("/v1/ai/connections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId,
+          providerPreset: aiConnectionEditor.providerPreset, providerName: aiConnectionEditor.providerName,
+          baseUrl: aiConnectionEditor.baseUrl, model: aiConnectionEditor.model, apiKey: aiConnectionEditor.apiKey,
+          timeoutMs: aiConnectionEditor.timeoutMs, maxTokens: aiConnectionEditor.maxTokens
+        }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `保存失败（${response.status}）`);
+        aiConnectionEditor.open = false;
+        aiConnectionEditor.apiKey = "";
+        await loadPlatform();
+        toast("模型连接已保存", "API Key 已加密保存且不会回显。", "success");
+      } catch (error) { aiConnectionEditor.error = error.message || "模型连接保存失败"; }
+      finally { aiConnectionEditor.saving = false; }
+    }
+
+    async function testAiConnection(connection) {
+      if (!connection || aiConnectionBusy.value) return;
+      aiConnectionBusy.value = connection.id;
+      try {
+        const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `测试失败（${response.status}）`);
+        await loadPlatform();
+        toast("连接测试成功", `${connection.providerName} / ${connection.model} 可以正常回答。`, "success");
+      } catch (error) { toast("连接测试失败", error.message || "请检查模型配置。", "error"); }
+      finally { aiConnectionBusy.value = ""; }
+    }
+
+    async function rotateAiConnectionSecret(connection) {
+      const apiKey = window.prompt(`输入 ${connection.providerName} 的新 API Key。保存后不会再次显示明文：`);
+      if (!apiKey) return;
+      aiConnectionBusy.value = connection.id;
+      try {
+        const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}/rotate-secret`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId, apiKey }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `更新失败（${response.status}）`);
+        await loadPlatform();
+        toast("API Key 已更新", "请重新测试连接后再启用。", "success");
+      } catch (error) { toast("API Key 更新失败", error.message || "请稍后重试。", "error"); }
+      finally { aiConnectionBusy.value = ""; }
+    }
+
+    async function deleteAiConnection(connection) {
+      if (!window.confirm(`删除“${connection.providerName} / ${connection.model}”连接？此操作不会影响模型供应商账户。`)) return;
+      aiConnectionBusy.value = connection.id;
+      try {
+        const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}?tenantId=${encodeURIComponent(platform.workspace?.tenantId || "")}&storeId=${encodeURIComponent(platform.workspace?.storeId || "")}`, { method: "DELETE" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `删除失败（${response.status}）`);
+        await loadPlatform();
+        toast("模型连接已删除", "智能客服已切换到规则 FAQ。", "success");
+      } catch (error) { toast("删除失败", error.message || "请稍后重试。", "error"); }
+      finally { aiConnectionBusy.value = ""; }
+    }
+
+    async function updateAiPolicy(mode, connectionId = null) {
+      aiConnectionBusy.value = `policy-${mode}`;
+      try {
+        const response = await fetch("/v1/ai/policy", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId, mode,
+          connectionId: mode === "byok" ? connectionId : null,
+          platformConnectionId: mode === "platform" ? connectionId : null,
+          dailyPointLimit: platform.aiPolicy?.dailyPointLimit || 100000,
+          fallbackToRules: true
+        }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `切换失败（${response.status}）`);
+        await loadPlatform();
+        toast("客服路由已更新", mode === "rules" ? "当前仅使用规则 FAQ。" : mode === "byok" ? "当前使用商户自带 API。" : "当前使用平台托管额度。", "success");
+      } catch (error) { toast("客服路由更新失败", error.message || "请稍后重试。", "error"); }
+      finally { aiConnectionBusy.value = ""; }
     }
 
     watch(cfg, () => {
@@ -2177,8 +2285,8 @@ createApp({
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
-      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService,
+      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2234,7 +2342,7 @@ createApp({
               <div class="material-rail" aria-label="店铺工作流"><div class="material-node complete"><span>01</span><strong>设计</strong><small>{{ Object.values(cfg.pageLayouts || {}).flat().length }} 个区块</small></div><div class="material-line"></div><div class="material-node complete"><span>02</span><strong>商品</strong><small>{{ cfg.products.length }} 个商品</small></div><div class="material-line"></div><div class="material-node" :class="{complete: platform.ai?.configured}"><span>03</span><strong>客服</strong><small>{{ platform.ai?.configured ? '模型已连接' : '等待模型密钥' }}</small></div><div class="material-line"></div><div class="material-node" :class="{complete: cfg._lastSync}"><span>04</span><strong>发布</strong><small>{{ cfg._lastSync ? '已有同步版本' : '尚未发布' }}</small></div></div>
             </div>
             <div class="overview-metrics"><article><span>商品</span><strong>{{ cfg.products.length }}</strong><small>其中 {{ cfg.products.filter(item => productCompleteness(item).percent === 100).length }} 个资料完整</small></article><article><span>页面</span><strong>{{ pageDefinitions.length }}</strong><small>{{ Object.values(cfg.pageLayouts || {}).flat().length }} 个可编辑区块</small></article><article><span>AI 使用</span><strong>{{ platform.usage?.aiPointsUsed || 0 }}</strong><small>/ {{ platform.usage?.aiPointsLimit || 0 }} 点</small></article><article><span>存储</span><strong>{{ platform.usage?.storageGbUsed || 0 }} GB</strong><small>/ {{ platform.usage?.storageGbLimit || 0 }} GB</small></article></div>
-            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">NEXT ACTIONS</span><h2>上线前检查</h2></div><span class="status-chip warning">3 项待处理</span></div><div class="readiness-list"><button type="button" @click="switchView('ai-service')"><span class="readiness-icon" :class="{done:platform.ai?.configured}"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check' : 'ph:key'"></iconify-icon></span><span><strong>连接 DeepSeek</strong><small>配置平台托管密钥、模型与预算上限</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('products')"><span class="readiness-icon" :class="{done:cfg.products.every(item => productCompleteness(item).percent === 100)}"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>补全商品资料</strong><small>主图、颜色、尺码与详情影响成交体验</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('channels')"><span class="readiness-icon" :class="{done:cfg._lastSync}"><iconify-icon class="icon" icon="ph:rocket-launch"></iconify-icon></span><span><strong>生成正式发布版本</strong><small>预览、检查并发布到微信小程序</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">SERVICE HEALTH</span><h2>服务状态</h2></div><button type="button" class="icon-btn" aria-label="刷新服务状态" @click="loadPlatform"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button></div><div class="health-list"><div><span><i class="health-dot online"></i>本地编辑服务</span><strong>正常</strong></div><div><span><i class="health-dot" :class="platform.ai?.configured ? 'online' : 'warning'"></i>DeepSeek 网关</span><strong>{{ platform.ai?.configured ? '已连接' : '待配置' }}</strong></div><div><span><i class="health-dot online"></i>GitHub 自动同步</span><strong>已启用</strong></div><div><span><i class="health-dot warning"></i>商户支付</span><strong>待进件</strong></div></div></section></div>
+            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">NEXT ACTIONS</span><h2>上线前检查</h2></div><span class="status-chip warning">3 项待处理</span></div><div class="readiness-list"><button type="button" @click="switchView('ai-service')"><span class="readiness-icon" :class="{done:platform.ai?.configured}"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check' : 'ph:key'"></iconify-icon></span><span><strong>配置客服模型</strong><small>使用自带 API、平台托管额度或规则 FAQ</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('products')"><span class="readiness-icon" :class="{done:cfg.products.every(item => productCompleteness(item).percent === 100)}"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>补全商品资料</strong><small>主图、颜色、尺码与详情影响成交体验</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('channels')"><span class="readiness-icon" :class="{done:cfg._lastSync}"><iconify-icon class="icon" icon="ph:rocket-launch"></iconify-icon></span><span><strong>生成正式发布版本</strong><small>预览、检查并发布到微信小程序</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">SERVICE HEALTH</span><h2>服务状态</h2></div><button type="button" class="icon-btn" aria-label="刷新服务状态" @click="loadPlatform"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button></div><div class="health-list"><div><span><i class="health-dot online"></i>本地编辑服务</span><strong>正常</strong></div><div><span><i class="health-dot" :class="platform.ai?.configured ? 'online' : 'warning'"></i>AI 模型网关</span><strong>{{ platform.ai?.configured ? platform.ai.provider : 'FAQ 降级' }}</strong></div><div><span><i class="health-dot online"></i>GitHub 自动同步</span><strong>已启用</strong></div><div><span><i class="health-dot warning"></i>商户支付</span><strong>待进件</strong></div></div></section></div>
           </section>
 
           <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen,'has-responsive-drawer':leftPanelOpen||rightPanelOpen}">
@@ -2474,8 +2582,10 @@ createApp({
           </section>
 
           <section v-else-if="currentView === 'ai-service'" class="management ai-workspace">
-            <div class="management-header"><div><span class="eyebrow">AI SERVICE DESK</span><h1>智能客服</h1><p>DeepSeek 负责自然语言回答，量体、订单、预约和退款继续由权限受控的业务工具执行。</p></div><div class="management-actions"><span class="status-chip" :class="platform.ai?.configured ? 'success' : 'warning'">{{ platform.ai?.configured ? 'DeepSeek 已连接' : 'FAQ 降级模式' }}</span><button type="button" class="btn" @click="loadPlatform"><iconify-icon class="icon" icon="ph:activity"></iconify-icon>检查连接</button></div></div>
-            <div class="ai-grid"><section class="atelier-panel ai-console"><div class="atelier-panel-head"><div><span class="eyebrow">TEST CONSOLE</span><h2>模拟客户提问</h2></div><span class="status-chip">不读取真实客户资料</span></div><div class="ai-preview"><div class="ai-welcome"><span class="ai-avatar">A</span><p>{{ cfg.serviceBot.welcomeMessage }}</p></div><div class="ai-prompts"><button v-for="prompt in cfg.serviceBot.quickPrompts" :key="prompt" type="button" @click="testAiService(prompt)">{{ prompt }}</button></div><div v-if="aiConsole.answer" class="ai-answer"><div><strong>{{ aiConsole.answer.provider === 'deepseek' ? 'DeepSeek' : 'FAQ 降级' }}</strong><span>{{ aiConsole.answer.requestId }}</span></div><p>{{ aiConsole.answer.content }}</p><small v-if="aiConsole.answer.citations?.length">来源：{{ aiConsole.answer.citations.join('、') }}</small></div><div v-if="aiConsole.error" class="form-error" role="alert">{{ aiConsole.error }}</div><form class="ai-composer" @submit.prevent="testAiService()"><label class="sr-only" for="ai-test-question">测试问题</label><input id="ai-test-question" v-model="aiConsole.question" name="ai-test-question" autocomplete="off" type="text" maxlength="400" placeholder="输入客户可能提出的问题…"><button type="submit" class="btn primary" :disabled="aiConsole.sending || !aiConsole.question.trim()">{{ aiConsole.sending ? '生成中…' : '发送' }}</button></form></div></section><aside class="atelier-panel ai-status-panel"><div class="atelier-panel-head"><div><span class="eyebrow">MODEL ROUTING</span><h2>模型与降级</h2></div></div><dl class="status-definition"><div><dt>提供方</dt><dd>DeepSeek</dd></div><div><dt>模型</dt><dd>{{ platform.ai?.model || '由环境变量配置' }}</dd></div><div><dt>知识来源</dt><dd>商品 / 页面 / FAQ / 飞书</dd></div><div><dt>原始对话留存</dt><dd>仅当前会话</dd></div><div><dt>失败策略</dt><dd>FAQ → 操作入口 → 人工</dd></div></dl><div class="callout" :class="platform.ai?.configured ? 'success' : 'warning'"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check-circle' : 'ph:key'"></iconify-icon><div><strong>{{ platform.ai?.configured ? '模型网关可用' : '需要 DEEPSEEK_API_KEY' }}</strong><p>{{ platform.ai?.configured ? '请求会经过知识检索和权限过滤。' : '未配置时系统保持规则 FAQ，不会中断客服入口。' }}</p></div></div></aside></div>
+            <div class="management-header"><div><span class="eyebrow">AI SERVICE DESK</span><h1>智能客服</h1><p>连接商户自己的模型 API，或使用平台托管额度。量体、订单、预约和退款始终通过权限受控的业务工具执行。</p></div><div class="management-actions"><span class="status-chip" :class="platform.ai?.configured ? 'success' : 'warning'">{{ platform.ai?.configured ? platform.ai.provider + ' / ' + platform.ai.model : 'FAQ 降级模式' }}</span><button type="button" class="btn primary" @click="openAiConnectionEditor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加模型连接</button></div></div>
+            <div class="ai-routing-strip" role="group" aria-label="客服回答模式"><button type="button" :class="{active:platform.aiPolicy?.mode==='rules'}" @click="updateAiPolicy('rules')"><iconify-icon class="icon" icon="ph:list-checks"></iconify-icon><span><strong>规则 FAQ</strong><small>无需 Token 费用</small></span></button><button v-for="connection in platform.aiConnections" :key="connection.id" type="button" :class="{active:platform.aiPolicy?.mode==='byok' && platform.aiPolicy?.connectionId===connection.id}" @click="updateAiPolicy('byok', connection.id)"><iconify-icon class="icon" icon="ph:key"></iconify-icon><span><strong>{{ connection.providerName }}</strong><small>自带 API · {{ connection.model }}</small></span></button><button v-for="connection in platform.platformAiConnections" :key="'platform-'+connection.id" type="button" :class="{active:platform.aiPolicy?.mode==='platform' && platform.aiPolicy?.platformConnectionId===connection.id}" @click="updateAiPolicy('platform', connection.id)"><iconify-icon class="icon" icon="ph:cloud"></iconify-icon><span><strong>{{ connection.providerName }}</strong><small>平台托管 · {{ connection.model }}</small></span></button></div>
+            <div class="ai-grid"><section class="atelier-panel ai-console"><div class="atelier-panel-head"><div><span class="eyebrow">TEST CONSOLE</span><h2>模拟客户提问</h2></div><span class="status-chip">不读取真实客户资料</span></div><div class="ai-preview"><div class="ai-welcome"><span class="ai-avatar">A</span><p>{{ cfg.serviceBot.welcomeMessage }}</p></div><div class="ai-prompts"><button v-for="prompt in cfg.serviceBot.quickPrompts" :key="prompt" type="button" @click="testAiService(prompt)">{{ prompt }}</button></div><div v-if="aiConsole.answer" class="ai-answer"><div><strong>{{ aiConsole.answer.provider || 'FAQ 降级' }}</strong><span>{{ aiConsole.answer.requestId }}</span></div><p>{{ aiConsole.answer.content }}</p><small v-if="aiConsole.answer.citations?.length">来源：{{ aiConsole.answer.citations.join('、') }}</small></div><div v-if="aiConsole.error" class="form-error" role="alert">{{ aiConsole.error }}</div><form class="ai-composer" @submit.prevent="testAiService()"><label class="sr-only" for="ai-test-question">测试问题</label><input id="ai-test-question" v-model="aiConsole.question" name="ai-test-question" autocomplete="off" type="text" maxlength="400" placeholder="输入客户可能提出的问题…"><button type="submit" class="btn primary" :disabled="aiConsole.sending || !aiConsole.question.trim()">{{ aiConsole.sending ? '生成中…' : '发送' }}</button></form></div></section><aside class="atelier-panel ai-status-panel"><div class="atelier-panel-head"><div><span class="eyebrow">MODEL ROUTING</span><h2>模型与降级</h2></div></div><dl class="status-definition"><div><dt>模式</dt><dd>{{ platform.aiPolicy?.mode === 'byok' ? '商户自带 API' : platform.aiPolicy?.mode === 'platform' ? '平台托管额度' : '规则 FAQ' }}</dd></div><div><dt>提供方</dt><dd>{{ platform.ai?.provider || 'Rules' }}</dd></div><div><dt>模型</dt><dd>{{ platform.ai?.model || 'rules' }}</dd></div><div><dt>知识来源</dt><dd>商品 / 页面 / FAQ / 飞书</dd></div><div><dt>原始对话留存</dt><dd>仅当前会话</dd></div><div><dt>失败策略</dt><dd>FAQ → 操作入口 → 人工</dd></div></dl><div class="callout" :class="platform.ai?.configured ? 'success' : 'warning'"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check-circle' : 'ph:shield-check'"></iconify-icon><div><strong>{{ platform.ai?.configured ? '模型网关可用' : '当前不调用外部模型' }}</strong><p>{{ platform.ai?.configured ? '请求经过店铺作用域、知识检索和权限过滤。' : '规则 FAQ 会保持客服入口可用，不产生 Token 费用。' }}</p></div></div></aside></div>
+            <section class="atelier-panel ai-connections-panel"><div class="atelier-panel-head"><div><span class="eyebrow">MODEL CONNECTIONS</span><h2>商户模型连接</h2><p>API Key 加密保存，写入后不会显示明文，也不会同步进小程序或 GitHub。</p></div><button type="button" class="btn" @click="openAiConnectionEditor"><iconify-icon class="icon" icon="ph:key"></iconify-icon>添加连接</button></div><div v-if="!platform.aiConnections.length" class="empty-compact"><iconify-icon class="icon" icon="ph:plugs"></iconify-icon><p>还没有商户模型连接。你可以使用供应商预设或填写 OpenAI 兼容接口。</p></div><div v-else class="connection-list"><article v-for="connection in platform.aiConnections" :key="connection.id"><div class="connection-mark"><iconify-icon class="icon" icon="ph:circuitry"></iconify-icon></div><div class="connection-copy"><strong>{{ connection.providerName }} <span>{{ connection.model }}</span></strong><small>{{ connection.baseUrl }} · {{ connection.secretHint }}</small><span v-if="connection.lastError" class="connection-error">{{ connection.lastError }}</span></div><span class="status-chip" :class="connection.lastTestOk === true ? 'success' : connection.lastTestOk === false ? 'danger' : 'warning'">{{ connection.lastTestOk === true ? '测试通过' : connection.lastTestOk === false ? '测试失败' : '待测试' }}</span><div class="connection-actions"><button type="button" class="btn small" :disabled="aiConnectionBusy===connection.id" @click="testAiConnection(connection)">测试</button><button type="button" class="icon-btn" aria-label="轮换 API Key" title="轮换 API Key" @click="rotateAiConnectionSecret(connection)"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button><button type="button" class="icon-btn danger" aria-label="删除模型连接" title="删除模型连接" @click="deleteAiConnection(connection)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></article></div></section>
             <div class="ai-management-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>知识库</h2><p>同步状态与来源治理</p></div><button type="button" class="btn small">添加来源</button></div><div class="knowledge-list"><div><span class="source-icon"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>商品与页面内容</strong><small>{{ cfg.products.length }} 个商品 · {{ pageDefinitions.length }} 个页面</small></span><span class="status-chip success">已连接</span></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:file-text"></iconify-icon></span><span><strong>上传文档</strong><small>PDF、DOCX、TXT，保留来源引用</small></span><span class="status-chip">0 个</span></div><div><span class="source-icon"><iconify-icon class="icon" icon="ph:table"></iconify-icon></span><span><strong>飞书多维表格</strong><small>FAQ、客户与预约字段映射</small></span><span class="status-chip warning">待验证</span></div></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>实时会话</h2><p>只显示当前在线会话，不保存历史正文</p></div><span class="status-chip">0 个在线</span></div><div class="empty-compact"><iconify-icon class="icon" icon="ph:chat-circle-dots"></iconify-icon><p>发布小程序后，等待中的人工会话会显示在这里。</p></div></section></div>
           </section>
 
@@ -2488,13 +2598,6 @@ createApp({
             <div class="management-header"><div><span class="eyebrow">CHANNELS & RELEASES</span><h1>渠道与发布</h1><p>共享 AppID 和商户独立 AppID 使用同一版本流程，发布任务可追踪、重试和回滚。</p></div><button type="button" class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:rocket-launch"></iconify-icon>生成新版本</button></div>
             <div class="channel-grid"><article class="channel-card active"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:wechat-logo"></iconify-icon></span><span><strong>微信小程序</strong><small>平台共享 AppID</small></span></div><span class="status-chip success">已连接</span><dl><div><dt>店铺路由</dt><dd>PRIVLAN 独立二维码</dd></div><div><dt>最近同步</dt><dd>{{ cfg._lastSync ? new Date(cfg._lastSync).toLocaleString('zh-CN') : '尚未同步' }}</dd></div></dl></article><article class="channel-card"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:identification-card"></iconify-icon></span><span><strong>商户独立 AppID</strong><small>Professional / Enterprise</small></span></div><span class="status-chip warning">待授权</span><p>授权后保留商户自己的品牌、支付账户和数据边界。</p><button type="button" class="btn small">开始授权</button></article><article class="channel-card"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:credit-card"></iconify-icon></span><span><strong>微信支付</strong><small>消费者资金直达商户</small></span></div><span class="status-chip warning">待进件</span><p>共享 AppID 使用服务商/子商户模式，独立 AppID 绑定商户支付账户。</p><button type="button" class="btn small">查看进件清单</button></article></div>
             <div class="data-card"><div class="atelier-panel-head release-heading"><div><h2>发布任务</h2><p>本地同步已纳入版本记录；云端队列接入后支持审核、重试与回滚。</p></div></div><table class="data-table"><thead><tr><th>版本</th><th>环境</th><th>渠道</th><th>状态</th><th>时间</th></tr></thead><tbody><tr v-for="job in platform.publishJobs" :key="job.id"><td><strong>{{ job.version }}</strong><small class="table-subtext">{{ job.id }}</small></td><td>{{ job.environment }}</td><td>{{ job.channel }}</td><td><span class="status-chip" :class="job.status === 'succeeded' ? 'success' : 'warning'">{{ job.statusLabel }}</span></td><td>{{ job.createdAtLabel }}</td></tr></tbody></table></div>
-          </section>
-
-          <section v-else-if="currentView === 'platform-ops'" class="management ops-workspace">
-            <div class="management-header"><div><span class="eyebrow">ATELIER OS CONTROL PLANE</span><h1>平台运营</h1><p>管理租户、套餐、AI 成本、发布任务与服务健康。当前为本地控制面基线，腾讯云部署后接入正式数据库与队列。</p></div><span class="status-chip warning">仅平台管理员</span></div>
-            <div class="stats-grid"><div class="stat-card"><div class="stat-label">租户</div><div class="stat-value">1</div><small>PRIVLAN 演示租户</small></div><div class="stat-card"><div class="stat-label">有效订阅</div><div class="stat-value">1</div><small>{{ platform.workspace?.planName }}</small></div><div class="stat-card"><div class="stat-label">发布任务</div><div class="stat-value">{{ platform.publishJobs.length }}</div><small>保留最近 50 条</small></div><div class="stat-card"><div class="stat-label">AI 加权用量</div><div class="stat-value">{{ platform.usage?.aiPointsUsed || 0 }}</div><small>成本与配额统一计量</small></div></div>
-            <div class="ops-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>租户生命周期</h2><p>试用、订阅、暂停、退款和工作区隔离</p></div><button type="button" class="btn small">新建租户</button></div><table class="data-table compact"><thead><tr><th>租户</th><th>套餐</th><th>渠道</th><th>状态</th></tr></thead><tbody><tr><td><strong>{{ platform.workspace?.workspaceName }}</strong><small class="table-subtext">{{ platform.workspace?.tenantId }}</small></td><td>{{ platform.workspace?.planName }}</td><td>{{ platform.workspace?.channelMode === 'shared' ? '共享 AppID' : '独立 AppID' }}</td><td><span class="status-chip success">正常</span></td></tr></tbody></table></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>AI 控制面</h2><p>模型、预算、限流和全局降级</p></div></div><div class="health-list"><div><span>DeepSeek 网关</span><strong>{{ platform.ai?.configured ? '在线' : '待配置' }}</strong></div><div><span>默认模型</span><strong>{{ platform.ai?.model }}</strong></div><div><span>原始会话留存</span><strong>关闭后删除</strong></div><div><span>全局降级</span><strong>{{ platform.ai?.configured ? '关闭' : '已启用' }}</strong></div></div></section></div>
-            <div class="ops-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>套餐与权益</h2><p>价格和额度可配置，商户端只读取权益。</p></div></div><div class="plan-table"><div v-for="plan in platform.plans" :key="plan.id"><span><strong>{{ plan.name }}</strong><small>{{ plan.id }}</small></span><span>{{ plan.monthlyPrice ? '¥' + plan.monthlyPrice + '/月' : '14 天免费' }}</span><span>{{ plan.stores }} 店</span><span>{{ plan.skuLimit || '定制' }} SKU</span><span>{{ plan.aiPoints || '定制' }} AI 点</span></div></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>基础设施清单</h2><p>商业化上线前必须完成</p></div></div><div class="policy-list"><span><iconify-icon class="icon" icon="ph:database"></iconify-icon>PostgreSQL / pgvector 租户数据库</span><span><iconify-icon class="icon" icon="ph:cloud"></iconify-icon>COS、CDN、Redis 与发布队列</span><span><iconify-icon class="icon" icon="ph:key"></iconify-icon>KMS、密钥轮换与不可变审计</span><span><iconify-icon class="icon" icon="ph:lifebuoy"></iconify-icon>备份恢复、监控告警和服务状态页</span></div></section></div>
           </section>
 
           <section v-else-if="currentView === 'media'" class="management">
@@ -2521,7 +2624,7 @@ createApp({
                 <div class="service-settings-main"><div class="toggle-row"><span>显示客服入口</span><button type="button" class="switch" :class="{on:cfg.serviceBot.enabled}" role="switch" :aria-checked="cfg.serviceBot.enabled" aria-label="显示客服入口" @click="cfg.serviceBot.enabled=!cfg.serviceBot.enabled"></button></div><div class="field"><label for="service-welcome">欢迎语</label><textarea id="service-welcome" v-model="cfg.serviceBot.welcomeMessage" name="service-welcome" autocomplete="off" maxlength="160"></textarea></div><div class="field"><label>快捷问题</label><div class="service-prompt-editor"><input v-for="(prompt,index) in cfg.serviceBot.quickPrompts" :key="index" v-model="cfg.serviceBot.quickPrompts[index]" type="text" maxlength="32" :name="'service-prompt-' + index" autocomplete="off" :aria-label="'快捷问题 ' + (index + 1)"></div></div></div>
                 <div class="service-settings-side"><div class="field"><label>客服图标</label><div class="service-icon-control"><button type="button" class="service-icon-preview" @click="openServiceBotMediaPicker"><img :src="mpUrl(cfg.serviceBot.icon)" alt="当前客服图标"><span>从媒体库更换</span></button><label class="icon-upload-btn" title="上传客服图标"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon><input type="file" accept="image/*" hidden @change="uploadServiceBotIcon($event.target.files);$event.target.value=''" /></label></div></div><div class="service-number-grid"><div class="field"><label>尺寸（rpx）</label><input v-model.number="cfg.serviceBot.size" name="service-size" aria-label="客服图标尺寸" type="number" min="64" max="120"></div><div class="field"><label>右侧距离</label><input v-model.number="cfg.serviceBot.right" name="service-right" aria-label="客服图标右侧距离" type="number" min="8" max="300"></div><div class="field"><label>底部距离</label><input v-model.number="cfg.serviceBot.bottom" name="service-bottom" aria-label="客服图标底部距离" type="number" min="112" max="700"></div></div><div class="field"><label>身份验证</label><select v-model="cfg.serviceBot.authMode" name="service-auth-mode" aria-label="客服身份验证模式"><option value="test">测试验证码</option><option value="wechat">微信手机号授权</option></select></div><div class="toggle-row"><span>微信人工客服已开通</span><button type="button" class="switch" :class="{on:cfg.serviceBot.humanServiceEnabled}" role="switch" :aria-checked="cfg.serviceBot.humanServiceEnabled" aria-label="微信人工客服已开通" @click="cfg.serviceBot.humanServiceEnabled=!cfg.serviceBot.humanServiceEnabled"></button></div></div>
               </div>
-              <div class="service-status-row"><span><i :class="platform.ai?.configured ? 'ok' : 'warn'"></i>{{ platform.ai?.configured ? 'DeepSeek 已连接' : 'FAQ 降级模式' }}</span><span><i :class="cfg.serviceBot.authMode==='test' ? 'warn' : 'ok'"></i>{{ cfg.serviceBot.authMode==='test' ? '测试身份模式' : '微信手机号模式' }}</span><span><i :class="cfg.serviceBot.humanServiceEnabled ? 'ok' : 'warn'"></i>{{ cfg.serviceBot.humanServiceEnabled ? '人工客服已启用' : '人工客服待开通' }}</span></div>
+              <div class="service-status-row"><span><i :class="platform.ai?.configured ? 'ok' : 'warn'"></i>{{ platform.ai?.configured ? platform.ai.provider + ' 已连接' : 'FAQ 降级模式' }}</span><span><i :class="cfg.serviceBot.authMode==='test' ? 'warn' : 'ok'"></i>{{ cfg.serviceBot.authMode==='test' ? '测试身份模式' : '微信手机号模式' }}</span><span><i :class="cfg.serviceBot.humanServiceEnabled ? 'ok' : 'warn'"></i>{{ cfg.serviceBot.humanServiceEnabled ? '人工客服已启用' : '人工客服待开通' }}</span></div>
             </section>
             <section class="theme-card commercial-settings-card"><div class="settings-card-header"><div><h2>商业化与工作区</h2><p>套餐权益由平台运营配置，商户端不通过套餐名称硬编码功能。</p></div><span class="status-chip success">{{ platform.workspace?.planName || 'Professional' }}</span></div><div class="commercial-settings-grid"><div><span>租户</span><strong>{{ platform.workspace?.tenantId }}</strong></div><div><span>工作区</span><strong>{{ platform.workspace?.workspaceName }}</strong></div><div><span>店铺</span><strong>{{ platform.workspace?.storeName }}</strong></div><div><span>发布模式</span><strong>{{ platform.workspace?.channelMode === 'shared' ? '共享 AppID' : '独立 AppID' }}</strong></div><div><span>AI 额度</span><strong>{{ platform.usage?.aiPointsUsed || 0 }} / {{ platform.usage?.aiPointsLimit || 0 }}</strong></div><div><span>存储额度</span><strong>{{ platform.usage?.storageGbUsed || 0 }} / {{ platform.usage?.storageGbLimit || 0 }} GB</strong></div></div><div class="plan-strip"><article v-for="plan in platform.plans" :key="plan.id" :class="{active:plan.id===platform.workspace?.planId}"><span>{{ plan.name }}</span><strong>{{ plan.monthlyPrice ? '¥' + plan.monthlyPrice + '/月' : '免费试用' }}</strong><small>{{ plan.stores }} 店 · {{ plan.skuLimit || '定制' }} SKU</small></article></div></section>
             <section class="theme-card tabbar-settings-card"><div class="settings-card-header"><div><h2>底部导航</h2><p>为五个导航项配置图标与文字。每张图片均可独立调整取景、从媒体库更换或直接上传。</p></div><span class="badge">9 个图片槽位</span></div>
@@ -2558,6 +2661,15 @@ createApp({
           <div v-else-if="!mediaPickerItems.length" class="empty-state"><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><h3>{{ mediaPickerMode==='tabbar' ? '还没有可用图片' : '还没有可用素材' }}</h3><p>{{ mediaPickerMode==='product' ? '上传一张商品图片，马上用于当前商品。' : mediaPickerMode==='section-media' ? '上传图片或视频，马上作为区块背景。' : mediaPickerMode==='tabbar' ? '上传一张图片，马上作为导航图标。' : '上传首张图片或视频，马上加入轮播。' }}</p></div>
           <div v-else class="media-picker-grid"><button v-for="item in mediaPickerItems" :key="item.name" class="media-picker-card" @click="addMediaToHero(item)"><video v-if="item.kind==='video'" :src="item.path" muted preload="metadata"></video><img v-else :src="item.path" :alt="item.name"><span class="media-kind-badge" :title="'素材类型：' + mediaKindLabel(item)"><iconify-icon class="icon" :icon="item.kind==='video' ? 'ph:video-camera' : 'ph:image'"></iconify-icon>{{ mediaKindLabel(item) }}</span><span class="media-picker-name">{{ item.name }}</span></button></div>
         </aside>
+      </template>
+
+      <template v-if="aiConnectionEditor.open">
+        <div class="drawer-backdrop" @click="aiConnectionEditor.open=false"></div>
+        <form class="drawer ai-connection-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-connection-title" @submit.prevent="saveAiConnection">
+          <div class="drawer-header"><div><h2 id="ai-connection-title">添加模型连接</h2><p>支持 OpenAI 兼容协议。密钥只发送到当前平台服务并加密保存。</p></div><button type="button" class="icon-btn" aria-label="关闭模型连接设置" @click="aiConnectionEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-body"><div class="security-notice"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>API Key 不会回显</strong><p>保存后只能测试、轮换或删除。它不会写入店铺配置、小程序文件、浏览器存储或 GitHub。</p></div></div><div class="field"><label for="ai-provider-preset">供应商预设</label><select id="ai-provider-preset" v-model="aiConnectionEditor.providerPreset" name="ai-provider-preset" @change="applyAiProviderPreset"><option v-for="provider in platform.providerCatalog" :key="provider.id" :value="provider.id">{{ provider.name }} · {{ provider.region }}</option></select></div><div class="field"><label for="ai-provider-name">显示名称</label><input id="ai-provider-name" v-model.trim="aiConnectionEditor.providerName" name="ai-provider-name" type="text" maxlength="60" autocomplete="off" placeholder="例如：公司客服模型…"></div><div class="field"><label for="ai-base-url">API 地址</label><input id="ai-base-url" v-model.trim="aiConnectionEditor.baseUrl" name="ai-base-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1…"><small class="field-help">系统会调用 <code>/chat/completions</code>；如果地址已包含该路径则直接使用。</small></div><div class="field"><label for="ai-model-name">模型名称</label><input id="ai-model-name" v-model.trim="aiConnectionEditor.model" name="ai-model-name" type="text" autocomplete="off" spellcheck="false" placeholder="例如：deepseek-chat…"></div><div class="field"><label for="ai-api-key">API Key</label><input id="ai-api-key" v-model="aiConnectionEditor.apiKey" name="ai-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="sk-…"></div><div class="field-row"><div class="field"><label for="ai-timeout">超时（毫秒）</label><input id="ai-timeout" v-model.number="aiConnectionEditor.timeoutMs" name="ai-timeout" type="number" min="3000" max="60000" step="1000"></div><div class="field"><label for="ai-max-tokens">最大输出 Token</label><input id="ai-max-tokens" v-model.number="aiConnectionEditor.maxTokens" name="ai-max-tokens" type="number" min="100" max="2000" step="100"></div></div><div v-if="aiConnectionEditor.error" class="form-error" role="alert">{{ aiConnectionEditor.error }}</div></div>
+          <div class="drawer-footer"><button type="button" class="btn subtle" @click="aiConnectionEditor.open=false">取消</button><button type="submit" class="btn primary" :disabled="aiConnectionEditor.saving"><iconify-icon class="icon" :icon="aiConnectionEditor.saving ? 'ph:spinner-gap' : 'ph:lock-key'"></iconify-icon>{{ aiConnectionEditor.saving ? '正在加密保存…' : '加密保存连接' }}</button></div>
+        </form>
       </template>
 
       <template v-if="mediaTrashOpen">
