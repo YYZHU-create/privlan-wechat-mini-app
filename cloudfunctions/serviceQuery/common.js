@@ -212,7 +212,7 @@ function handleError(error, id = requestId()) {
 }
 
 module.exports = {
-  cloud, db, command, ok, fail, createError, env, hash, requestId, escapeFilterValue,
+  cloud, db, command, ok, fail, createError, env, hash, requestId, escapeFilterValue, httpJson,
   searchRecords, getRecord, createRecord, updateRecord, plainValue, fieldName, fieldValue,
   currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot, handleError
 };

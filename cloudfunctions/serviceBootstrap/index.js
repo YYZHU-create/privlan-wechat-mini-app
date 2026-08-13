@@ -12,7 +12,9 @@ exports.main = async () => {
     }
     return core.ok({
       faqVersion,
-      answerProvider: "rules",
+      answerProvider: core.env("DEEPSEEK_API_KEY") ? "deepseek_rag" : "rules",
+      modelProvider: core.env("DEEPSEEK_API_KEY") ? "deepseek" : "rules",
+      model: core.env("DEEPSEEK_MODEL", "deepseek-v4-flash"),
       authMode: core.env("AUTH_MODE", "test") === "wechat" ? "wechat" : "test",
       humanServiceEnabled: core.env("HUMAN_SERVICE_ENABLED", "false") === "true"
     }, "客服配置已加载", id);

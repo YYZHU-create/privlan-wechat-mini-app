@@ -24,7 +24,9 @@ const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
 const TRASH_DIR = path.join(__dirname, "media-trash");
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
+const SAAS_STATE_PATH = path.join(__dirname, "saas-state.json");
 let previewBuildCount = 0;
+const aiUsage = { inputTokens: 0, outputTokens: 0, requests: 0, fallbackRequests: 0, errors: 0 };
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
 fs.mkdirSync(FONTS_DIR, { recursive: true });
 fs.mkdirSync(CONFIG_BACKUP_DIR, { recursive: true });
@@ -115,6 +117,127 @@ function writeConfig(cfg) {
   const tempPath = `${CONFIG_PATH}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(cfg, null, 2), "utf-8");
   fs.renameSync(tempPath, CONFIG_PATH);
+}
+
+function defaultSaasState() {
+  return {
+    schemaVersion: 1,
+    workspace: {
+      tenantId: "tenant_privlan_demo",
+      workspaceId: "workspace_privlan_cn",
+      storeId: "store_privlan_main",
+      workspaceName: "PRIVLAN Retail",
+      storeName: "PRIVLAN",
+      planId: "professional",
+      planName: "Professional",
+      channelMode: "shared",
+      roles: ["owner", "admin", "designer", "operator", "customer_service"]
+    },
+    plans: [
+      { id: "trial", name: "14 天试用", monthlyPrice: 0, yearlyPrice: 0, stores: 1, skuLimit: 50, storageGb: 1, aiPoints: 100000 },
+      { id: "starter", name: "Starter", monthlyPrice: 299, yearlyPrice: 2990, stores: 1, skuLimit: 500, storageGb: 5, aiPoints: 1000000 },
+      { id: "professional", name: "Professional", monthlyPrice: 899, yearlyPrice: 8990, stores: 3, skuLimit: 5000, storageGb: 50, aiPoints: 5000000 },
+      { id: "enterprise", name: "Enterprise", monthlyPrice: 2999, yearlyPrice: null, stores: 10, skuLimit: null, storageGb: null, aiPoints: null }
+    ],
+    publishJobs: []
+  };
+}
+
+function readSaasState() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SAAS_STATE_PATH, "utf-8"));
+    return { ...defaultSaasState(), ...parsed, workspace: { ...defaultSaasState().workspace, ...(parsed.workspace || {}) } };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return defaultSaasState();
+  }
+}
+
+function writeSaasState(state) {
+  const tempPath = `${SAAS_STATE_PATH}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), "utf-8");
+  fs.renameSync(tempPath, SAAS_STATE_PATH);
+}
+
+function requestId(prefix = "req") {
+  return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function publicAiStatus() {
+  const configured = Boolean(String(process.env.DEEPSEEK_API_KEY || "").trim());
+  return {
+    configured,
+    provider: configured ? "deepseek" : "rules",
+    status: configured ? "online" : "fallback",
+    model: String(process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"),
+    endpoint: configured ? "configured" : "missing",
+    retention: "session_only",
+    answerProvider: configured ? "deepseek_rag" : "rules"
+  };
+}
+
+function fallbackFaq(text, cfg) {
+  const rules = [
+    { pattern: /价格|价位|多少钱/, content: "价格会根据品类、面料和定制需求确定。你可以告诉我感兴趣的商品或服务，我会提供更准确的范围。", citation: "品牌价格政策" },
+    { pattern: /面料|材质/, content: "我们会根据季节、穿着场景和版型选择天然及高品质混纺面料。具体成分请以商品详情和顾问确认为准。", citation: "商品与面料说明" },
+    { pattern: /版型|款式|剪裁/, content: "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。", citation: "品牌服务说明" },
+    { pattern: /周期|多久|制作时间/, content: "制作周期会随品类、面料和工艺变化。完成量体与款式确认后，顾问会给出准确交付时间。", citation: "定制服务政策" }
+  ];
+  const matched = rules.find(rule => rule.pattern.test(text));
+  if (matched) return { type: "faq", content: matched.content, citations: [matched.citation] };
+  const product = (cfg.products || []).find(item => text.includes(String(item.name || "")) || text.includes(String(item.id || "")));
+  if (product) return { type: "product", content: `${product.name} 当前标价为 ¥${Number(product.price || 0).toLocaleString("zh-CN")}。你还可以询问颜色、尺码或预约顾问。`, citations: [`商品 #${product.id}`] };
+  return { type: "action", content: "现有知识中没有足够信息回答这个问题。你可以补充具体商品或需求，或转接人工顾问。", citations: [], actions: [{ id: "human", label: "转人工服务" }] };
+}
+
+function deterministicServiceAction(text) {
+  if (/量体|我的尺寸|身体数据/.test(text)) return { type: "action", content: "查看量体资料前需要验证客户身份。", actions: [{ id: "verify_identity", label: "验证身份" }] };
+  if (/订单|物流|发货/.test(text)) return { type: "action", content: "查询订单需要验证手机号并选择对应订单。", actions: [{ id: "open_orders", label: "查询我的订单" }] };
+  if (/预约/.test(text)) return { type: "action", content: "可以进入预约流程选择日期和时间。系统会预留 135 分钟并避免时段冲突。", actions: [{ id: "appointment", label: "开始预约" }] };
+  if (/退款|退货|售后/.test(text)) return { type: "action", content: "退款与售后需要在订单中发起，系统会校验订单和支付状态。", actions: [{ id: "after_sales", label: "申请售后" }] };
+  return null;
+}
+
+function knowledgeContext(cfg) {
+  const products = (cfg.products || []).slice(0, 30).map(item => ({ id: item.id, name: item.name, price: item.price, category: item.cat, description: item.description || item.detail || "" }));
+  const categories = (cfg.categories || []).map(item => ({ id: item.id, name: item.name }));
+  return JSON.stringify({ brand: cfg.brand, products, categories, quickPrompts: cfg.serviceBot?.quickPrompts || [] });
+}
+
+async function queryDeepSeek(text, cfg) {
+  const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const endpoint = String(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
+  const model = String(process.env.DEEPSEEK_MODEL || "deepseek-v4-flash");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(3000, Number(process.env.DEEPSEEK_TIMEOUT_MS) || 12000));
+  try {
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: "你是零售品牌客服。只能依据提供的知识回答；不得编造价格、库存、订单、量体或承诺；不得执行交易和敏感数据操作；资料不足时明确说明并建议人工。回答简洁、中文、无营销夸张。" },
+          { role: "system", content: `店铺知识：${knowledgeContext(cfg)}` },
+          { role: "user", content: text }
+        ]
+      })
+    });
+    if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`);
+    const data = await response.json();
+    const content = String(data.choices?.[0]?.message?.content || "").trim();
+    if (!content) throw new Error("DeepSeek 未返回内容");
+    aiUsage.requests += 1;
+    aiUsage.inputTokens += Number(data.usage?.prompt_tokens || 0);
+    aiUsage.outputTokens += Number(data.usage?.completion_tokens || 0);
+    return { content, model, usage: data.usage || null };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function collectConfigAssetPaths(cfg) {
@@ -399,6 +522,126 @@ app.get("/api/dashboard", (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---- ATELIER OS platform boundary ----
+app.get("/api/platform/bootstrap", (req, res) => {
+  try {
+    const state = readSaasState();
+    const cfg = readConfig();
+    const plan = state.plans.find(item => item.id === state.workspace.planId) || state.plans[0];
+    const imageBytes = fs.readdirSync(IMAGES_DIR).reduce((total, name) => {
+      try { return total + fs.statSync(path.join(IMAGES_DIR, name)).size; } catch (error) { return total; }
+    }, 0);
+    const jobs = state.publishJobs.length ? state.publishJobs : [{
+      id: "local_initial", version: "local-current", environment: "开发预览", channel: "微信共享 AppID",
+      status: cfg._lastSync ? "succeeded" : "draft", statusLabel: cfg._lastSync ? "已同步" : "草稿",
+      createdAtLabel: cfg._lastSync ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(cfg._lastSync)) : "尚未同步"
+    }];
+    res.json({
+      ok: true,
+      workspace: state.workspace,
+      plans: state.plans,
+      publishJobs: jobs.slice(0, 20),
+      ai: publicAiStatus(),
+      usage: {
+        aiPointsUsed: aiUsage.inputTokens + aiUsage.outputTokens * 4,
+        aiPointsLimit: plan.aiPoints || 0,
+        storageGbUsed: Number((imageBytes / 1024 / 1024 / 1024).toFixed(2)),
+        storageGbLimit: plan.storageGb || 0,
+        skuUsed: (cfg.products || []).length,
+        skuLimit: plan.skuLimit || 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/ai/query", async (req, res) => {
+  const id = requestId("ai");
+  try {
+    const text = String(req.body?.text || "").trim().slice(0, 400);
+    if (!text) return res.status(400).json({ ok: false, requestId: id, error: "请输入问题" });
+    const state = readSaasState();
+    const tenantId = String(req.body?.tenantId || state.workspace.tenantId);
+    const storeId = String(req.body?.storeId || state.workspace.storeId);
+    if (tenantId !== state.workspace.tenantId || storeId !== state.workspace.storeId) return res.status(403).json({ ok: false, requestId: id, error: "工作区权限不匹配" });
+    const action = deterministicServiceAction(text);
+    if (action) return res.json({ ok: true, requestId: id, provider: "tools", confidence: 1, citations: [], ...action });
+    const cfg = readConfig();
+    try {
+      const answer = await queryDeepSeek(text, cfg);
+      if (answer) return res.json({ ok: true, requestId: id, provider: "deepseek", type: "answer", confidence: 0.78, citations: ["店铺商品与页面知识"], content: answer.content, usage: answer.usage, model: answer.model });
+    } catch (error) {
+      aiUsage.errors += 1;
+    }
+    aiUsage.fallbackRequests += 1;
+    const fallback = fallbackFaq(text, cfg);
+    return res.json({ ok: true, requestId: id, provider: "rules", confidence: fallback.type === "faq" ? 0.9 : 0.35, fallback: true, ...fallback });
+  } catch (error) {
+    aiUsage.errors += 1;
+    res.status(500).json({ ok: false, requestId: id, error: "客服服务暂时不可用，请重试或转人工" });
+  }
+});
+
+app.get("/api/ai/status", (req, res) => {
+  res.json({ ok: true, ...publicAiStatus(), usage: { ...aiUsage, weightedPoints: aiUsage.inputTokens + aiUsage.outputTokens * 4 } });
+});
+
+function scopedWorkspace(req, res) {
+  const state = readSaasState();
+  const tenantId = String(req.query.tenantId || req.body?.tenantId || state.workspace.tenantId);
+  const storeId = String(req.query.storeId || req.body?.storeId || state.workspace.storeId);
+  if (tenantId !== state.workspace.tenantId || storeId !== state.workspace.storeId) {
+    res.status(403).json({ ok: false, code: "TENANT_SCOPE_MISMATCH", error: "租户或店铺作用域不匹配" });
+    return null;
+  }
+  return state;
+}
+
+app.get("/v1/workspaces", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: [state.workspace] });
+});
+app.get("/v1/stores", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: [{ id: state.workspace.storeId, tenantId: state.workspace.tenantId, name: state.workspace.storeName, channelMode: state.workspace.channelMode }] });
+});
+app.get("/v1/designs", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const cfg = readConfig();
+  res.json({ ok: true, data: [{ id: `design_${state.workspace.storeId}`, tenantId: state.workspace.tenantId, storeId: state.workspace.storeId, schemaVersion: cfg.designSystem?.version || 1, status: cfg._lastSync ? "published" : "draft", document: cfg }] });
+});
+app.get("/v1/assets", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const folderData = readMediaFolders();
+  const data = fs.readdirSync(IMAGES_DIR).map(name => ({ id: name, tenantId: state.workspace.tenantId, storeId: state.workspace.storeId, path: `/images/${name}`, folderId: folderData.assignments[name] || "" }));
+  res.json({ ok: true, data });
+});
+app.get("/v1/products", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: (readConfig().products || []).map(item => ({ ...item, tenantId: state.workspace.tenantId, storeId: state.workspace.storeId })) });
+});
+app.get("/v1/orders", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: [], meta: { paymentOnboardingRequired: true } });
+});
+app.get("/v1/publish-jobs", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: state.publishJobs });
+});
+app.get("/v1/ai/status", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (state) res.json({ ok: true, data: { ...publicAiStatus(), usage: { ...aiUsage, weightedPoints: aiUsage.inputTokens + aiUsage.outputTokens * 4 } } });
+});
+app.get("/v1/billing/entitlements", (req, res) => {
+  const state = scopedWorkspace(req, res);
+  if (!state) return;
+  const plan = state.plans.find(item => item.id === state.workspace.planId) || state.plans[0];
+  res.json({ ok: true, data: { planId: plan.id, stores: plan.stores, skuLimit: plan.skuLimit, storageGb: plan.storageGb, aiPoints: plan.aiPoints, features: { sharedAppId: true, merchantAppId: ["professional", "enterprise"].includes(plan.id), aiWorkspace: plan.id !== "trial", feishu: ["professional", "enterprise"].includes(plan.id), audit: plan.id === "enterprise" } } });
 });
 
 // ---- Config API ----
@@ -710,7 +953,18 @@ app.post("/api/sync", (req, res) => {
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);
     const ownedPaths = [...(result.files || []), "admin/config.json", ...collectConfigAssetPaths(cfg)];
-    res.json({ ok: true, ...result, lastSync: cfg._lastSync, git: autoSyncGitHub("mini program sync", ownedPaths) });
+    const state = readSaasState();
+    const version = `v${cfg._lastSync.replace(/[-:TZ.]/g, "").slice(0, 14)}`;
+    const publishJob = {
+      id: requestId("publish"), version, environment: "开发预览",
+      channel: state.workspace.channelMode === "shared" ? "微信共享 AppID" : "商户独立 AppID",
+      status: "succeeded", statusLabel: "已同步", createdAt: cfg._lastSync,
+      createdAtLabel: new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(cfg._lastSync))
+    };
+    state.publishJobs.unshift(publishJob);
+    state.publishJobs = state.publishJobs.slice(0, 50);
+    writeSaasState(state);
+    res.json({ ok: true, ...result, lastSync: cfg._lastSync, version, publishJob, git: autoSyncGitHub("mini program sync", [...ownedPaths, "admin/saas-state.json"]) });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack });
   }
 });

@@ -24,6 +24,10 @@
 - `AUTH_MODE=test`
 - `TEST_AUTH_CODE`：仅测试环境设置，正式上线前删除
 - `HUMAN_SERVICE_ENABLED=false`
+- `DEEPSEEK_API_KEY`：平台托管的模型密钥；未配置时自动使用飞书 FAQ 和内置知识
+- `DEEPSEEK_BASE_URL=https://api.deepseek.com`
+- `DEEPSEEK_MODEL=deepseek-v4-flash`：按实际账户可用型号配置，不在客户端硬编码
+- `DEEPSEEK_TIMEOUT_MS=12000`
 - `APPOINTMENT_DURATION_MINUTES=135`
 - `APPOINTMENT_REMINDER_TEMPLATE_ID`：微信订阅消息模板 ID
 - `APPOINTMENT_REMINDER_LEAD_MINUTES=1440`：默认提前 24 小时提醒

@@ -11,4 +11,6 @@ tmp/
 admin/config-backups/
 admin/media-trash/
 admin/qa/final-*.png
+admin/qa/atelier-*.png
+admin/saas-state.json
 .DS_Store
