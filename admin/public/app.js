@@ -2,13 +2,28 @@
 
 createApp({
   setup() {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, options = {}) => {
+      const method = String(options.method || "GET").toUpperCase();
+      const url = typeof input === "string" ? input : input.url;
+      if (!["GET", "HEAD", "OPTIONS"].includes(method) && new URL(url, location.href).origin === location.origin) {
+        const csrf = document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("atelier_csrf="))?.slice("atelier_csrf=".length);
+        if (csrf) options = { ...options, headers: { ...(options.headers || {}), "x-atelier-csrf": decodeURIComponent(csrf) } };
+      }
+      return nativeFetch(input, { credentials: "same-origin", ...options });
+    };
     const cfg = ref({
       brand: { name: "PRIVLAN", slogan: "" }, theme: { colors: { bgPrimary: "#0a0a0a", bgSecondary: "#161616", bgTertiary: "#1e1e1e", textPrimary: "#f0f0f0", textSecondary: "#8a8a8a", accent: "#c9a97e", border: "#2a2a2a" } },
       heroes: [], categories: [], products: [], memberBenefits: [], homeChannels: ["推荐", "LAKE MAGGIORE"], customFonts: [], customPages: [], pageLayouts: { home: [] }, designSystem: { blockDefaults: {} }
     });
     const loading = ref(true);
     const loadError = ref("");
-    const currentView = ref(new URLSearchParams(window.location.search).get("view") || "overview");
+    const auth = reactive({ loading: true, session: null, mode: "login", login: "", password: "", storeName: "", contactName: "", template: "sample", sending: false, error: "" });
+    const account = reactive({ loading: false, subscription: null, code: "", redeeming: false, error: "" });
+    const mvpFeatureFlags = Object.freeze({ orders: false, marketing: false, analytics: false });
+    const mvpViews = new Set(["overview", "editor", "products", "categories", "media", "customers", "ai-service", "channels", "account", "settings", "theme"]);
+    const requestedView = new URLSearchParams(window.location.search).get("view") || "overview";
+    const currentView = ref(mvpViews.has(requestedView) ? requestedView : "overview");
     const currentPage = ref("home");
     const leftPanelOpen = ref(true);
     const rightPanelOpen = ref(true);
@@ -139,15 +154,11 @@ createApp({
       { id: "overview", label: "概览", icon: "ph:gauge" },
       { id: "editor", label: "设计", icon: "ph:bounding-box" },
       { id: "products", label: "商品", icon: "ph:handbag" },
-      { id: "categories", label: "分类", icon: "ph:tree-structure" },
       { id: "media", label: "媒体", icon: "ph:image-square" },
-      { id: "orders", label: "订单", icon: "ph:receipt" },
-      { id: "customers", label: "客户", icon: "ph:users-three" },
-      { id: "marketing", label: "营销", icon: "ph:megaphone" },
+      { id: "customers", label: "预约 / 客户", icon: "ph:users-three" },
       { id: "ai-service", label: "客服", icon: "ph:chat-circle-text" },
-      { id: "analytics", label: "数据", icon: "ph:chart-line-up" },
-      { id: "channels", label: "渠道与预览", icon: "ph:broadcast" },
-      { id: "theme", label: "主题", icon: "ph:paint-brush" },
+      { id: "channels", label: "小程序预览", icon: "ph:device-mobile-camera" },
+      { id: "account", label: "账户与订阅", icon: "ph:identification-card" },
       { id: "settings", label: "设置", icon: "ph:sliders-horizontal" }
     ];
 
@@ -176,7 +187,7 @@ createApp({
       return ({
         overview: "店铺概览", products: "商品管理", categories: "分类管理", media: "媒体库",
         theme: "主题设置", orders: "订单管理", customers: "客户管理", marketing: "营销中心",
-        "ai-service": "智能客服", analytics: "经营数据", channels: "渠道与预览", settings: "全局设置"
+        "ai-service": "智能客服", channels: "小程序预览", account: "账户与订阅", settings: "全局设置"
       })[currentView.value] || "工作台";
     });
 
@@ -656,7 +667,7 @@ createApp({
         savedSnapshot.value = JSON.stringify(cfg.value);
         history.value = [savedSnapshot.value];
         historyIndex.value = 0;
-        if (rawSnapshot !== savedSnapshot.value) {
+        if (rawSnapshot !== savedSnapshot.value && auth.session?.subscription?.status === "active") {
           await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: savedSnapshot.value });
         }
         loadSystemFonts();
@@ -689,6 +700,59 @@ createApp({
       } finally {
         platform.loading = false;
       }
+    }
+
+    async function loadSubscription() {
+      account.loading = true; account.error = "";
+      try {
+        const response = await fetch("/v1/subscription"); const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || "订阅读取失败");
+        account.subscription = result.data;
+        if (auth.session) auth.session.subscription = result.data;
+      } catch (error) { account.error = error.message; }
+      finally { account.loading = false; }
+    }
+
+    async function redeemSubscription() {
+      if (!account.code.trim() || account.redeeming) return;
+      account.redeeming = true; account.error = "";
+      try {
+        const response = await fetch("/v1/licenses/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: account.code.trim() }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || "兑换失败");
+        account.code = ""; await checkMerchantSession(false); await loadSubscription(); await loadPlatform();
+        toast("兑换成功", "订阅有效期已经更新");
+      } catch (error) { account.error = error.message; }
+      finally { account.redeeming = false; }
+    }
+
+    async function submitAuth() {
+      if (auth.sending) return;
+      auth.sending = true; auth.error = "";
+      const endpoint = auth.mode === "register" ? "/auth/register" : "/auth/login";
+      try {
+        const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: auth.login, password: auth.password, storeName: auth.storeName, contactName: auth.contactName, template: auth.template }) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || "登录失败");
+        auth.password = ""; auth.session = result.data; auth.loading = false;
+        await Promise.all([loadConfig(), loadPlatform(), loadSubscription()]); loadCart();
+      } catch (error) { auth.error = error.message; }
+      finally { auth.sending = false; }
+    }
+
+    async function checkMerchantSession(loadWorkspace = true) {
+      auth.loading = true; auth.error = "";
+      try {
+        const response = await fetch("/auth/session"); const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) { auth.session = null; return; }
+        auth.session = result.data;
+        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription()]); loadCart(); }
+      } catch (error) { auth.session = null; }
+      finally { auth.loading = false; }
+    }
+
+    async function merchantSignOut() {
+      await fetch("/auth/logout", { method: "POST" }); auth.session = null; account.subscription = null; auth.mode = "login";
     }
 
     async function testAiService(text) {
@@ -1138,6 +1202,7 @@ createApp({
     }
 
     function switchView(id) {
+      if (!mvpViews.has(id) || mvpFeatureFlags[id] === false) id = "overview";
       currentView.value = id;
       if (id === "media" && !media.value.length) loadMedia();
       const url = new URL(window.location.href);
@@ -2411,17 +2476,15 @@ createApp({
       event.returnValue = "";
     });
 
-    loadCart();
-    loadConfig();
-    loadPlatform();
+    checkMerchantSession();
 
     return {
-      cfg, loading, loadError, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, leftPanelOpen, rightPanelOpen,
+      cfg, loading, loadError, auth, account, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, leftPanelOpen, rightPanelOpen,
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2431,13 +2494,20 @@ createApp({
   },
 
   template: `
-    <div class="app-shell" :class="{'editor-mode': currentView === 'editor'}">
+    <div v-if="auth.loading" class="merchant-auth-loading"><span class="workspace-mark">A</span><p>正在验证工作区…</p></div>
+    <main v-else-if="!auth.session" class="merchant-auth-page">
+      <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-brand"><strong translate="no">ATELIER OS</strong><span>零售品牌数字工作台</span></div><div class="merchant-auth-copy"><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，几分钟内建立自己的小程序工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="10" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
+      <aside class="merchant-auth-aside"><div><span>ATELIER / COMMERCE SYSTEM</span><h2>把品牌内容、商品与服务放在一个清晰的工作台里。</h2></div><dl><div><dt>设计</dt><dd>实时小程序画布</dd></div><div><dt>经营</dt><dd>商品、客户与预约</dd></div><div><dt>服务</dt><dd>可配置的智能客服</dd></div></dl></aside>
+    </main>
+    <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
+      <div v-if="account.subscription?.status==='expired' || account.subscription?.status==='inactive'" class="subscription-banner" role="status"><span><strong>{{ account.subscription?.status==='expired'?'订阅已到期':'工作区尚未激活' }}</strong> 数据仍安全保留，输入兑换码即可继续编辑。</span><button type="button" @click="switchView('account')">输入兑换码</button></div>
+      <div v-else-if="account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3" class="subscription-banner warning" role="status"><span><strong>PRO 将于 {{ account.subscription.remainingDays }} 天后到期</strong></span><button type="button" @click="switchView('account')">查看订阅</button></div>
       <header class="topbar">
         <div class="brand-lockup">
           <div class="atelier-wordmark" translate="no" aria-label="ATELIER OS"><span class="atelier-name">ATELIER</span><span class="atelier-os">OS</span></div>
         </div>
         <div class="top-context">
-          <button type="button" class="workspace-switcher" aria-label="切换工作区"><span class="workspace-mark">P</span><span><strong>{{ platform.workspace?.storeName || 'PRIVLAN' }}</strong><small>{{ platform.workspace?.planName || 'Professional' }}</small></span><iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></button>
+          <div class="workspace-switcher static"><span class="workspace-mark">{{ (platform.workspace?.storeName || 'A').slice(0,1) }}</span><span><strong>{{ platform.workspace?.storeName || auth.session.workspace?.name }}</strong><small>{{ account.subscription?.planId || '未激活' }}</small></span></div>
           <iconify-icon class="icon crumb" icon="ph:caret-right" aria-hidden="true"></iconify-icon>
           <span class="crumb crumb-current">{{ viewTitle }}</span>
           <span class="action-divider"></span>
@@ -2449,7 +2519,7 @@ createApp({
           <span class="action-divider"></span>
           <button class="btn" aria-label="保存当前更改" :disabled="saveMode === 'saving' || !isDirty" @click="saveConfig(false)"><iconify-icon class="icon" icon="ph:floppy-disk"></iconify-icon><span class="btn-label optional">保存</span></button>
           <button class="btn" title="手机扫码预览" :disabled="saveMode === 'syncing' || previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon><span class="btn-label">手机扫码预览</span></button>
-          <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">生成小程序</span></button>
+          <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">生成预览</span></button>
         </div>
       </header>
 
@@ -2473,11 +2543,11 @@ createApp({
 
           <section v-else-if="currentView === 'overview'" class="management atelier-overview">
             <div class="overview-hero">
-              <div class="overview-hero-copy"><span class="eyebrow">ATELIER OS / LIVE WORKSPACE</span><h1>让店铺从设计走向成交</h1><p>PRIVLAN 当前使用 {{ platform.workspace?.channelMode === 'shared' ? '平台共享 AppID' : '商户独立 AppID' }}。设计、商品、客服与发布状态集中在同一个工作台。</p><div class="overview-actions"><button type="button" class="btn primary" @click="switchView('editor')"><iconify-icon class="icon" icon="ph:bounding-box"></iconify-icon>继续设计</button><button type="button" class="btn" @click="switchView('channels')"><iconify-icon class="icon" icon="ph:broadcast"></iconify-icon>查看发布状态</button></div></div>
-              <div class="material-rail" aria-label="店铺工作流"><div class="material-node complete"><span>01</span><strong>设计</strong><small>{{ Object.values(cfg.pageLayouts || {}).flat().length }} 个区块</small></div><div class="material-line"></div><div class="material-node complete"><span>02</span><strong>商品</strong><small>{{ cfg.products.length }} 个商品</small></div><div class="material-line"></div><div class="material-node" :class="{complete: platform.ai?.configured}"><span>03</span><strong>客服</strong><small>{{ platform.ai?.configured ? '模型已连接' : '等待模型密钥' }}</small></div><div class="material-line"></div><div class="material-node" :class="{complete: cfg._lastSync}"><span>04</span><strong>发布</strong><small>{{ cfg._lastSync ? '已有同步版本' : '尚未发布' }}</small></div></div>
+              <div class="overview-hero-copy"><span class="eyebrow">当前工作区</span><h1>让店铺从设计走向顾客</h1><p>{{ platform.workspace?.storeName || auth.session?.workspace?.name }} 的设计、商品、客服与小程序预览集中在同一个工作台。</p><div class="overview-actions"><button type="button" class="btn primary" @click="switchView('editor')"><iconify-icon class="icon" icon="ph:bounding-box"></iconify-icon>继续设计</button><button type="button" class="btn" @click="switchView('channels')"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon>打开小程序预览</button></div></div>
+              <div class="material-rail" aria-label="店铺工作流"><div class="material-node complete"><span>01</span><strong>设计</strong><small>{{ Object.values(cfg.pageLayouts || {}).flat().length }} 个区块</small></div><div class="material-line"></div><div class="material-node complete"><span>02</span><strong>商品</strong><small>{{ cfg.products.length }} 个商品</small></div><div class="material-line"></div><div class="material-node" :class="{complete: platform.ai?.configured}"><span>03</span><strong>客服</strong><small>{{ platform.ai?.configured ? '模型已连接' : '使用规则问答' }}</small></div><div class="material-line"></div><div class="material-node" :class="{complete: cfg._lastSync}"><span>04</span><strong>预览</strong><small>{{ cfg._lastSync ? '已生成开发预览' : '等待生成预览' }}</small></div></div>
             </div>
             <div class="overview-metrics"><article><span>商品</span><strong>{{ cfg.products.length }}</strong><small>其中 {{ cfg.products.filter(item => productCompleteness(item).percent === 100).length }} 个资料完整</small></article><article><span>页面</span><strong>{{ pageDefinitions.length }}</strong><small>{{ Object.values(cfg.pageLayouts || {}).flat().length }} 个可编辑区块</small></article><article><span>AI 使用</span><strong>{{ platform.usage?.aiPointsUsed || 0 }}</strong><small>/ {{ platform.usage?.aiPointsLimit || 0 }} 点</small></article><article><span>存储</span><strong>{{ platform.usage?.storageGbUsed || 0 }} GB</strong><small>/ {{ platform.usage?.storageGbLimit || 0 }} GB</small></article></div>
-            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">NEXT ACTIONS</span><h2>上线前检查</h2></div><span class="status-chip warning">3 项待处理</span></div><div class="readiness-list"><button type="button" @click="switchView('ai-service')"><span class="readiness-icon" :class="{done:platform.ai?.configured}"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check' : 'ph:key'"></iconify-icon></span><span><strong>配置客服模型</strong><small>使用自带 API、平台托管额度或规则 FAQ</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('products')"><span class="readiness-icon" :class="{done:cfg.products.every(item => productCompleteness(item).percent === 100)}"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>补全商品资料</strong><small>主图、颜色、尺码与详情影响成交体验</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('channels')"><span class="readiness-icon" :class="{done:cfg._lastSync}"><iconify-icon class="icon" icon="ph:rocket-launch"></iconify-icon></span><span><strong>生成正式发布版本</strong><small>预览、检查并发布到微信小程序</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">SERVICE HEALTH</span><h2>服务状态</h2></div><button type="button" class="icon-btn" aria-label="刷新服务状态" @click="loadPlatform"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button></div><div class="health-list"><div><span><i class="health-dot online"></i>本地编辑服务</span><strong>正常</strong></div><div><span><i class="health-dot" :class="platform.ai?.configured ? 'online' : 'warning'"></i>AI 模型网关</span><strong>{{ platform.ai?.configured ? platform.ai.provider : 'FAQ 降级' }}</strong></div><div><span><i class="health-dot online"></i>GitHub 自动同步</span><strong>已启用</strong></div><div><span><i class="health-dot warning"></i>商户支付</span><strong>待进件</strong></div></div></section></div>
+            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">下一步</span><h2>预览前检查</h2></div></div><div class="readiness-list"><button type="button" @click="switchView('ai-service')"><span class="readiness-icon" :class="{done:platform.ai?.configured}"><iconify-icon class="icon" :icon="platform.ai?.configured ? 'ph:check' : 'ph:key'"></iconify-icon></span><span><strong>配置客服回答</strong><small>使用自带 API 或规则问答</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('products')"><span class="readiness-icon" :class="{done:cfg.products.every(item => productCompleteness(item).percent === 100)}"><iconify-icon class="icon" icon="ph:handbag"></iconify-icon></span><span><strong>补全商品资料</strong><small>主图、颜色、尺码与详情影响顾客浏览</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button><button type="button" @click="switchView('channels')"><span class="readiness-icon" :class="{done:cfg._lastSync}"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon></span><span><strong>生成小程序预览</strong><small>生成开发文件并用手机扫码检查</small></span><iconify-icon class="icon" icon="ph:caret-right"></iconify-icon></button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><span class="eyebrow">服务状态</span><h2>工作区连接</h2></div><button type="button" class="icon-btn" aria-label="刷新服务状态" @click="loadPlatform"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon></button></div><div class="health-list"><div><span><i class="health-dot online"></i>编辑服务</span><strong>正常</strong></div><div><span><i class="health-dot" :class="platform.ai?.configured ? 'online' : 'warning'"></i>AI 模型网关</span><strong>{{ platform.ai?.configured ? platform.ai.provider : '规则问答' }}</strong></div><div><span><i class="health-dot online"></i>工作区数据</span><strong>已隔离</strong></div><div><span><i class="health-dot" :class="account.subscription?.status==='active'?'online':'warning'"></i>使用权限</span><strong>{{ account.subscription?.status==='active'?'有效':'待兑换' }}</strong></div></div></section></div>
           </section>
 
           <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen,'has-responsive-drawer':leftPanelOpen||rightPanelOpen}">
@@ -2556,7 +2626,7 @@ createApp({
                         <div v-else-if="section.type === 'product-grid'" class="product-section">
                           <div class="section-heading"><h3 class="serif">{{ section.props.title || '精选商品' }}</h3><button @click.stop="switchPage('category')">查看全部</button></div>
                           <div class="product-preview-grid" :style="{'--columns': section.props.columns || 3, '--gap': (section.style.gap || 10) + 'px'}">
-                            <article v-for="product in sectionProducts(section)" :key="product.id" class="product-card" @click.stop="navigatePreview({linkType:'product',linkValue:'/pages/detail/detail?id='+product.id})"><div class="product-image"><img :src="mpUrl(product.img)" :alt="product.name"></div><div v-if="section.props.showName" class="product-name">{{ product.name }}</div><div v-if="section.props.showPrice" class="product-price">{{ money(product.price) }}</div></article>
+                            <article v-for="product in sectionProducts(section)" :key="product.id" class="product-card" role="button" tabindex="0" :aria-label="'预览商品 ' + product.name" @click.stop="navigatePreview({linkType:'product',linkValue:'/pages/detail/detail?id='+product.id})" @keydown.enter.stop.prevent="navigatePreview({linkType:'product',linkValue:'/pages/detail/detail?id='+product.id})" @keydown.space.stop.prevent="navigatePreview({linkType:'product',linkValue:'/pages/detail/detail?id='+product.id})"><div class="product-image"><img :src="mpUrl(product.img)" :alt="product.name" width="400" height="500" loading="lazy"></div><div v-if="section.props.showName" class="product-name">{{ product.name }}</div><div v-if="section.props.showPrice" class="product-price">{{ money(product.price) }}</div></article>
                           </div>
                         </div>
                         <div v-else-if="section.type === 'member-banner'" class="member-section"><img v-if="section.props.useBrandLogo !== false" class="member-brand-logo" src="/mp-images/privlan-ai-logo-white.png" alt="PRIVLAN"><h3 v-else>{{ section.props.title || cfg.brand.name }}</h3><p>{{ section.props.subtitle || cfg.brand.slogan }}</p><div class="benefits"><button v-for="benefit in cfg.memberBenefits.slice(0,4)" :key="benefit.text" type="button" class="benefit" @click.stop="navigatePreview(benefit)"><img :src="mpUrl(benefit.icon)" :alt="benefit.text"><span>{{ benefit.text }}</span></button></div></div>
@@ -2706,9 +2776,9 @@ createApp({
           </section>
 
           <section v-else-if="currentView === 'customers'" class="management">
-            <div class="management-header"><div><span class="eyebrow">RELATIONSHIPS</span><h1>客户管理</h1><p>统一查看会员、预约、量体资料授权和客服状态；敏感数据只按权限读取。</p></div><button type="button" class="btn"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>导入客户</button></div>
-            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>客户数据源</h2><p>当前 PRIVLAN 使用飞书作为量体与预约资料来源。</p></div><span class="status-chip warning">待验证连接</span></div><div class="integration-row"><span class="integration-mark">飞</span><div><strong>飞书多维表格</strong><small>客户、量体、门店、排班和预约</small></div><button type="button" class="btn small" @click="switchView('ai-service')">管理映射</button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>隐私策略</h2><p>客户资料需要身份验证、最小权限和审计记录。</p></div></div><div class="policy-list"><span><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon>对话关闭后删除正文</span><span><iconify-icon class="icon" icon="ph:fingerprint"></iconify-icon>量体资料仅本人可查</span><span><iconify-icon class="icon" icon="ph:list-checks"></iconify-icon>敏感工具调用可追踪</span></div></section></div>
-            <div class="data-card"><div class="empty-state"><iconify-icon class="icon" icon="ph:users-three"></iconify-icon><h3>客户数据尚未同步</h3><p>连接正式飞书应用或发布小程序后，这里会显示已授权客户与服务状态。</p></div></div>
+            <div class="management-header"><div><h1>预约与客户</h1><p>统一查看预约、量体资料授权和客服状态；敏感数据只按权限读取。</p></div></div>
+            <div class="overview-grid"><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>客户数据源</h2><p>可按商户需要连接飞书客户、量体、门店、排班和预约资料。</p></div><span class="status-chip warning">待配置</span></div><div class="integration-row"><span class="integration-mark">飞</span><div><strong>飞书多维表格</strong><small>客户、量体、门店、排班和预约</small></div><button type="button" class="btn small" @click="switchView('ai-service')">查看知识来源</button></div></section><section class="atelier-panel"><div class="atelier-panel-head"><div><h2>隐私策略</h2><p>客户资料需要身份验证、最小权限和审计记录。</p></div></div><div class="policy-list"><span><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon>对话关闭后删除正文</span><span><iconify-icon class="icon" icon="ph:fingerprint"></iconify-icon>量体资料仅本人可查</span><span><iconify-icon class="icon" icon="ph:list-checks"></iconify-icon>敏感工具调用可追踪</span></div></section></div>
+            <div class="data-card"><div class="empty-state"><iconify-icon class="icon" icon="ph:users-three"></iconify-icon><h3>客户数据尚未接入</h3><p>连接正式飞书应用并部署小程序后，这里会显示已授权客户与服务状态。</p></div></div>
           </section>
 
           <section v-else-if="currentView === 'marketing'" class="management">
@@ -2730,10 +2800,11 @@ createApp({
             <div class="stats-grid"><div class="stat-card"><div class="stat-label">访客</div><div class="stat-value">—</div><small>等待小程序埋点</small></div><div class="stat-card"><div class="stat-label">转化率</div><div class="stat-value">—</div><small>访问 → 支付</small></div><div class="stat-card"><div class="stat-label">客服解决率</div><div class="stat-value">—</div><small>不存储原始对话</small></div><div class="stat-card"><div class="stat-label">AI 成本</div><div class="stat-value">¥0</div><small>{{ platform.usage?.aiPointsUsed || 0 }} 点</small></div></div><div class="atelier-panel chart-placeholder"><div><span class="eyebrow">FUNNEL</span><h2>零售转化漏斗</h2><p>浏览、加购、下单、支付与复购会在数据管道接通后显示。</p></div><div class="funnel-bars"><i style="--bar:100%"></i><i style="--bar:72%"></i><i style="--bar:44%"></i><i style="--bar:28%"></i></div></div>
           </section>
 
-          <section v-else-if="currentView === 'channels'" class="management">
-            <div class="management-header"><div><span class="eyebrow">CHANNELS & RELEASES</span><h1>渠道与发布</h1><p>共享 AppID 和商户独立 AppID 使用同一版本流程，发布任务可追踪、重试和回滚。</p></div><button type="button" class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:rocket-launch"></iconify-icon>生成新版本</button></div>
-            <div class="channel-grid"><article class="channel-card active"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:wechat-logo"></iconify-icon></span><span><strong>微信小程序</strong><small>平台共享 AppID</small></span></div><span class="status-chip success">已连接</span><dl><div><dt>店铺路由</dt><dd>PRIVLAN 独立二维码</dd></div><div><dt>最近同步</dt><dd>{{ cfg._lastSync ? new Date(cfg._lastSync).toLocaleString('zh-CN') : '尚未同步' }}</dd></div></dl></article><article class="channel-card"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:identification-card"></iconify-icon></span><span><strong>商户独立 AppID</strong><small>Professional / Enterprise</small></span></div><span class="status-chip warning">待授权</span><p>授权后保留商户自己的品牌、支付账户和数据边界。</p><button type="button" class="btn small">开始授权</button></article><article class="channel-card"><div><span class="channel-mark"><iconify-icon class="icon" icon="ph:credit-card"></iconify-icon></span><span><strong>微信支付</strong><small>消费者资金直达商户</small></span></div><span class="status-chip warning">待进件</span><p>共享 AppID 使用服务商/子商户模式，独立 AppID 绑定商户支付账户。</p><button type="button" class="btn small">查看进件清单</button></article></div>
-            <div class="data-card"><div class="atelier-panel-head release-heading"><div><h2>发布任务</h2><p>本地同步已纳入版本记录；云端队列接入后支持审核、重试与回滚。</p></div></div><table class="data-table"><thead><tr><th>版本</th><th>环境</th><th>渠道</th><th>状态</th><th>时间</th></tr></thead><tbody><tr v-for="job in platform.publishJobs" :key="job.id"><td><strong>{{ job.version }}</strong><small class="table-subtext">{{ job.id }}</small></td><td>{{ job.environment }}</td><td>{{ job.channel }}</td><td><span class="status-chip" :class="job.status === 'succeeded' ? 'success' : 'warning'">{{ job.statusLabel }}</span></td><td>{{ job.createdAtLabel }}</td></tr></tbody></table></div>
+          <section v-else-if="currentView === 'channels'" class="management preview-management">
+            <div class="management-header"><div><h1>小程序预览</h1><p>先保存工作区配置，再生成开发预览。扫码预览会调用本机微信开发者工具，不代表已正式发布。</p></div><div class="management-actions"><button type="button" class="btn" :disabled="saveMode==='syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:code"></iconify-icon>生成预览文件</button><button type="button" class="btn primary" :disabled="previewDialog.state==='syncing'||previewDialog.state==='generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon>手机扫码预览</button></div></div>
+            <div class="preview-flow" aria-label="预览步骤"><article :class="{complete:!isDirty}"><span>1</span><div><strong>保存配置</strong><p>{{ isDirty?'当前有未保存更改':'配置已保存' }}</p></div></article><i></i><article :class="{complete:!!cfg._lastSync}"><span>2</span><div><strong>生成开发文件</strong><p>{{ cfg._lastSync?'最近生成于 '+new Date(cfg._lastSync).toLocaleString('zh-CN'):'尚未生成' }}</p></div></article><i></i><article><span>3</span><div><strong>扫码检查</strong><p>在真实手机上核对页面和交互</p></div></article></div>
+            <section class="atelier-panel preview-explanation"><div><iconify-icon class="icon" icon="ph:info"></iconify-icon><div><h2>预览与发布是两个阶段</h2><p>这里生成的是微信开发项目和临时预览二维码。正式提审、发布、支付和自动发布流水线不在当前 MVP 范围内。</p></div></div><button type="button" class="btn" @click="switchView('editor')">返回设计</button></section>
+            <details class="atelier-panel support-details"><summary>高级支持信息 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><dl><div><dt>租户</dt><dd>{{ platform.workspace?.tenantId }}</dd></div><div><dt>工作区</dt><dd>{{ platform.workspace?.workspaceId || platform.workspace?.workspaceName }}</dd></div><div><dt>店铺</dt><dd>{{ platform.workspace?.storeId || platform.workspace?.storeName }}</dd></div><div><dt>运行方式</dt><dd>开发预览</dd></div></dl></details>
           </section>
 
           <section v-else-if="currentView === 'media'" class="management">
@@ -2746,15 +2817,39 @@ createApp({
             </div>
           </section>
 
+          <section v-else-if="currentView === 'account'" class="management account-management">
+            <div class="management-header"><div><h1>账户与订阅</h1><p>查看当前工作区的使用权限、兑换有效期和账户信息。订阅到期后数据仍会保留，编辑功能将进入只读状态。</p></div><span class="status-chip" :class="account.subscription?.status==='active'?'success':'warning'">{{ account.subscription?.status==='active'?'使用中':account.subscription?.status==='expired'?'已到期':'待激活' }}</span></div>
+            <div class="account-grid">
+              <section class="atelier-panel subscription-summary" aria-labelledby="subscription-summary-title">
+                <div class="atelier-panel-head"><div><h2 id="subscription-summary-title">当前订阅</h2><p>权益由服务端按当前工作区判定。</p></div><iconify-icon class="account-plan-icon" icon="ph:seal-check"></iconify-icon></div>
+                <div v-if="account.loading" class="account-loading" role="status">正在读取订阅…</div>
+                <template v-else>
+                  <div class="subscription-plan"><span>{{ account.subscription?.planId || 'TRIAL' }}</span><strong>{{ account.subscription?.planId==='PRO'?'专业版':'24 小时体验' }}</strong></div>
+                  <dl class="subscription-details"><div><dt>状态</dt><dd>{{ account.subscription?.status==='active'?'使用中':account.subscription?.status==='expired'?'已到期':'待激活' }}</dd></div><div><dt>开始时间</dt><dd>{{ account.subscription?.startedAt ? new Date(account.subscription.startedAt).toLocaleString('zh-CN') : '尚未开始' }}</dd></div><div><dt>有效期至</dt><dd>{{ account.subscription?.expiresAt ? new Date(account.subscription.expiresAt).toLocaleString('zh-CN') : '兑换后生效' }}</dd></div><div><dt>剩余时间</dt><dd>{{ account.subscription?.remainingDays===null || account.subscription?.remainingDays===undefined ? '—' : account.subscription.remainingDays + ' 天' }}</dd></div></dl>
+                </template>
+              </section>
+              <section class="atelier-panel redemption-panel" aria-labelledby="redemption-title">
+                <div class="atelier-panel-head"><div><h2 id="redemption-title">兑换使用权限</h2><p>输入 ATELIER OS 提供的体验码或 PRO 兑换码。</p></div></div>
+                <form @submit.prevent="redeemSubscription"><label for="license-code">兑换码</label><div class="redemption-input"><input id="license-code" v-model.trim="account.code" name="license-code" autocomplete="off" spellcheck="false" maxlength="48" placeholder="AT-XXXX-XXXX-XXXX"><button type="submit" class="btn primary" :disabled="account.redeeming || !account.code.trim()">{{ account.redeeming?'正在兑换…':'立即兑换' }}</button></div><p v-if="account.error" class="form-error" role="alert">{{ account.error }}</p><p class="field-help">兑换成功后权限立即刷新。PRO 会从当前到期时间或兑换时间中较晚的一刻继续延长。</p></form>
+              </section>
+              <section class="atelier-panel account-identity" aria-labelledby="account-identity-title">
+                <div class="atelier-panel-head"><div><h2 id="account-identity-title">账户信息</h2><p>当前登录身份只可访问所属工作区。</p></div></div>
+                <dl class="subscription-details"><div><dt>登录账号</dt><dd>{{ auth.session?.user?.login || auth.session?.user?.loginIdentifier || '当前商户' }}</dd></div><div><dt>工作区</dt><dd>{{ auth.session?.workspace?.name || platform.workspace?.workspaceName }}</dd></div><div><dt>店铺</dt><dd>{{ platform.workspace?.storeName || auth.session?.workspace?.name }}</dd></div><div><dt>角色</dt><dd>{{ auth.session?.role==='owner'?'所有者':auth.session?.role || '所有者' }}</dd></div></dl>
+                <button type="button" class="btn" @click="merchantSignOut"><iconify-icon class="icon" icon="ph:sign-out"></iconify-icon>退出登录</button>
+              </section>
+              <aside class="account-retention-note"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>到期不会删除数据</strong><p>页面、商品和素材继续保留并可查看；保存设计、上传素材、修改商品、生成预览和修改 AI 配置会暂停，兑换后恢复。</p></div></aside>
+            </div>
+          </section>
+
           <section v-else-if="currentView === 'theme'" class="management">
             <div class="management-header"><div><h1>主题设置</h1><p>选择预设或精细调整颜色，画布会实时反映效果。</p></div><button class="btn" @click="switchView('editor')"><iconify-icon class="icon" icon="ph:eye"></iconify-icon>返回预览</button></div>
             <div class="theme-layout"><div class="theme-card"><h2>主题预设</h2><p>预设会替换整套颜色，仍可在右侧继续微调。</p><div class="preset-grid"><button v-for="(preset,key) in cfg.themePresets" :key="key" class="preset-card" :class="{active:cfg.theme.preset===key}" @click="applyPreset(key,preset)"><div class="preset-swatch" :style="{background:preset.colors.bgPrimary}"><span :style="{background:preset.colors.bgSecondary}"></span><span :style="{background:preset.colors.textPrimary}"></span><span :style="{background:preset.colors.accent}"></span></div><div class="preset-name">{{ preset.name }}</div></button></div></div>
               <div class="theme-card"><h2>颜色系统</h2><p>调整后会应用到管理预览和同步生成的小程序样式。</p><div class="theme-fields"><div v-for="(label,key) in {bgPrimary:'主背景',bgSecondary:'次背景',bgTertiary:'三级背景',textPrimary:'主文字',textSecondary:'次文字',accent:'强调色',border:'边框'}" :key="key" class="field"><label>{{ label }}</label><div class="color-field"><input v-model="cfg.theme.colors[key]" type="color"><input v-model="cfg.theme.colors[key]" type="text"></div></div></div></div></div>
           </section>
 
-          <section v-else class="management">
+          <section v-else-if="currentView === 'settings'" class="management">
             <div class="management-header"><div><h1>全局设置</h1><p>维护品牌资料、底部导航与同步信息。</p></div></div>
-            <div class="theme-layout"><div class="theme-card"><h2>品牌资料</h2><p>这些内容会被页面区块和小程序生成文件复用。</p><div class="field"><label for="brand-name">品牌名称</label><input id="brand-name" v-model="cfg.brand.name" name="brand-name" autocomplete="organization" type="text"></div><div class="field"><label for="brand-slogan">会员标语</label><textarea id="brand-slogan" v-model="cfg.brand.slogan" name="brand-slogan" autocomplete="off"></textarea></div><div class="field"><label for="advisor-copy">顾问文案</label><textarea id="advisor-copy" v-model="cfg.brand.advisorslogan" name="advisor-copy" autocomplete="off"></textarea></div></div><div class="theme-card"><h2>项目状态</h2><p>保存只写入配置；同步会进一步更新小程序源文件。</p><div class="field-group"><div class="toggle-row"><span>配置状态</span><span class="badge">{{ isDirty ? '待保存' : '已保存' }}</span></div><div class="toggle-row"><span>最近同步</span><span>{{ cfg._lastSync ? new Date(cfg._lastSync).toLocaleString('zh-CN') : '尚未同步' }}</span></div></div><button class="btn primary" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>保存并同步</button></div></div>
+            <div class="theme-layout"><div class="theme-card"><h2>品牌资料</h2><p>这些内容会被页面区块和小程序生成文件复用。</p><div class="field"><label for="brand-name">品牌名称</label><input id="brand-name" v-model="cfg.brand.name" name="brand-name" autocomplete="organization" type="text"></div><div class="field"><label for="brand-slogan">会员标语</label><textarea id="brand-slogan" v-model="cfg.brand.slogan" name="brand-slogan" autocomplete="off"></textarea></div><div class="field"><label for="advisor-copy">顾问文案</label><textarea id="advisor-copy" v-model="cfg.brand.advisorslogan" name="advisor-copy" autocomplete="off"></textarea></div></div><div class="theme-card"><h2>项目状态</h2><p>保存写入当前工作区；生成预览会进一步更新小程序开发文件。</p><div class="field-group"><div class="toggle-row"><span>配置状态</span><span class="badge">{{ isDirty ? '待保存' : '已保存' }}</span></div><div class="toggle-row"><span>最近生成</span><span>{{ cfg._lastSync ? new Date(cfg._lastSync).toLocaleString('zh-CN') : '尚未生成' }}</span></div></div><button class="btn primary" @click="syncProject"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon>生成预览</button></div></div>
             <section class="theme-card service-settings-card"><div class="settings-card-header"><div><h2>客服入口</h2><p>这里只调整小程序入口与身份模式；模型、知识库、实时会话和用量在智能客服工作台管理。</p></div><button type="button" class="btn small" @click="switchView('ai-service')">打开客服工作台</button></div>
               <div class="service-settings-grid">
                 <div class="service-settings-main"><div class="toggle-row"><span>显示客服入口</span><button type="button" class="switch" :class="{on:cfg.serviceBot.enabled}" role="switch" :aria-checked="cfg.serviceBot.enabled" aria-label="显示客服入口" @click="cfg.serviceBot.enabled=!cfg.serviceBot.enabled"></button></div><div class="field"><label for="service-welcome">欢迎语</label><textarea id="service-welcome" v-model="cfg.serviceBot.welcomeMessage" name="service-welcome" autocomplete="off" maxlength="160"></textarea></div><div class="service-knowledge-link"><div><strong>顾客问题与标准回答</strong><small>{{ cfg.serviceBot.faqs.filter(item => item.enabled).length }} 条启用问答 · {{ cfg.serviceBot.quickPrompts.length }} 个快捷问题</small></div><button type="button" class="btn small" @click="switchView('ai-service')">管理问答知识</button></div></div>
@@ -2762,7 +2857,7 @@ createApp({
               </div>
               <div class="service-status-row"><span><i :class="platform.ai?.configured ? 'ok' : 'warn'"></i>{{ platform.ai?.configured ? platform.ai.provider + ' 已连接' : 'FAQ 降级模式' }}</span><span><i :class="cfg.serviceBot.authMode==='test' ? 'warn' : 'ok'"></i>{{ cfg.serviceBot.authMode==='test' ? '测试身份模式' : '微信手机号模式' }}</span><span><i :class="cfg.serviceBot.humanServiceEnabled ? 'ok' : 'warn'"></i>{{ cfg.serviceBot.humanServiceEnabled ? '人工客服已启用' : '人工客服待开通' }}</span></div>
             </section>
-            <section class="theme-card commercial-settings-card"><div class="settings-card-header"><div><h2>商业化与工作区</h2><p>套餐权益由平台运营配置，商户端不通过套餐名称硬编码功能。</p></div><span class="status-chip success">{{ platform.workspace?.planName || 'Professional' }}</span></div><div class="commercial-settings-grid"><div><span>租户</span><strong>{{ platform.workspace?.tenantId }}</strong></div><div><span>工作区</span><strong>{{ platform.workspace?.workspaceName }}</strong></div><div><span>店铺</span><strong>{{ platform.workspace?.storeName }}</strong></div><div><span>发布模式</span><strong>{{ platform.workspace?.channelMode === 'shared' ? '共享 AppID' : '独立 AppID' }}</strong></div><div><span>AI 额度</span><strong>{{ platform.usage?.aiPointsUsed || 0 }} / {{ platform.usage?.aiPointsLimit || 0 }}</strong></div><div><span>存储额度</span><strong>{{ platform.usage?.storageGbUsed || 0 }} / {{ platform.usage?.storageGbLimit || 0 }} GB</strong></div></div><div class="plan-strip"><article v-for="plan in platform.plans" :key="plan.id" :class="{active:plan.id===platform.workspace?.planId}"><span>{{ plan.name }}</span><strong>{{ plan.monthlyPrice ? '¥' + plan.monthlyPrice + '/月' : '免费试用' }}</strong><small>{{ plan.stores }} 店 · {{ plan.skuLimit || '定制' }} SKU</small></article></div></section>
+            <details class="theme-card commercial-settings-card support-details"><summary>高级工作区信息 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><div class="commercial-settings-grid"><div><span>租户</span><strong>{{ platform.workspace?.tenantId }}</strong></div><div><span>工作区</span><strong>{{ platform.workspace?.workspaceName }}</strong></div><div><span>店铺</span><strong>{{ platform.workspace?.storeName }}</strong></div><div><span>运行方式</span><strong>开发预览</strong></div><div><span>AI 使用</span><strong>{{ platform.usage?.aiPointsUsed || 0 }} / {{ platform.usage?.aiPointsLimit || 0 }}</strong></div><div><span>存储使用</span><strong>{{ platform.usage?.storageGbUsed || 0 }} / {{ platform.usage?.storageGbLimit || 0 }} GB</strong></div></div></details>
             <section class="theme-card tabbar-settings-card"><div class="settings-card-header"><div><h2>底部导航</h2><p>为五个导航项配置图标与文字。每张图片均可独立调整取景、从媒体库更换或直接上传。</p></div><span class="badge">9 个图片槽位</span></div>
               <div class="tabbar-settings-list">
                 <article v-for="(item,index) in cfg.tabBar.items" :key="index" class="tabbar-setting-row" :class="{center:item.center}">
@@ -2781,16 +2876,18 @@ createApp({
                   </div>
                 </article>
               </div>
-              <p class="tabbar-settings-note"><iconify-icon class="icon" icon="ph:info"></iconify-icon>静态图片支持拖动取景并生成 512 × 512 WebP；中间主按钮也可使用小于 1.2 MB 的 GIF，动画会完整保留且不能裁切。保存后点击“同步小程序”才会写入微信小程序。</p>
+              <p class="tabbar-settings-note"><iconify-icon class="icon" icon="ph:info"></iconify-icon>静态图片支持拖动取景并生成 512 × 512 WebP；中间主按钮也可使用小于 1.2 MB 的 GIF，动画会完整保留且不能裁切。保存后点击“生成预览”才会写入小程序开发文件。</p>
             </section>
           </section>
+
+          <section v-else class="management"><div class="empty-state"><iconify-icon class="icon" icon="ph:compass-tool"></iconify-icon><h3>没有找到这个页面</h3><p>请从左侧导航选择要管理的功能。</p><button type="button" class="btn" @click="switchView('overview')">返回概览</button></div></section>
         </main>
       </div>
 
       <template v-if="mediaPickerOpen">
         <div class="drawer-backdrop" @click="mediaPickerOpen=false"></div>
         <aside class="media-picker-sheet">
-          <div class="drawer-header"><div><h2>{{ mediaPickerMode==='replace' ? '替换轮播媒体' : mediaPickerMode==='product' ? '选择商品图片' : mediaPickerMode==='section-media' ? '选择背景媒体' : mediaPickerMode==='tabbar' ? '选择导航图标' : mediaPickerMode==='servicebot' ? '选择客服图标' : '添加轮播媒体' }}</h2><p>{{ mediaPickerMode==='product' ? '选择一张图片用于商品主图或详情图。' : mediaPickerMode==='section-media' ? '选择图片或视频作为当前区块背景。' : mediaPickerMode==='tabbar' ? '仅显示图片素材，可用于默认、选中或中间主按钮图标。' : mediaPickerMode==='servicebot' ? '选择一张图片作为全站智能客服入口。' : '选择已有素材，或从本地直接上传图片与视频。' }}</p></div><button class="icon-btn" @click="mediaPickerOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-header"><div><h2>{{ mediaPickerMode==='replace' ? '替换轮播媒体' : mediaPickerMode==='product' ? '选择商品图片' : mediaPickerMode==='section-media' ? '选择背景媒体' : mediaPickerMode==='tabbar' ? '选择导航图标' : mediaPickerMode==='servicebot' ? '选择客服图标' : '添加轮播媒体' }}</h2><p>{{ mediaPickerMode==='product' ? '选择一张图片用于商品主图或详情图。' : mediaPickerMode==='section-media' ? '选择图片或视频作为当前区块背景。' : mediaPickerMode==='tabbar' ? '仅显示图片素材，可用于默认、选中或中间主按钮图标。' : mediaPickerMode==='servicebot' ? '选择一张图片作为全站智能客服入口。' : '选择已有素材，或从本地直接上传图片与视频。' }}</p></div><button type="button" class="icon-btn" aria-label="关闭媒体选择" @click="mediaPickerOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
           <div class="media-picker-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索媒体文件"></div><select v-if="mediaFolders.length" v-model="mediaFolderId" class="media-folder-select" aria-label="选择媒体文件夹"><option value="">全部文件夹</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option></select><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>{{ mediaPickerMode==='product' ? '上传并使用图片' : mediaPickerMode==='tabbar' || mediaPickerMode==='servicebot' ? '上传并使用图标' : '上传并使用' }}<input type="file" :accept="['product','tabbar','servicebot'].includes(mediaPickerMode) ? 'image/*' : 'image/*,video/*'" :multiple="!['tabbar','servicebot'].includes(mediaPickerMode)" hidden @change="mediaPickerMode==='product' ? uploadProductImages($event.target.files, productMediaTarget) : mediaPickerMode==='section-media' ? uploadSectionMedia($event.target.files) : mediaPickerMode==='tabbar' ? uploadTabBarIcon($event.target.files, tabBarMediaTarget.index, tabBarMediaTarget.field) : mediaPickerMode==='servicebot' ? uploadServiceBotIcon($event.target.files) : uploadFiles($event.target.files,true);$event.target.value=''" /></label></div>
           <div v-if="mediaLoading" class="skeleton-grid"><div v-for="n in 8" :key="n" class="skeleton"></div></div>
           <div v-else-if="mediaError" class="empty-state"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>媒体库暂时不可用</h3><p>{{ mediaError }}</p><button class="btn" @click="loadMedia">重试</button></div>
@@ -2847,8 +2944,8 @@ createApp({
       <template v-if="helpOpen">
         <div class="drawer-backdrop" @click="helpOpen=false"></div>
         <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
-          <div class="drawer-header"><div><h2 id="help-title">ATELIER OS 帮助</h2><p>按设计、经营、客服和发布流程快速定位功能。</p></div><button type="button" class="icon-btn" aria-label="关闭帮助" @click="helpOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
-          <div class="help-grid"><article><iconify-icon class="icon" icon="ph:squares-four"></iconify-icon><div><strong>页面与区块</strong><p>左侧选择页面和层级，点页面右上角菜单可重命名、复制、删除并设置分享信息。</p></div></article><article><iconify-icon class="icon" icon="ph:floppy-disk"></iconify-icon><div><strong>保存与同步</strong><p>保存写入配置并同步受管文件到 GitHub；同步会继续生成微信小程序代码。</p></div></article><article><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><div><strong>媒体安全</strong><p>媒体库可筛选未使用文件。删除后进入 30 天回收站，不会立即永久清除。</p></div></article><article><iconify-icon class="icon" icon="ph:calendar-check"></iconify-icon><div><strong>预约服务</strong><p>每次服务默认占用 135 分钟。请在云开发配置飞书字段、订阅消息模板和预约锁集合。</p></div></article></div>
+          <div class="drawer-header"><div><h2 id="help-title">ATELIER OS 帮助</h2><p>按设计、商品、客服和预览流程快速定位功能。</p></div><button type="button" class="icon-btn" aria-label="关闭帮助" @click="helpOpen=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="help-grid"><article><iconify-icon class="icon" icon="ph:squares-four"></iconify-icon><div><strong>页面与区块</strong><p>左侧选择页面和层级，点页面右上角菜单可重命名、复制、删除并设置分享信息。</p></div></article><article><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon><div><strong>保存与预览</strong><p>保存只更新当前工作区；生成预览会更新微信小程序开发文件，并可继续生成手机二维码。</p></div></article><article><iconify-icon class="icon" icon="ph:image-square"></iconify-icon><div><strong>媒体安全</strong><p>媒体库可筛选未使用文件。删除后进入 30 天回收站，不会立即永久清除。</p></div></article><article><iconify-icon class="icon" icon="ph:calendar-check"></iconify-icon><div><strong>预约服务</strong><p>每次服务默认占用 135 分钟。请在云开发配置飞书字段、订阅消息模板和预约锁集合。</p></div></article></div>
           <div class="drawer-footer"><button type="button" class="btn primary" @click="helpOpen=false">知道了</button></div>
         </section>
       </template>
@@ -2896,13 +2993,13 @@ createApp({
       <template v-if="newPage.open">
         <div class="drawer-backdrop" @click="newPage.open=false"></div>
         <form class="new-page-dialog" @submit.prevent="createBlankPage">
-          <div class="drawer-header"><div><h2>新建空白页面</h2><p>从一张空画布开始，再自由添加轮播、文字、商品等区块。</p></div><button type="button" class="icon-btn" @click="newPage.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-header"><div><h2>新建空白页面</h2><p>从一张空画布开始，再自由添加轮播、文字、商品等区块。</p></div><button type="button" class="icon-btn" aria-label="关闭新建页面" @click="newPage.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
           <div class="new-page-body">
             <div class="new-page-symbol"><iconify-icon class="icon" icon="ph:file-plus"></iconify-icon></div>
             <div class="field"><label for="new-page-name">页面名称</label><input id="new-page-name" v-model="newPage.name" type="text" maxlength="24" placeholder="例如：品牌故事" @input="newPage.error=''" /></div>
             <div class="field"><label for="new-page-slug">页面地址（可选）</label><div class="page-path-input"><span>/pages/custom-</span><input id="new-page-slug" v-model="newPage.slug" type="text" placeholder="brand-story" /></div><small>只使用英文、数字和短横线；留空时会自动生成。</small></div>
             <div v-if="newPage.error" class="form-error"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon>{{ newPage.error }}</div>
-            <div class="new-page-note"><iconify-icon class="icon" icon="ph:info"></iconify-icon><span>创建后页面会立即出现在编辑器和所有“跳转目标”选项中。保存并同步后，才会写入小程序。</span></div>
+            <div class="new-page-note"><iconify-icon class="icon" icon="ph:info"></iconify-icon><span>创建后页面会立即出现在编辑器和所有“跳转目标”选项中。保存并生成预览后，才会写入小程序开发文件。</span></div>
           </div>
           <div class="drawer-footer"><button type="button" class="btn subtle" @click="newPage.open=false">取消</button><button type="submit" class="btn primary"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>创建并开始编辑</button></div>
         </form>
@@ -2921,8 +3018,8 @@ createApp({
       <template v-if="homeNavOpen">
         <div class="drawer-backdrop" @click="finishHomeNavigation"></div>
         <aside class="drawer home-nav-drawer">
-          <div class="drawer-header"><div><h2>首页导航</h2><p>管理首页顶部的频道名称和顺序。</p></div><button class="icon-btn" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
-          <div class="drawer-body"><div class="home-nav-preview"><span v-for="(channel,index) in cfg.homeChannels" :key="channel+index" :class="{active:index===0}">{{ channel || '未命名' }}</span></div><div class="home-nav-list"><div v-for="(channel,index) in cfg.homeChannels" :key="index" class="home-nav-row"><span class="home-nav-index">{{ index + 1 }}</span><input v-model="cfg.homeChannels[index]" type="text" maxlength="18" placeholder="频道名称"><div class="row-actions"><button title="前移" :disabled="index===0" @click="moveHomeChannel(index,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button title="后移" :disabled="index===cfg.homeChannels.length-1" @click="moveHomeChannel(index,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button><button title="删除频道" @click="removeHomeChannel(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div></div><button class="btn add-channel" :disabled="cfg.homeChannels.length>=5" @click="addHomeChannel"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加频道</button><p class="home-nav-note">第一个频道会作为默认选中项。最多 5 个频道，保存并同步后会更新小程序首页。</p></div>
+          <div class="drawer-header"><div><h2>首页导航</h2><p>管理首页顶部的频道名称和顺序。</p></div><button type="button" class="icon-btn" aria-label="关闭首页导航设置" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-body"><div class="home-nav-preview"><span v-for="(channel,index) in cfg.homeChannels" :key="channel+index" :class="{active:index===0}">{{ channel || '未命名' }}</span></div><div class="home-nav-list"><div v-for="(channel,index) in cfg.homeChannels" :key="index" class="home-nav-row"><span class="home-nav-index">{{ index + 1 }}</span><input v-model="cfg.homeChannels[index]" type="text" maxlength="18" placeholder="频道名称"><div class="row-actions"><button title="前移" :aria-label="'前移频道 ' + (channel || index + 1)" :disabled="index===0" @click="moveHomeChannel(index,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button title="后移" :aria-label="'后移频道 ' + (channel || index + 1)" :disabled="index===cfg.homeChannels.length-1" @click="moveHomeChannel(index,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button><button title="删除频道" :aria-label="'删除频道 ' + (channel || index + 1)" @click="removeHomeChannel(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div></div><button class="btn add-channel" :disabled="cfg.homeChannels.length>=5" @click="addHomeChannel"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加频道</button><p class="home-nav-note">第一个频道会作为默认选中项。最多 5 个频道，保存并生成预览后会更新小程序首页。</p></div>
           <div class="drawer-footer"><button class="btn subtle" @click="finishHomeNavigation">完成</button><button class="btn primary" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:check"></iconify-icon>应用导航设置</button></div>
         </aside>
       </template>
@@ -2939,7 +3036,7 @@ createApp({
       <template v-if="previewDialog.open">
         <div class="drawer-backdrop" @click="closePhonePreview"></div>
         <section class="preview-dialog" role="dialog" aria-modal="true" aria-labelledby="phone-preview-title">
-          <div class="drawer-header"><div><h2 id="phone-preview-title">手机扫码预览</h2><p>将当前设计同步到小程序后，使用微信扫一扫预览。</p></div><button class="icon-btn" type="button" title="关闭" @click="closePhonePreview"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+          <div class="drawer-header"><div><h2 id="phone-preview-title">手机扫码预览</h2><p>生成当前小程序开发预览后，使用微信扫一扫检查。</p></div><button class="icon-btn" type="button" title="关闭" aria-label="关闭手机扫码预览" @click="closePhonePreview"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
           <div class="preview-dialog-body">
             <div v-if="previewDialog.state === 'syncing' || previewDialog.state === 'generating'" class="preview-progress"><iconify-icon class="icon" icon="ph:circle-notch"></iconify-icon><h3>{{ previewDialog.state === 'syncing' ? '正在同步当前设计' : '正在生成微信预览码' }}</h3><p>{{ previewDialog.state === 'syncing' ? '请稍候，确保手机看到的是最新内容。' : '微信开发者工具正在创建可扫码的预览二维码。' }}</p></div>
             <div v-else-if="previewDialog.state === 'ready'" class="preview-qr"><img :src="previewDialog.qrUrl" alt="微信小程序预览二维码"><h3>使用微信扫一扫</h3><p>二维码失效或修改设计后，点击“重新生成”即可获取新的预览码。</p></div>

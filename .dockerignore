@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/*.log
+admin/.env*
+admin/.platform-master-key
+admin/.ops-bootstrap.json
+admin/saas-state.json
+admin/config-backups
+admin/media-trash
+admin/verification
+images/pinterest_video.mp4

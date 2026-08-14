@@ -9,6 +9,12 @@ const crypto = require("crypto");
 const { execSync, execFileSync } = require("child_process");
 const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
+const { createDatabaseFromEnv } = require("./database");
+const { createSaasService } = require("./saas-service");
+const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
+const { validateProductionEnvironment } = require("./runtime-config");
+
+validateProductionEnvironment(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
 const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
@@ -24,8 +30,10 @@ const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
+const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
 const TRASH_DIR = path.resolve(process.env.PRIVLAN_MEDIA_TRASH_DIR || path.join(__dirname, "media-trash"));
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
+const ATELIER_DATA_ROOT = path.resolve(process.env.ATELIER_DATA_ROOT || path.join(__dirname, "data"));
 const OPS_BOOTSTRAP_PATH = path.resolve(process.env.PRIVLAN_OPS_BOOTSTRAP_PATH || path.join(__dirname, ".ops-bootstrap.json"));
 let previewBuildCount = 0;
 const aiUsage = { inputTokens: 0, outputTokens: 0, requests: 0, fallbackRequests: 0, errors: 0 };
@@ -37,6 +45,9 @@ fs.mkdirSync(TRASH_DIR, { recursive: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
+const databasePromise = createDatabaseFromEnv();
+const saasServicePromise = databasePromise.then(database => database ? createSaasService({ db: database }) : null);
+const getSaasService = () => saasServicePromise;
 
 app.disable("x-powered-by");
 app.use((req, res, next) => {
@@ -66,7 +77,7 @@ app.use("/api", (req, res, next) => {
       return res.status(403).json({ error: "请求来源无效" });
     }
   }
-  if (!localHost && !validAdminToken(req)) return res.status(401).json({ error: "需要后台访问令牌" });
+  if (!SAAS_DATABASE_ENABLED && !localHost && !validAdminToken(req)) return res.status(401).json({ error: "需要后台访问令牌" });
   if (["GET", "HEAD"].includes(req.method)) return next();
   const client = req.ip || req.socket.remoteAddress || "local";
   const now = Date.now();
@@ -87,7 +98,7 @@ app.use("/v1", (req, res, next) => {
       return res.status(403).json({ ok: false, error: "请求来源无效" });
     }
   }
-  if (!localHost && !validAdminToken(req)) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
+  if (!SAAS_DATABASE_ENABLED && !localHost && !validAdminToken(req)) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
   if (["GET", "HEAD"].includes(req.method)) return next();
   const client = `v1:${req.ip || req.socket.remoteAddress || "local"}`;
   const now = Date.now();
@@ -106,6 +117,22 @@ app.use("/ops/v1", (req, res, next) => {
 app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
+registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT });
+registerOpsAuthRoutes(app, getSaasService);
+
+app.get("/health", async (req, res) => {
+  try {
+    const database = await databasePromise;
+    if (!database) {
+      const status = process.env.NODE_ENV === "production" ? 503 : 200;
+      return res.status(status).json({ app: "atelier-os", database: "not_configured", version: process.env.ATELIER_VERSION || "development" });
+    }
+    await database.health();
+    return res.json({ app: "atelier-os", database: "ok", version: process.env.ATELIER_VERSION || "development" });
+  } catch (error) {
+    return res.status(503).json({ app: "atelier-os", database: "unavailable", version: process.env.ATELIER_VERSION || "development" });
+  }
+});
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
 app.use("/mp-fonts", express.static(FONTS_DIR));
@@ -224,8 +251,11 @@ function operatorSession(req) {
   return session;
 }
 
-function requireOperator(req, res, next) {
-  const session = operatorSession(req);
+async function requireOperator(req, res, next) {
+  const service = await getSaasService();
+  const session = service
+    ? await service.resolveOperatorSession(parseCookies(req).atelier_ops_session || String(req.get("x-atelier-ops-session") || ""))
+    : operatorSession(req);
   if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 ATELIER OS 运营后台" });
   req.operator = session;
   next();
@@ -1039,6 +1069,7 @@ app.use("/ops/v1", (req, res, next) => {
   next();
 });
 app.use("/ops/v1", requireOperator);
+registerOpsSaasRoutes(app, getSaasService);
 
 app.get("/ops/v1/session", (req, res) => {
   res.json({ ok: true, data: { id: req.operator.userId, email: req.operator.email, name: req.operator.name, role: req.operator.role } });
