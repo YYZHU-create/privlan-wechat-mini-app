@@ -8,7 +8,8 @@
     "pages/detail/detail",
     "pages/service-chat/index",
     "pages/appointment/index",
-    "pages/my-appointments/index"
+    "pages/my-appointments/index",
+    "pages/webview/webview"
   ],
   "window": {
     "navigationBarBackgroundColor": "#0a0a0a",

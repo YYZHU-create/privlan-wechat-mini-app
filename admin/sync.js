@@ -120,7 +120,7 @@ page {
   appJson.tabBar.selectedColor = c.accent;
   appJson.tabBar.backgroundColor = c.bgPrimary;
   appJson.pages = Array.isArray(appJson.pages) ? appJson.pages : [];
-  ["pages/service-chat/index", "pages/appointment/index", "pages/my-appointments/index"].forEach(route => {
+  ["pages/service-chat/index", "pages/appointment/index", "pages/my-appointments/index", "pages/webview/webview"].forEach(route => {
     if (!appJson.pages.includes(route)) appJson.pages.push(route);
   });
   // 更新 tabBar 文字
@@ -132,6 +132,31 @@ page {
   });
   fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2), "utf-8");
   updated.push("app.json");
+
+  const webviewDir = path.join(root, "pages", "webview");
+  fs.mkdirSync(webviewDir, { recursive: true });
+  fs.writeFileSync(path.join(webviewDir, "webview.js"), `Page({
+  data: { url: "", error: "", loading: true },
+  onLoad(options = {}) {
+    let decoded = "";
+    try { decoded = decodeURIComponent(String(options.url || "")); } catch (error) {
+      return this.setData({ loading: false, error: "链接格式无效" });
+    }
+    if (!/^https:\\/\\//i.test(decoded)) return this.setData({ loading: false, error: "仅支持安全的 HTTPS 链接" });
+    this.setData({ url: decoded, error: "", loading: true });
+  },
+  onWebviewLoad() { this.setData({ loading: false }); },
+  onWebviewError() { this.setData({ loading: false, error: "页面加载失败，请检查网络或微信业务域名配置" }); },
+  goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); }
+});
+`, "utf-8");
+  fs.writeFileSync(path.join(webviewDir, "webview.wxml"), `<view class="webview-page">
+  <web-view wx:if="{{url && !error}}" src="{{url}}" bindload="onWebviewLoad" binderror="onWebviewError"></web-view>
+  <view wx:if="{{error}}" class="webview-error"><view class="webview-error-title">无法打开链接</view><view class="webview-error-copy">{{error}}</view><button bindtap="goBack">返回</button></view>
+</view>\n`, "utf-8");
+  fs.writeFileSync(path.join(webviewDir, "webview.wxss"), `.webview-page{min-height:100vh;background:#fff}.webview-error{padding:240rpx 48rpx 120rpx;text-align:center}.webview-error-title{font-size:38rpx;font-weight:600}.webview-error-copy{margin:24rpx 0 40rpx;color:#666;font-size:28rpx;line-height:1.65}.webview-error button{min-width:240rpx;min-height:88rpx;background:#111;color:#fff;font-size:28rpx}\n`, "utf-8");
+  fs.writeFileSync(path.join(webviewDir, "webview.json"), JSON.stringify({ navigationBarTitleText: "网页", navigationStyle: "default" }, null, 2) + "\n", "utf-8");
+  updated.push("pages/webview/webview.js", "pages/webview/webview.wxml", "pages/webview/webview.wxss", "pages/webview/webview.json");
 
   const componentPages = ["home", "category", "campaign", "cart", "mine", "detail", "appointment"];
   for (const pageId of componentPages) {

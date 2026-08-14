@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const lockDomain = require("./lock-domain");
 const https = require("https");
 const crypto = require("crypto");
 
@@ -200,20 +201,24 @@ async function reserveSlot(slotId, capacity) {
 
 async function releaseSlot(slotId) {
   const documentId = hash(slotId).slice(0, 32);
-  try { await db.collection("privlan_slot_locks").doc(documentId).update({ data: { booked: command.inc(-1), updatedAt: db.serverDate() } }); } catch (error) {}
+  try {
+    await db.runTransaction(async transaction => {
+      const reference = transaction.collection("privlan_slot_locks").doc(documentId);
+      let state = null;
+      try { state = (await reference.get()).data; } catch (error) {}
+      if (!state) return;
+      await reference.set({ data: { ...state, booked: lockDomain.releasedBooked(state.booked), updatedAt: db.serverDate() } });
+    });
+  } catch (error) {}
 }
 
-function intervalBucketIds(storeId, startAt, endAt) {
-  const start = new Date(startAt).getTime();
-  const end = new Date(endAt).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw createError("INVALID_INPUT", "预约时间无效");
-  const ids = [];
-  for (let cursor = Math.floor(start / 900000) * 900000; cursor < end; cursor += 900000) ids.push(hash(`${storeId}|${cursor}`).slice(0, 32));
-  return ids;
+function intervalBucketIds(storeId, advisorId, startAt, endAt) {
+  try { return lockDomain.intervalBucketIds(storeId, advisorId, startAt, endAt); }
+  catch (error) { throw createError("INVALID_INPUT", "预约时间无效"); }
 }
 
 async function reserveAppointmentInterval({ appointmentNumber, storeId, advisorId, startAt, endAt }) {
-  const ids = intervalBucketIds(storeId, startAt, endAt);
+  const ids = intervalBucketIds(storeId, advisorId, startAt, endAt);
   await db.runTransaction(async transaction => {
     for (const id of ids) {
       const reference = transaction.collection("privlan_appointment_locks").doc(id);
@@ -231,8 +236,37 @@ async function reserveAppointmentInterval({ appointmentNumber, storeId, advisorI
   return ids;
 }
 
-async function releaseAppointmentInterval(ids = []) {
-  await Promise.all(ids.map(id => db.collection("privlan_appointment_locks").doc(id).remove().catch(() => null)));
+async function releaseAppointmentInterval(ids = [], appointmentNumber = "") {
+  await db.runTransaction(async transaction => {
+    for (const id of ids) {
+      const reference = transaction.collection("privlan_appointment_locks").doc(id);
+      let existing = null;
+      try { existing = (await reference.get()).data; } catch (error) {}
+      if (lockDomain.ownsLock(existing, appointmentNumber)) await reference.remove();
+    }
+  }).catch(() => null);
+}
+
+async function reserveAppointmentRequest({ appointmentNumber, openId, phone, slotId }) {
+  const id = hash(`request|${openId}|${phone}|${slotId}`).slice(0, 32);
+  await db.runTransaction(async transaction => {
+    const reference = transaction.collection("privlan_appointment_locks").doc(id);
+    let existing = null;
+    try { existing = (await reference.get()).data; } catch (error) {}
+    if (existing) throw createError("DUPLICATE_APPOINTMENT", "你已经提交过这个时段的预约，请勿重复提交", 409);
+    await reference.set({ data: { kind: "request", appointmentNumber, slotId, createdAt: db.serverDate() } });
+  });
+  return id;
+}
+
+async function releaseAppointmentRequest(id, appointmentNumber) {
+  if (!id) return;
+  await db.runTransaction(async transaction => {
+    const reference = transaction.collection("privlan_appointment_locks").doc(id);
+    let existing = null;
+    try { existing = (await reference.get()).data; } catch (error) {}
+    if (lockDomain.ownsLock(existing, appointmentNumber)) await reference.remove();
+  }).catch(() => null);
 }
 
 function handleError(error, id = requestId()) {
@@ -246,5 +280,7 @@ function handleError(error, id = requestId()) {
 module.exports = {
   cloud, db, command, ok, fail, createError, env, hash, requestId, escapeFilterValue,
   searchRecords, getRecord, createRecord, updateRecord, plainValue, fieldName, fieldValue,
-  currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot, reserveAppointmentInterval, releaseAppointmentInterval, handleError
+  currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot,
+  intervalBucketIds, reserveAppointmentInterval, releaseAppointmentInterval,
+  reserveAppointmentRequest, releaseAppointmentRequest, handleError
 };

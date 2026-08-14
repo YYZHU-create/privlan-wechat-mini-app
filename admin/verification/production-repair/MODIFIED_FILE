@@ -1,0 +1,5 @@
+branch=dynamic-product-id
+field=productId
+source=options.id
+fallback=block.productId
+invalid=product-missing

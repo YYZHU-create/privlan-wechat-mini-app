@@ -106,6 +106,16 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
   if (!fs.existsSync(pageDir)) return [];
   const tabIds = ["home", "category", "campaign", "cart", "mine"];
   const tabIndex = tabIds.indexOf(pageId);
+  const categoryGridIndex = pageId === "category" ? blocks.findIndex(block => block.type === "product-grid") : -1;
+  const productDetailIndex = blocks.findIndex(block => block.type === "product-detail");
+  const productCatalog = (cfg.products || []).map(product => ({
+    ...product,
+    gallery: productGallery(product),
+    colors: Array.isArray(product.colors) ? product.colors : [],
+    sizes: Array.isArray(product.sizes) ? product.sizes : [],
+    description: product.description || "",
+    detailImages: Array.isArray(product.detailImages) ? product.detailImages : []
+  }));
   const data = {
     navPadTop: 20,
     channels: cfg.homeChannels || ["推荐"],
@@ -121,6 +131,15 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
       bottom: Math.max(112, Math.min(700, Number(cfg.serviceBot?.bottom || 150)))
     }
   };
+  data.activeCategory = pageId === "category" ? "all" : String(cfg.categories?.[0]?.id || "all");
+  if (pageId === "category") {
+    data.allProducts = productCatalog;
+    data.visibleProducts = productCatalog;
+  }
+  if (productDetailIndex >= 0) {
+    data.productCatalog = productCatalog;
+    data.productMissing = false;
+  }
 
   const body = blocks.map((block, index) => {
     const key = `block${index}`;
@@ -174,9 +193,10 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     }
 
     if (block.type === "categories") {
-      data[key] = cfg.categories.slice(0, Number(props.count || 5));
+      const categories = cfg.categories.slice(0, Number(props.count || 5));
+      data[key] = pageId === "category" ? [{ id: "all", name: "全部商品" }, ...categories] : categories;
       return `<scroll-view scroll-x class="builder-categories builder-block" style="${escapeXml(inlineStyle)}" enable-flex>
-  <view wx:for="{{${key}}}" wx:key="id" class="builder-category {{index === 0 ? 'on' : ''}}">{{item.name}}</view>
+  <view wx:for="{{${key}}}" wx:key="id" class="builder-category {{activeCategory === item.id ? 'on' : ''}}" data-category="{{item.id}}" bindtap="selectCategory">{{item.name}}</view>
 </scroll-view>`;
     }
 
@@ -187,10 +207,12 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
       data[key] = source.slice(0, Number(props.count || 6));
       const columns = Math.max(2, Math.min(4, Number(props.columns || 2)));
       const gap = Math.max(4, Math.min(30, Number(style.gap || 12)));
+      const listExpression = pageId === "category" && categoryGridIndex === index ? "visibleProducts" : key;
+      const viewAllCategory = props.category && props.category !== "all" ? props.category : "all";
       return `<view class="builder-products builder-block" style="${escapeXml(inlineStyle)}">
-  <view class="builder-section-head"><text class="serif">${escapeXml(props.title || block.name || "精选商品")}</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-section-head"><text class="serif">${escapeXml(props.title || block.name || "精选商品")}</text><text class="builder-more" data-category="${escapeXml(viewAllCategory)}" bindtap="viewAllProducts">查看全部</text></view>
   <view class="builder-grid" style="grid-template-columns:repeat(${columns},1fr);gap:${gap}px">
-    <view wx:for="{{${key}}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
+    <view wx:for="{{${listExpression}}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
       <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
       ${props.showName === false ? "" : `<view class="builder-product-name">{{item.name}}</view>`}
       ${props.showPrice === false ? "" : `<view class="builder-product-price">¥{{item.price}}</view>`}
@@ -219,9 +241,11 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     }
 
     if (block.type === "product-detail") {
-      const product = cfg.products.find(item => Number(item.id) === Number(props.productId)) || cfg.products[0] || {};
-      data[key] = { ...product, gallery: productGallery(product), colors: Array.isArray(product.colors) ? product.colors : [], sizes: Array.isArray(product.sizes) ? product.sizes : [], description: product.description || "精选材质与精确剪裁，呈现舒适、克制而持久的高级质感。", detailImages: Array.isArray(product.detailImages) ? product.detailImages : [] };
-      return `<view class="builder-detail builder-block" style="${escapeXml(inlineStyle)}">
+      const product = productCatalog.find(item => String(item.id) === String(props.productId)) || null;
+      data[key] = product || { id: "", gallery: [], colors: [], sizes: [], description: "", detailImages: [] };
+      data.productMissing = !product;
+      data.detailFallbackId = props.productId == null ? "" : String(props.productId);
+      return `<view wx:if="{{!productMissing}}" class="builder-detail builder-block" style="${escapeXml(inlineStyle)}">
   <swiper class="builder-detail-gallery" indicator-dots="{{${key}.gallery.length > 1}}" circular="{{${key}.gallery.length > 1}}" duration="260">
     <swiper-item wx:for="{{${key}.gallery}}" wx:key="*this"><image class="builder-detail-image" src="{{item}}" mode="aspectFill" /></swiper-item>
   </swiper>
@@ -234,7 +258,7 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
   <view wx:if="{{${key}.detail}}" class="builder-detail-long-copy">{{${key}.detail}}</view>
   <view wx:if="{{${key}.detailImages.length}}" class="builder-detail-story"><image wx:for="{{${key}.detailImages}}" wx:key="*this" src="{{item}}" mode="widthFix" /></view>
   ${props.showActions === false ? "" : `<view class="builder-detail-actions"><button bindtap="addCart">加入购物车</button><button class="primary" bindtap="buyNow">立即购买</button></view>`}
-</view>`;
+</view><view wx:else class="builder-detail-missing"><view class="builder-detail-name serif">商品不存在</view><view class="builder-detail-copy">该商品可能已下架或链接无效。</view><button bindtap="goBack">返回上一页</button></view>`;
     }
 
     if (block.type === "text") {
@@ -264,8 +288,6 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
   <service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" />
 </view>`;
 
-  const productDetailIndex = blocks.findIndex(block => block.type === "product-detail");
-  const cartProductExpression = productDetailIndex >= 0 ? `this.data.block${productDetailIndex}` : "null";
   const usesCart = pageId === "cart" || productDetailIndex >= 0;
   const cartImport = usesCart ? `const cart = require("../../utils/cart");\n` : "";
   const cartMethods = usesCart ? `
@@ -276,28 +298,59 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
   changeCartQuantity(e) {
     cart.changeQuantity(e.currentTarget.dataset.id, e.currentTarget.dataset.delta);
     this.refreshCart();
-  },` : "";
+  },${productDetailIndex >= 0 ? `
+  addCart() {
+    const product = this.data.block${productDetailIndex};
+    if (!product || product.id === "" || product.id == null) return wx.showToast({ title: "商品不存在", icon: "none" });
+    cart.add(product); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" });
+  },
+  buyNow() {
+    const product = this.data.block${productDetailIndex};
+    if (!product || product.id === "" || product.id == null) return wx.showToast({ title: "商品不存在", icon: "none" });
+    cart.add(product); wx.switchTab({ url: "/pages/cart/cart" });
+  },` : ""}` : "";
+  const detailLoad = productDetailIndex >= 0 ? `
+    const requestedId = options && options.id != null && options.id !== "" ? String(options.id) : "";
+    const targetId = requestedId || String(this.data.detailFallbackId || "");
+    const product = this.data.productCatalog.find(item => String(item.id) === targetId);
+    this.setData({ productMissing: !product, block${productDetailIndex}: product || { id: "", gallery: [], colors: [], sizes: [], description: "", detailImages: [] } });` : "";
   const js = `// Generated by PRIVLAN Commerce Studio. Edit the homepage in the admin panel.
 ${cartImport}Page({
   data: ${JSON.stringify(data, null, 4)},
-  onLoad() {
+  onLoad(options = {}) {
     const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const menu = wx.getMenuButtonBoundingClientRect();
-    this.setData({ navPadTop: menu.top || win.statusBarHeight || 20 });
+    this.setData({ navPadTop: menu.top || win.statusBarHeight || 20 });${detailLoad}${pageId === "category" ? `
+    this.applyCategory(options.cat);` : ""}
   },
   onShow() {${tabIndex >= 0 ? `
     if (typeof this.getTabBar === "function" && this.getTabBar()) this.getTabBar().setData({ selected: ${tabIndex} });` : ""}${usesCart ? `
     this.refreshCart();` : ""}
   },${cartMethods}
   switchChannel(e) { this.setData({ channel: e.currentTarget.dataset.c }); },
-  onSearch() { wx.showToast({ title: "搜索功能演示", icon: "none" }); },
+  onSearch() { wx.showToast({ title: "搜索功能开发中", icon: "none" }); },
+  applyCategory(category) {
+    const legal = new Set(["all", ...this.data.allProducts.map(item => item.cat)]);
+    const activeCategory = legal.has(String(category || "")) ? String(category) : "all";
+    const visibleProducts = activeCategory === "all" ? this.data.allProducts : this.data.allProducts.filter(item => item.cat === activeCategory);
+    this.setData({ activeCategory, visibleProducts });
+  },
+  selectCategory(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    ${pageId === "category" ? "this.applyCategory(category);" : `wx.reLaunch({ url: "/pages/category/category" + (category === "all" ? "" : "?cat=" + encodeURIComponent(category)) });`}
+  },
+  viewAllProducts(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    ${pageId === "category" ? "this.applyCategory(category);" : `wx.reLaunch({ url: "/pages/category/category" + (category === "all" ? "" : "?cat=" + encodeURIComponent(category)) });`}
+  },
   heroAction(e) {
     const type = e.currentTarget.dataset.linkType;
     const value = e.currentTarget.dataset.linkValue;
     if (!value) return;
     const clean = value.split("?")[0];
     const tabs = ["/pages/home/home", "/pages/category/category", "/pages/campaign/campaign", "/pages/cart/cart", "/pages/mine/mine"];
-    if (tabs.includes(clean)) wx.switchTab({ url: clean });
+    if (clean === "/pages/category/category" && value.includes("?")) wx.reLaunch({ url: value });
+    else if (tabs.includes(clean)) wx.switchTab({ url: clean });
     else if (type === "external") wx.navigateTo({ url: "/pages/webview/webview?url=" + encodeURIComponent(value) });
     else wx.navigateTo({ url: value });
   },
@@ -307,13 +360,12 @@ ${cartImport}Page({
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
-  addCart() { cart.add(${cartProductExpression}); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(${cartProductExpression}); wx.switchTab({ url: "/pages/cart/cart" }); },
   onShareAppMessage() {
-    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}, path: ${JSON.stringify(pageMeta.path || `/pages/${pageId}/${pageId}`)}${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
+    const path = ${productDetailIndex >= 0 ? `this.data.block${productDetailIndex} && this.data.block${productDetailIndex}.id !== "" ? "/pages/detail/detail?id=" + encodeURIComponent(this.data.block${productDetailIndex}.id) : "/pages/detail/detail"` : JSON.stringify(pageMeta.path || `/pages/${pageId}/${pageId}`)};
+    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}, path${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
   },
   onShareTimeline() {
-    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
+    return { title: ${JSON.stringify(pageMeta.shareTitle || pageMeta.name || cfg.brand.name)}${productDetailIndex >= 0 ? `, query: this.data.block${productDetailIndex} && this.data.block${productDetailIndex}.id !== "" ? "id=" + encodeURIComponent(this.data.block${productDetailIndex}.id) : ""` : ""}${pageMeta.shareImage ? `, imageUrl: ${JSON.stringify(pageMeta.shareImage)}` : ""} };
   }
 });
 `;
@@ -323,7 +375,7 @@ ${cartImport}Page({
   const productDetailStyles = `.builder-detail-gallery{width:100%;height:auto;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-gallery swiper-item{height:100%}.builder-detail-options{display:flex;align-items:center;flex-wrap:wrap;gap:10rpx;margin-top:18rpx}.builder-detail-label{color:${colors.textSecondary};font-size:${type.meta}rpx;margin-right:6rpx}.builder-detail-option{padding:8rpx 18rpx;border:1rpx solid ${colors.border};border-radius:99rpx;font-size:${type.meta}rpx}.builder-detail-long-copy{margin-top:24rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight};white-space:pre-line}.builder-detail-story{margin-top:24rpx}.builder-detail-story image{display:block;width:100%;margin-bottom:14rpx}`;
   const mediaStyles = ".builder-media{position:relative;width:100%;overflow:hidden}.builder-media-content{display:block;width:100%;height:100%}.builder-media-overlay{position:absolute;inset:0;pointer-events:none}.builder-hero swiper-item{position:relative}.builder-hotspot-host{position:relative}.builder-hotspot{position:absolute;z-index:8;background:transparent;display:block}";
   const cartStyles = `.builder-cart-panel{padding:32px 15px 18px}.builder-cart-empty{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;border:1rpx solid ${colors.border};text-align:center}.builder-cart-empty-icon{display:block;width:52rpx;height:52rpx;margin-bottom:10rpx}.builder-cart-empty-title{font-size:${type.sectionTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-cart-empty-copy{margin-top:8rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-cart-empty button{min-height:88rpx;margin-top:18rpx;padding:0 32rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx;line-height:88rpx}.builder-cart-head,.builder-cart-total{display:flex;align-items:center;justify-content:space-between;color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-cart-head{padding-bottom:18rpx;border-bottom:1rpx solid ${colors.border}}.builder-cart-accent{color:${colors.accent}}.builder-cart-line{display:grid;grid-template-columns:136rpx minmax(0,1fr) auto;gap:20rpx;align-items:center;padding:22rpx 0;border-bottom:1rpx solid ${colors.border}}.builder-cart-line>image{width:136rpx;height:172rpx;background:${colors.bgSecondary}}.builder-cart-copy{min-width:0}.builder-cart-name{display:block;overflow:hidden;font-size:${type.body}rpx;white-space:nowrap;text-overflow:ellipsis}.builder-cart-price{display:block;margin-top:8rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-cart-quantity{display:grid;grid-template-columns:64rpx 48rpx 64rpx;align-items:center;width:176rpx;margin-top:16rpx;border:1rpx solid ${colors.border}}.builder-cart-quantity button{width:64rpx;height:64rpx;padding:0;border:0;background:transparent;color:${colors.textPrimary};font-size:30rpx;line-height:64rpx}.builder-cart-quantity text{text-align:center;font-size:${type.meta}rpx}.builder-cart-total{padding-top:24rpx}.builder-cart-total .builder-cart-accent{font-size:${type.body}rpx}`;
-  const wxss = `${customFonts}.builder-page{min-height:100vh;background:${colors.bgPrimary};color:${colors.textPrimary};padding-bottom:130rpx;font-family:${FONT_STACKS.system};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-block{box-sizing:border-box;overflow:hidden}.builder-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;padding-left:24rpx;padding-right:24rpx;display:flex;align-items:center;background:linear-gradient(to bottom,rgba(0,0,0,.62),transparent)}.builder-search{width:40rpx;height:40rpx}.builder-page-title{flex:1;margin-right:40rpx;text-align:center;color:#fff;font-size:${type.pageTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-channels{flex:1;display:flex;justify-content:center;gap:44rpx;margin-right:120rpx}.builder-channel{font-size:${type.body}rpx;color:rgba(255,255,255,.72);padding-bottom:8rpx}.builder-channel.on{color:${colors.accent};border-bottom:2rpx solid ${colors.accent}}.builder-cover{width:100%;height:100%;display:block}.builder-hero{position:relative;width:100%;background:${colors.bgSecondary}}.builder-mask{position:absolute;inset:0}.builder-hero-copy{position:absolute;left:40rpx;right:40rpx;bottom:84rpx;text-align:inherit}.builder-eyebrow{font-size:${type.caption}rpx;color:rgba(255,255,255,.82)}.builder-hero-title{margin:16rpx 0 8rpx;font-size:${type.heroTitle}rpx;line-height:${type.headingLineHeight};color:inherit}.builder-hero-sub{font-size:${type.body}rpx;line-height:${type.bodyLineHeight};color:inherit;opacity:.9}.builder-outline{display:inline-flex;align-items:center;justify-content:center;min-height:88rpx;margin-top:34rpx;padding:0 48rpx;font-size:${type.body}rpx}.builder-categories{white-space:nowrap}.builder-category{display:inline-flex;align-items:center;min-height:72rpx;margin-right:16rpx;padding:0 24rpx;border:1rpx solid ${colors.border};border-radius:99rpx;color:${colors.textSecondary};font-size:${type.body}rpx}.builder-category.on{background:${colors.accent};border-color:${colors.accent};color:${colors.bgPrimary}}.builder-section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28rpx;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-more{color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-grid{display:grid}.builder-product-img{width:100%;aspect-ratio:3/4;background:${colors.bgSecondary}}.builder-product-name{margin-top:12rpx;font-size:${type.body}rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.builder-product-price{margin-top:5rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-member{text-align:inherit}.builder-member-title{color:inherit;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-member-sub{margin:14rpx 0 32rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:12rpx}.builder-benefit{border-top:1rpx solid ${colors.border};padding-top:22rpx;display:flex;flex-direction:column;align-items:center;font-size:${type.caption}rpx}.builder-benefit image{width:44rpx;height:44rpx;margin-bottom:10rpx}.builder-detail-image{width:100%;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-kicker{margin-top:28rpx;color:${colors.accent};font-size:${type.caption}rpx}.builder-detail-name{margin-top:12rpx;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-detail-price{margin-top:8rpx;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-copy{margin:24rpx 0 32rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}.builder-detail-actions button{min-height:88rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-actions button.primary{background:${colors.accent};color:${colors.bgPrimary}}.builder-text-title{color:inherit;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-text-copy{margin-top:14rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-service{position:fixed;z-index:1000;right:24rpx;bottom:150rpx;width:88rpx;height:88rpx;border-radius:50%;background:${colors.bgSecondary};border:1rpx solid ${colors.accent};padding:0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none}.builder-service::after{border:0}.builder-service image{width:52%;height:52%}`;
+  const wxss = `${customFonts}.builder-page{min-height:100vh;background:${colors.bgPrimary};color:${colors.textPrimary};padding-bottom:130rpx;font-family:${FONT_STACKS.system};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-block{box-sizing:border-box;overflow:hidden}.builder-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;padding-left:24rpx;padding-right:24rpx;display:flex;align-items:center;background:linear-gradient(to bottom,rgba(0,0,0,.62),transparent)}.builder-search{width:40rpx;height:40rpx}.builder-page-title{flex:1;margin-right:40rpx;text-align:center;color:#fff;font-size:${type.pageTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-channels{flex:1;display:flex;justify-content:center;gap:44rpx;margin-right:120rpx}.builder-channel{font-size:${type.body}rpx;color:rgba(255,255,255,.72);padding-bottom:8rpx}.builder-channel.on{color:${colors.accent};border-bottom:2rpx solid ${colors.accent}}.builder-cover{width:100%;height:100%;display:block}.builder-hero{position:relative;width:100%;background:${colors.bgSecondary}}.builder-mask{position:absolute;inset:0}.builder-hero-copy{position:absolute;left:40rpx;right:40rpx;bottom:84rpx;text-align:inherit}.builder-eyebrow{font-size:${type.caption}rpx;color:rgba(255,255,255,.82)}.builder-hero-title{margin:16rpx 0 8rpx;font-size:${type.heroTitle}rpx;line-height:${type.headingLineHeight};color:inherit}.builder-hero-sub{font-size:${type.body}rpx;line-height:${type.bodyLineHeight};color:inherit;opacity:.9}.builder-outline{display:inline-flex;align-items:center;justify-content:center;min-height:88rpx;margin-top:34rpx;padding:0 48rpx;font-size:${type.body}rpx}.builder-categories{white-space:nowrap}.builder-category{display:inline-flex;align-items:center;min-height:72rpx;margin-right:16rpx;padding:0 24rpx;border:1rpx solid ${colors.border};border-radius:99rpx;color:${colors.textSecondary};font-size:${type.body}rpx}.builder-category.on{background:${colors.accent};border-color:${colors.accent};color:${colors.bgPrimary}}.builder-section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28rpx;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-more{color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-grid{display:grid}.builder-product-img{width:100%;aspect-ratio:3/4;background:${colors.bgSecondary}}.builder-product-name{margin-top:12rpx;font-size:${type.body}rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.builder-product-price{margin-top:5rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-member{text-align:inherit}.builder-member-title{color:inherit;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-member-sub{margin:14rpx 0 32rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:12rpx}.builder-benefit{border-top:1rpx solid ${colors.border};padding-top:22rpx;display:flex;flex-direction:column;align-items:center;font-size:${type.caption}rpx}.builder-benefit image{width:44rpx;height:44rpx;margin-bottom:10rpx}.builder-detail-image{width:100%;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-kicker{margin-top:28rpx;color:${colors.accent};font-size:${type.caption}rpx}.builder-detail-name{margin-top:12rpx;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-detail-price{margin-top:8rpx;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-copy{margin:24rpx 0 32rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}.builder-detail-actions button{min-height:88rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-actions button.primary{background:${colors.accent};color:${colors.bgPrimary}}.builder-detail-missing{padding:240rpx 48rpx 120rpx;text-align:center}.builder-detail-missing button{min-height:88rpx;padding:0 48rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent}}.builder-text-title{color:inherit;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-text-copy{margin-top:14rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-service{position:fixed;z-index:1000;right:24rpx;bottom:150rpx;width:88rpx;height:88rpx;border-radius:50%;background:${colors.bgSecondary};border:1rpx solid ${colors.accent};padding:0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none}.builder-service::after{border:0}.builder-service image{width:52%;height:52%}`;
 
   fs.writeFileSync(path.join(pageDir, `${pageId}.wxml`), wxml, "utf-8");
   fs.writeFileSync(path.join(pageDir, `${pageId}.js`), js, "utf-8");

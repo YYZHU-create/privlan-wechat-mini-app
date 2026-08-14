@@ -20,7 +20,7 @@ Page({
   async loadOptions(extra = {}) {
     this.setData({ loading: true, loadError: "" });
     const form = this.data.form;
-    const result = await api.loadAppointmentOptions({ storeId: form.storeId, date: form.date, serviceId: form.serviceId, ...extra });
+    const result = await api.loadAppointmentOptions({ storeId: form.storeId, date: form.date, serviceId: form.serviceId, advisorId: form.advisorId, ...extra });
     if (!result.ok) {
       this.setData({ loading: false, loadError: result.message || "可预约信息读取失败，请稍后重试" });
       return;
@@ -31,6 +31,7 @@ Page({
     if (!nextForm.storeId && data.stores?.[0]) nextForm.storeId = data.stores[0].id;
     if (!nextForm.date && data.dates?.[0]) nextForm.date = data.dates[0].value;
     if (!nextForm.advisorId && !appointmentConfig.fields.advisor) nextForm.advisorId = data.advisors?.[0]?.id || "unassigned";
+    if (nextForm.slotId && !data.slots?.some(item => item.id === nextForm.slotId && item.available !== false)) nextForm.slotId = "";
     this.setData({
       loading: false,
       services: data.services || [], stores: data.stores || [], dates: data.dates || [],
@@ -56,7 +57,11 @@ Page({
     this.loadOptions({ date: event.currentTarget.dataset.value });
   },
   selectSlot(event) { this.setData({ "form.slotId": event.currentTarget.dataset.value, "errors.slotId": "" }); },
-  selectAdvisor(event) { this.setData({ "form.advisorId": event.currentTarget.dataset.value, "errors.advisorId": "" }); },
+  selectAdvisor(event) {
+    const advisorId = event.currentTarget.dataset.value;
+    this.setData({ "form.advisorId": advisorId, "errors.advisorId": "" });
+    this.loadOptions({ advisorId });
+  },
 
   validate() {
     const form = this.data.form;

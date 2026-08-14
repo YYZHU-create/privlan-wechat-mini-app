@@ -1,0 +1,32 @@
+Production repair verification
+
+Changed branch: dynamic-product-id
+Changed field: productId
+Original source hash: f53c9babee86263475c508df54e37cde8fe37d6c
+
+Artifacts:
+- MODIFIED_FILE
+- DIFF_FILE
+- VERIFICATION.txt
+- ROLLBACK.sh
+
+BASELINE
+Command: node --test
+Input: repository at main@a830877
+Literal result: tests 14; pass 14; fail 0
+Exit status: 0
+
+MODIFIED
+Command: C:\Users\Administrator\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --test
+Input: production repair working tree
+Literal result: tests 33; pass 33; fail 0; ALL_JS_SYNTAX_OK; ALL_APP_ROUTES_EXIST 10; SECRET_SCAN_NO_MATCHES
+Exit status: 0
+
+ROLLBACK
+Command: C:\Users\Administrator\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\git\usr\bin\sh.exe admin/verification/production-repair/ROLLBACK.sh C:/Users/Administrator/AppData/Local/Temp/privlan-rollback-0239befb20584cdd98429a7dcbab22d5/MODIFIED_FILE
+Input: another copy of MODIFIED_FILE at C:\Users\Administrator\AppData\Local\Temp\privlan-rollback-0239befb20584cdd98429a7dcbab22d5\MODIFIED_FILE
+Literal result: ROLLBACK_OK branch=dynamic-product-id field=productId restored=block.productId
+Exit status: 0
+
+Restored behavior: source=block.productId; invalid=fallback-first-product
+Restored status: verified on the temporary copy; workspace MODIFIED_FILE remains changed

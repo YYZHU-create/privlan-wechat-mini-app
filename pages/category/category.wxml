@@ -4,12 +4,12 @@
   </view>
   <view class="builder-content"><view class="builder-hotspot-host"><view class="builder-text builder-block" style="background:transparent;color:#f0f0f0;font-family:&quot;Songti SC&quot;,&quot;STSong&quot;,&quot;Noto Serif SC&quot;,serif;font-size:36rpx;font-weight:400;text-align:center;letter-spacing:0px;line-height:1.65;padding:22px 22px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px"><view class="builder-text-title serif">分类</view><view class="builder-text-copy">按系列浏览商品</view></view><view wx:for="{{block0Hotspots}}" wx:for-item="spot" wx:key="id" class="builder-hotspot" style="left:{{spot.x}}%;top:{{spot.y}}%;width:{{spot.width}}%;height:{{spot.height}}%" data-link-type="{{spot.linkType}}" data-link-value="{{spot.linkValue}}" catchtap="hotspotAction"></view></view>
 <view class="builder-hotspot-host"><scroll-view scroll-x class="builder-categories builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:28rpx;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.65;padding:20px 16px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px" enable-flex>
-  <view wx:for="{{block1}}" wx:key="id" class="builder-category {{index === 0 ? 'on' : ''}}">{{item.name}}</view>
+  <view wx:for="{{block1}}" wx:key="id" class="builder-category {{activeCategory === item.id ? 'on' : ''}}" data-category="{{item.id}}" bindtap="selectCategory">{{item.name}}</view>
 </scroll-view><view wx:for="{{block1Hotspots}}" wx:for-item="spot" wx:key="id" class="builder-hotspot" style="left:{{spot.x}}%;top:{{spot.y}}%;width:{{spot.width}}%;height:{{spot.height}}%" data-link-type="{{spot.linkType}}" data-link-value="{{spot.linkValue}}" catchtap="hotspotAction"></view></view>
 <view class="builder-hotspot-host"><view class="builder-products builder-block" style="background:transparent;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif;font-size:28rpx;font-weight:400;text-align:left;letter-spacing:0px;line-height:1.65;padding:25px 15px;margin-top:0px;margin-bottom:0px;border:0px solid transparent;border-radius:0px">
-  <view class="builder-section-head"><text class="serif">全部商品</text><text class="builder-more">查看全部</text></view>
+  <view class="builder-section-head"><text class="serif">全部商品</text><text class="builder-more" data-category="all" bindtap="viewAllProducts">查看全部</text></view>
   <view class="builder-grid" style="grid-template-columns:repeat(2,1fr);gap:10px">
-    <view wx:for="{{block2}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
+    <view wx:for="{{visibleProducts}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
       <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
       <view class="builder-product-name">{{item.name}}</view>
       <view class="builder-product-price">¥{{item.price}}</view>

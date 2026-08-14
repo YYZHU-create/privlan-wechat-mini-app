@@ -1,0 +1,4 @@
+<view class="webview-page">
+  <web-view wx:if="{{url && !error}}" src="{{url}}" bindload="onWebviewLoad" binderror="onWebviewError"></web-view>
+  <view wx:if="{{error}}" class="webview-error"><view class="webview-error-title">无法打开链接</view><view class="webview-error-copy">{{error}}</view><button bindtap="goBack">返回</button></view>
+</view>

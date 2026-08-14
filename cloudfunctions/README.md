@@ -52,3 +52,18 @@
 微信公众平台还需创建预约提醒订阅消息模板，并将模板 ID 同时写入 `app.js` 的 `appointmentReminderTemplateId` 和云函数环境变量 `APPOINTMENT_REMINDER_TEMPLATE_ID`。部署 `appointmentReminder` 云函数时启用其 15 分钟定时触发器；用户授权后，系统会登记预约并在默认提前 24 小时发送一次提醒。模板字段名不同时，通过 `REMINDER_FIELD_*` 环境变量映射。
 
 正式认证后将 `AUTH_MODE` 改为 `wechat`，删除 `TEST_AUTH_CODE`，并在微信公众平台开通手机号授权和小程序客服，再将 `HUMAN_SERVICE_ENABLED` 改为 `true`。
+
+## 生产部署检查
+
+- 部署 `appointmentList`，并确认 `privlan_appointment_records` 仅由云函数读取。客户端不得提交 `openId`。
+- 未配置 `AUTH_MODE` 时系统默认使用 `wechat`。测试认证只有在同时设置 `AUTH_MODE=test` 和 `TEST_AUTH_CODE` 时才会启用。
+- 正式环境必须设置 `AUTH_MODE=wechat` 并删除 `TEST_AUTH_CODE`，避免测试验证码入口继续存在。
+- 预约创建、预约选项和预约列表三个云函数必须使用相同的飞书字段映射和 `APPOINTMENT_DURATION_MINUTES`。
+- `privlan_appointment_locks` 同时保存顾问时间桶和预约请求幂等锁；不要从客户端直接读写该集合。
+- 关注 `appointment_reconciliation_required` 审计事件。该事件表示飞书预约已经创建，但时段计数或镜像数据需要人工对账。
+
+## WebView 业务域名
+
+生成器会登记 `pages/webview/webview`，页面只接受 `https://` 地址。上线前仍需在微信公众平台配置对应的业务域名并完成域名校验；开发工具中的 `urlCheck=false` 不能替代正式业务域名配置。
+
+后台的“生成小程序”和“真机预览”只生成开发项目或开发版二维码，不代表已经完成微信上传、审核或线上发布。

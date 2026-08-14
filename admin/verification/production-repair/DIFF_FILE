@@ -1,0 +1,10 @@
+--- a/MODIFIED_FILE
++++ b/MODIFIED_FILE
+@@ -1,5 +1,5 @@
+ branch=dynamic-product-id
+ field=productId
+-source=block.productId
++source=options.id
+ fallback=block.productId
+-invalid=fallback-first-product
++invalid=product-missing

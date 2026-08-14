@@ -10,7 +10,7 @@ exports.main = async event => {
     let customer = null;
 
     if (action === "verifyTest") {
-      if (core.env("AUTH_MODE", "test") !== "test") throw core.createError("INVALID_INPUT", "测试验证模式已关闭");
+      if (core.env("AUTH_MODE", "wechat") !== "test") throw core.createError("INVALID_INPUT", "测试验证模式已关闭");
       const memberNo = String(event.memberNo || "").trim();
       phone = String(event.phone || "").trim();
       const code = String(event.code || "").trim();

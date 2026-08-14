@@ -1,16 +1,30 @@
 const api = require("../../utils/service-api");
 
 Page({
-  data: { upcoming: [], history: [] },
+  data: { upcoming: [], history: [], loading: false, cacheOnly: false, loadError: "" },
 
-  onShow() {
-    const items = wx.getStorageSync("privlanAppointments");
+  renderAppointments(items) {
     const now = Date.now();
     const normalized = (Array.isArray(items) ? items : []).map(item => ({ ...item, timestamp: new Date(item.startAt || `${item.date}T${String(item.slotLabel || "00:00").slice(0, 5)}:00+08:00`).getTime() || 0 }));
     this.setData({
       upcoming: normalized.filter(item => item.status !== "已取消" && item.timestamp >= now).sort((a, b) => a.timestamp - b.timestamp),
       history: normalized.filter(item => item.status === "已取消" || item.timestamp < now).sort((a, b) => b.timestamp - a.timestamp)
     });
+  },
+
+  async onShow() {
+    const cached = wx.getStorageSync("privlanAppointments");
+    this.renderAppointments(cached);
+    this.setData({ loading: true, cacheOnly: false, loadError: "" });
+    const result = await api.listAppointments();
+    if (!result.ok) {
+      this.setData({ loading: false, cacheOnly: true, loadError: result.message || "云端预约读取失败" });
+      return;
+    }
+    const items = Array.isArray(result.data) ? result.data : [];
+    wx.setStorageSync("privlanAppointments", items);
+    this.renderAppointments(items);
+    this.setData({ loading: false, cacheOnly: false, loadError: "" });
   },
 
   createAppointment() { wx.navigateTo({ url: "/pages/appointment/index" }); },
@@ -34,7 +48,7 @@ Page({
       const items = wx.getStorageSync("privlanAppointments") || [];
       const next = items.map(item => item.number === number ? { ...item, reminderEnabled: true } : item);
       wx.setStorageSync("privlanAppointments", next);
-      this.onShow();
+      this.renderAppointments(next);
       wx.showToast({ title: "提醒已开启", icon: "success" });
     } catch (error) {
       wx.showToast({ title: "提醒授权未完成", icon: "none" });

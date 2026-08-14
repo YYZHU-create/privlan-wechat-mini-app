@@ -20,9 +20,142 @@ Page({
         "right": 110,
         "bottom": 475
     },
+    "activeCategory": "all",
+    "allProducts": [
+        {
+            "id": 6,
+            "cat": "tops",
+            "name": "0004",
+            "price": 4900,
+            "img": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+            "gallery": [
+                "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 5,
+            "cat": "tops",
+            "name": "0003",
+            "price": 4900,
+            "img": "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg",
+            "gallery": [
+                "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg"
+            ],
+            "colors": [],
+            "sizes": [
+                "新尺码"
+            ],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 4,
+            "cat": "tops",
+            "name": "0002",
+            "price": 4900,
+            "img": "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg",
+            "gallery": [
+                "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 3,
+            "cat": "tops",
+            "name": "0001",
+            "price": 4900,
+            "img": "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg",
+            "gallery": [
+                "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        }
+    ],
+    "visibleProducts": [
+        {
+            "id": 6,
+            "cat": "tops",
+            "name": "0004",
+            "price": 4900,
+            "img": "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+            "gallery": [
+                "/images/41b7d4277afa3c44ee45d3606b761c6e.jpg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 5,
+            "cat": "tops",
+            "name": "0003",
+            "price": 4900,
+            "img": "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg",
+            "gallery": [
+                "/images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg"
+            ],
+            "colors": [],
+            "sizes": [
+                "新尺码"
+            ],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 4,
+            "cat": "tops",
+            "name": "0002",
+            "price": 4900,
+            "img": "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg",
+            "gallery": [
+                "/images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        },
+        {
+            "id": 3,
+            "cat": "tops",
+            "name": "0001",
+            "price": 4900,
+            "img": "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg",
+            "gallery": [
+                "/images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg"
+            ],
+            "colors": [],
+            "sizes": [],
+            "description": "",
+            "detail": "",
+            "detailImages": []
+        }
+    ],
     "block0Hotspots": [],
     "block1Hotspots": [],
     "block1": [
+        {
+            "id": "all",
+            "name": "全部商品"
+        },
         {
             "id": "new",
             "name": "早秋新品"
@@ -122,23 +255,39 @@ Page({
         }
     ]
 },
-  onLoad() {
+  onLoad(options = {}) {
     const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const menu = wx.getMenuButtonBoundingClientRect();
     this.setData({ navPadTop: menu.top || win.statusBarHeight || 20 });
+    this.applyCategory(options.cat);
   },
   onShow() {
     if (typeof this.getTabBar === "function" && this.getTabBar()) this.getTabBar().setData({ selected: 1 });
   },
   switchChannel(e) { this.setData({ channel: e.currentTarget.dataset.c }); },
-  onSearch() { wx.showToast({ title: "搜索功能演示", icon: "none" }); },
+  onSearch() { wx.showToast({ title: "搜索功能开发中", icon: "none" }); },
+  applyCategory(category) {
+    const legal = new Set(["all", ...this.data.allProducts.map(item => item.cat)]);
+    const activeCategory = legal.has(String(category || "")) ? String(category) : "all";
+    const visibleProducts = activeCategory === "all" ? this.data.allProducts : this.data.allProducts.filter(item => item.cat === activeCategory);
+    this.setData({ activeCategory, visibleProducts });
+  },
+  selectCategory(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    this.applyCategory(category);
+  },
+  viewAllProducts(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    this.applyCategory(category);
+  },
   heroAction(e) {
     const type = e.currentTarget.dataset.linkType;
     const value = e.currentTarget.dataset.linkValue;
     if (!value) return;
     const clean = value.split("?")[0];
     const tabs = ["/pages/home/home", "/pages/category/category", "/pages/campaign/campaign", "/pages/cart/cart", "/pages/mine/mine"];
-    if (tabs.includes(clean)) wx.switchTab({ url: clean });
+    if (clean === "/pages/category/category" && value.includes("?")) wx.reLaunch({ url: value });
+    else if (tabs.includes(clean)) wx.switchTab({ url: clean });
     else if (type === "external") wx.navigateTo({ url: "/pages/webview/webview?url=" + encodeURIComponent(value) });
     else wx.navigateTo({ url: value });
   },
@@ -148,10 +297,9 @@ Page({
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
-  addCart() { cart.add(null); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(null); wx.switchTab({ url: "/pages/cart/cart" }); },
   onShareAppMessage() {
-    return { title: "分类", path: "/pages/category/category" };
+    const path = "/pages/category/category";
+    return { title: "分类", path };
   },
   onShareTimeline() {
     return { title: "分类" };

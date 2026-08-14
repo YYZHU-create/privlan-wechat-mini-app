@@ -20,6 +20,7 @@ Page({
         "right": 110,
         "bottom": 475
     },
+    "activeCategory": "new",
     "block0Hotspots": [],
     "block0": [
         {
@@ -114,7 +115,7 @@ Page({
         }
     ]
 },
-  onLoad() {
+  onLoad(options = {}) {
     const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const menu = wx.getMenuButtonBoundingClientRect();
     this.setData({ navPadTop: menu.top || win.statusBarHeight || 20 });
@@ -123,14 +124,29 @@ Page({
     if (typeof this.getTabBar === "function" && this.getTabBar()) this.getTabBar().setData({ selected: 4 });
   },
   switchChannel(e) { this.setData({ channel: e.currentTarget.dataset.c }); },
-  onSearch() { wx.showToast({ title: "搜索功能演示", icon: "none" }); },
+  onSearch() { wx.showToast({ title: "搜索功能开发中", icon: "none" }); },
+  applyCategory(category) {
+    const legal = new Set(["all", ...this.data.allProducts.map(item => item.cat)]);
+    const activeCategory = legal.has(String(category || "")) ? String(category) : "all";
+    const visibleProducts = activeCategory === "all" ? this.data.allProducts : this.data.allProducts.filter(item => item.cat === activeCategory);
+    this.setData({ activeCategory, visibleProducts });
+  },
+  selectCategory(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    wx.reLaunch({ url: "/pages/category/category" + (category === "all" ? "" : "?cat=" + encodeURIComponent(category)) });
+  },
+  viewAllProducts(e) {
+    const category = e.currentTarget.dataset.category || "all";
+    wx.reLaunch({ url: "/pages/category/category" + (category === "all" ? "" : "?cat=" + encodeURIComponent(category)) });
+  },
   heroAction(e) {
     const type = e.currentTarget.dataset.linkType;
     const value = e.currentTarget.dataset.linkValue;
     if (!value) return;
     const clean = value.split("?")[0];
     const tabs = ["/pages/home/home", "/pages/category/category", "/pages/campaign/campaign", "/pages/cart/cart", "/pages/mine/mine"];
-    if (tabs.includes(clean)) wx.switchTab({ url: clean });
+    if (clean === "/pages/category/category" && value.includes("?")) wx.reLaunch({ url: value });
+    else if (tabs.includes(clean)) wx.switchTab({ url: clean });
     else if (type === "external") wx.navigateTo({ url: "/pages/webview/webview?url=" + encodeURIComponent(value) });
     else wx.navigateTo({ url: value });
   },
@@ -140,10 +156,9 @@ Page({
   explore() { wx.switchTab({ url: "/pages/category/category" }); },
   goDetail(e) { wx.navigateTo({ url: "/pages/detail/detail?id=" + e.currentTarget.dataset.id }); },
   goBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: "/pages/home/home" }) }); },
-  addCart() { cart.add(null); this.refreshCart(); wx.showToast({ title: "已加入购物车", icon: "success" }); },
-  buyNow() { cart.add(null); wx.switchTab({ url: "/pages/cart/cart" }); },
   onShareAppMessage() {
-    return { title: "我的", path: "/pages/mine/mine" };
+    const path = "/pages/mine/mine";
+    return { title: "我的", path };
   },
   onShareTimeline() {
     return { title: "我的" };

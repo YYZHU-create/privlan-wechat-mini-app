@@ -146,7 +146,7 @@ createApp({
       { id: "marketing", label: "营销", icon: "ph:megaphone" },
       { id: "ai-service", label: "客服", icon: "ph:chat-circle-text" },
       { id: "analytics", label: "数据", icon: "ph:chart-line-up" },
-      { id: "channels", label: "发布", icon: "ph:broadcast" },
+      { id: "channels", label: "渠道与预览", icon: "ph:broadcast" },
       { id: "theme", label: "主题", icon: "ph:paint-brush" },
       { id: "settings", label: "设置", icon: "ph:sliders-horizontal" }
     ];
@@ -176,7 +176,7 @@ createApp({
       return ({
         overview: "店铺概览", products: "商品管理", categories: "分类管理", media: "媒体库",
         theme: "主题设置", orders: "订单管理", customers: "客户管理", marketing: "营销中心",
-        "ai-service": "智能客服", analytics: "经营数据", channels: "渠道与发布", settings: "全局设置"
+        "ai-service": "智能客服", analytics: "经营数据", channels: "渠道与预览", settings: "全局设置"
       })[currentView.value] || "工作台";
     });
 
@@ -1011,7 +1011,8 @@ createApp({
         cfg.value._lastSync = result.lastSync;
         savedSnapshot.value = JSON.stringify(cfg.value);
         saveMode.value = "saved";
-        toast("同步完成", `已更新 ${result.files?.length || 0} 项小程序文件；${gitFeedback(result.git, "同步结果已写入本地")}`, result.git?.ok === false ? "error" : "success");
+        const packageNote = result.warnings?.length ? `；${result.warnings.length} 个素材存在包体风险` : "";
+        toast("小程序已生成", `已更新 ${result.files?.length || 0} 项开发项目文件${packageNote}；${gitFeedback(result.git, "生成结果已写入本地")}`, result.git?.ok === false ? "error" : "success");
         return true;
       } catch (error) {
         saveMode.value = "error";
@@ -2448,7 +2449,7 @@ createApp({
           <span class="action-divider"></span>
           <button class="btn" aria-label="保存当前更改" :disabled="saveMode === 'saving' || !isDirty" @click="saveConfig(false)"><iconify-icon class="icon" icon="ph:floppy-disk"></iconify-icon><span class="btn-label optional">保存</span></button>
           <button class="btn" title="手机扫码预览" :disabled="saveMode === 'syncing' || previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon><span class="btn-label">手机扫码预览</span></button>
-          <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">同步小程序</span></button>
+          <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">生成小程序</span></button>
         </div>
       </header>
 

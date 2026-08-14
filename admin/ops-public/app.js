@@ -80,7 +80,7 @@ createApp({
     function formatNumber(value) { return new Intl.NumberFormat("zh-CN").format(Number(value) || 0); }
     function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 0 }).format(Number(value) || 0); }
     function formatDate(value) { return value ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—"; }
-    function statusLabel(value) { return ({ active: "正常", trial: "试用", past_due: "欠费", suspended: "暂停", closed: "关闭", succeeded: "成功", failed: "失败", draft: "草稿", queued: "等待执行", running: "执行中", rolled_back: "已回滚", open: "待处理", in_progress: "处理中", resolved: "已解决", investigating: "调查中" })[value] || value || "未知"; }
+    function statusLabel(value) { return ({ active: "正常", trial: "试用", past_due: "欠费", suspended: "暂停", closed: "关闭", generated: "已生成开发预览", succeeded: "成功", failed: "失败", draft: "草稿", queued: "等待执行", running: "执行中", rolled_back: "已回滚", open: "待处理", in_progress: "处理中", resolved: "已解决", investigating: "调查中" })[value] || value || "未知"; }
 
     function applyProviderPreset() {
       const preset = data.providerCatalog.find(item => item.id === connectionForm.providerPreset);

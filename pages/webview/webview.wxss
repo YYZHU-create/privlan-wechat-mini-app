@@ -1,0 +1,1 @@
+.webview-page{min-height:100vh;background:#fff}.webview-error{padding:240rpx 48rpx 120rpx;text-align:center}.webview-error-title{font-size:38rpx;font-weight:600}.webview-error-copy{margin:24rpx 0 40rpx;color:#666;font-size:28rpx;line-height:1.65}.webview-error button{min-width:240rpx;min-height:88rpx;background:#111;color:#fff;font-size:28rpx}

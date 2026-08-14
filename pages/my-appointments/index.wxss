@@ -5,6 +5,8 @@ button::after { border: 0; }
 .appointments-hero > text:first-child { color: #c9a97e; font: 22rpx Georgia, serif; letter-spacing: 4rpx; }
 .appointments-hero > view { margin-top: 16rpx; font: 500 42rpx/1.3 "Songti SC", serif; }
 .hero-copy { display: block; margin-top: 12rpx; color: #c9c6bf; font-size: 26rpx; letter-spacing: 0; }
+.data-notice { margin: 20rpx 24rpx 0; padding: 18rpx 22rpx; border: 1rpx solid #dedbd4; background: #fff; color: #5f5a53; font-size: 24rpx; }
+.data-notice.warning { border-color: #d9c8a8; background: #fffaf0; color: #765225; }
 .section { padding: 28rpx 24rpx 0; }
 .section-title { margin-bottom: 16rpx; font-size: 34rpx; font-weight: 650; }
 .appointment-card, .empty-card { margin-bottom: 18rpx; padding: 28rpx; border: 1rpx solid #dedbd4; border-radius: 8rpx; background: #fff; }

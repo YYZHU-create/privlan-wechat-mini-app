@@ -10,23 +10,23 @@ const { execSync, execFileSync } = require("child_process");
 const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 
-const ROOT = path.join(__dirname, "..");
-const CONFIG_PATH = path.join(__dirname, "config.json");
-const CONFIG_BACKUP_DIR = path.join(__dirname, "config-backups");
-const IMAGES_DIR = path.join(ROOT, "images");
-const FONTS_DIR = path.join(ROOT, "fonts");
-const MEDIA_FOLDERS_PATH = path.join(__dirname, "media-folders.json");
+const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
+const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
+const CONFIG_BACKUP_DIR = path.resolve(process.env.PRIVLAN_CONFIG_BACKUP_DIR || path.join(__dirname, "config-backups"));
+const IMAGES_DIR = path.resolve(process.env.PRIVLAN_IMAGES_DIR || path.join(ROOT, "images"));
+const FONTS_DIR = path.resolve(process.env.PRIVLAN_FONTS_DIR || path.join(ROOT, "fonts"));
+const MEDIA_FOLDERS_PATH = path.resolve(process.env.PRIVLAN_MEDIA_FOLDERS_PATH || path.join(__dirname, "media-folders.json"));
 const SYSTEM_FONTS_DIR = path.join(process.env.WINDIR || "C:\\Windows", "Fonts");
-const PREVIEW_QR_PATH = path.join(path.dirname(ROOT), "preview-qr.png");
-const PREVIEW_ROOT_BASE = path.join(path.dirname(ROOT), `${path.basename(ROOT)}-preview`);
+const PREVIEW_QR_PATH = path.resolve(process.env.PRIVLAN_PREVIEW_QR_PATH || path.join(path.dirname(ROOT), "preview-qr.png"));
+const PREVIEW_ROOT_BASE = path.resolve(process.env.PRIVLAN_PREVIEW_ROOT_BASE || path.join(path.dirname(ROOT), `${path.basename(ROOT)}-preview`));
 const PREVIEW_IMAGE_MAX_EDGE = 960;
 const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
-const TRASH_DIR = path.join(__dirname, "media-trash");
+const TRASH_DIR = path.resolve(process.env.PRIVLAN_MEDIA_TRASH_DIR || path.join(__dirname, "media-trash"));
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
-const OPS_BOOTSTRAP_PATH = path.join(__dirname, ".ops-bootstrap.json");
+const OPS_BOOTSTRAP_PATH = path.resolve(process.env.PRIVLAN_OPS_BOOTSTRAP_PATH || path.join(__dirname, ".ops-bootstrap.json"));
 let previewBuildCount = 0;
 const aiUsage = { inputTokens: 0, outputTokens: 0, requests: 0, fallbackRequests: 0, errors: 0 };
 const operatorSessions = new Map();
@@ -38,8 +38,6 @@ fs.mkdirSync(TRASH_DIR, { recursive: true });
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
 
-// 中间件
-app.use(express.json({ limit: "100mb" }));
 app.disable("x-powered-by");
 app.use((req, res, next) => {
   res.set({
@@ -52,8 +50,14 @@ app.use((req, res, next) => {
 });
 
 const mutationRequests = new Map();
+const localHost = ["127.0.0.1", "localhost", "::1"].includes(HOST);
+function validAdminToken(req) {
+  const supplied = String(req.get("x-privlan-token") || req.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!ADMIN_TOKEN || supplied.length !== ADMIN_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(ADMIN_TOKEN));
+}
 app.use("/api", (req, res, next) => {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (req.method === "OPTIONS") return next();
   const origin = String(req.get("origin") || "");
   if (origin) {
     try {
@@ -62,10 +66,8 @@ app.use("/api", (req, res, next) => {
       return res.status(403).json({ error: "请求来源无效" });
     }
   }
-  if (HOST !== "127.0.0.1" && HOST !== "localhost" && HOST !== "::1") {
-    const suppliedToken = String(req.get("x-privlan-token") || "");
-    if (!ADMIN_TOKEN || suppliedToken !== ADMIN_TOKEN) return res.status(401).json({ error: "需要后台访问令牌" });
-  }
+  if (!localHost && !validAdminToken(req)) return res.status(401).json({ error: "需要后台访问令牌" });
+  if (["GET", "HEAD"].includes(req.method)) return next();
   const client = req.ip || req.socket.remoteAddress || "local";
   const now = Date.now();
   const recent = (mutationRequests.get(client) || []).filter(time => now - time < 60_000);
@@ -75,8 +77,8 @@ app.use("/api", (req, res, next) => {
   next();
 });
 app.use("/v1", (req, res, next) => {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
-  if (req.path === "/ai/query") return next();
+  if (req.method === "OPTIONS") return next();
+  if (req.path === "/ai/query" && req.method === "POST") return next();
   const origin = String(req.get("origin") || "");
   if (origin) {
     try {
@@ -85,10 +87,8 @@ app.use("/v1", (req, res, next) => {
       return res.status(403).json({ ok: false, error: "请求来源无效" });
     }
   }
-  if (HOST !== "127.0.0.1" && HOST !== "localhost" && HOST !== "::1") {
-    const suppliedToken = String(req.get("x-privlan-token") || "");
-    if (!ADMIN_TOKEN || suppliedToken !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
-  }
+  if (!localHost && !validAdminToken(req)) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
+  if (["GET", "HEAD"].includes(req.method)) return next();
   const client = `v1:${req.ip || req.socket.remoteAddress || "local"}`;
   const now = Date.now();
   const recent = (mutationRequests.get(client) || []).filter(time => now - time < 60_000);
@@ -100,10 +100,12 @@ app.use("/v1", (req, res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/ops", express.static(path.join(__dirname, "ops-public")));
 app.use("/ops/v1", (req, res, next) => {
-  const localHost = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
   if (!localHost && !process.env.ATELIER_OPS_PASSWORD) return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });
   next();
 });
+app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
+app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "2mb" }));
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
 app.use("/mp-fonts", express.static(FONTS_DIR));
@@ -439,6 +441,7 @@ function normalizeGitPathspec(value) {
 }
 
 function autoSyncGitHub(reason = "editor save", ownedPaths = []) {
+  if (process.env.PRIVLAN_DISABLE_GIT_SYNC === "1") return { ok: true, skipped: true, reason: "disabled" };
   const bundledGit = path.join(process.env.USERPROFILE || "", ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "native", "git", "cmd", "git.exe");
   const gitPath = process.env.PRIVLAN_GIT_BIN || (fs.existsSync(bundledGit) ? bundledGit : "git");
   if (!fs.existsSync(path.join(ROOT, ".git"))) {
@@ -542,6 +545,46 @@ function normalizeMediaFolderId(value) {
   return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
 }
 
+const MEDIA_FORMATS = [
+  { format: "jpeg", extensions: [".jpg", ".jpeg"], mimes: ["image/jpeg"], kind: "image", matches: buffer => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+  { format: "png", extensions: [".png"], mimes: ["image/png"], kind: "image", matches: buffer => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  { format: "gif", extensions: [".gif"], mimes: ["image/gif"], kind: "image", matches: buffer => ["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii")) },
+  { format: "webp", extensions: [".webp"], mimes: ["image/webp"], kind: "image", matches: buffer => buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP" },
+  { format: "mp4", extensions: [".mp4"], mimes: ["video/mp4"], kind: "video", matches: buffer => buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp" },
+  { format: "mov", extensions: [".mov"], mimes: ["video/quicktime"], kind: "video", matches: buffer => buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp" },
+  { format: "webm", extensions: [".webm"], mimes: ["video/webm"], kind: "video", matches: buffer => buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) }
+];
+
+function decodeMediaUpload(name, data) {
+  const match = String(data || "").match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/);
+  if (!match || match[2].length % 4 !== 0) throw Object.assign(new Error("媒体数据必须是有效的 Base64 Data URL"), { status: 400 });
+  const mime = match[1].toLowerCase();
+  const encoded = match[2];
+  const buffer = Buffer.from(encoded, "base64");
+  if (!buffer.length || buffer.toString("base64").replace(/=+$/, "") !== encoded.replace(/=+$/, "")) throw Object.assign(new Error("媒体 Base64 数据无效"), { status: 400 });
+  const extension = path.extname(String(name || "")).toLowerCase();
+  const declared = MEDIA_FORMATS.find(item => item.extensions.includes(extension) && item.mimes.includes(mime));
+  if (!declared) throw Object.assign(new Error("文件扩展名与 MIME 类型不一致"), { status: 400 });
+  if (!declared.matches(buffer)) throw Object.assign(new Error("文件内容与声明的媒体格式不一致"), { status: 400 });
+  return { buffer, kind: declared.kind, format: declared.format, mime, extension };
+}
+
+function packageAssetWarnings(cfg) {
+  return collectConfigAssetPaths(cfg).filter(relative => relative.startsWith("images/")).map(relative => {
+    const filePath = path.join(ROOT, relative);
+    if (!fs.existsSync(filePath)) return null;
+    const size = fs.statSync(filePath).size;
+    return size > 5 * 1024 * 1024 ? { path: `/${relative.replace(/\\/g, "/")}`, size, message: "该素材应迁移至 CDN/COS 后再用于正式发布。" } : null;
+  }).filter(Boolean);
+}
+
+function presentPublishJob(job) {
+  if (job.kind === "local_sync" || (job.environment === "开发预览" && job.status === "succeeded")) {
+    return { ...job, kind: "local_sync", environment: "preview", channel: "本地微信开发项目", status: "generated", statusLabel: "已生成开发预览" };
+  }
+  return job;
+}
+
 function findWechatDevtoolsCli() {
   const candidates = [
     process.env.WECHAT_DEVTOOLS_CLI,
@@ -640,6 +683,9 @@ function buildPreviewProject() {
     for (const entry of fs.readdirSync(previewImagesDir)) {
       const imagePath = path.join(previewImagesDir, entry);
       const ext = path.extname(entry).toLowerCase();
+      if (fs.statSync(imagePath).isFile() && fs.statSync(imagePath).size > 5 * 1024 * 1024) {
+        throw new Error(`素材 /images/${entry} 体积为 ${formatBytes(fs.statSync(imagePath).size)}，不适合直接加入小程序包。该素材应迁移至 CDN/COS 后再用于正式发布。`);
+      }
       if (fs.statSync(imagePath).isFile() && [".jpg", ".jpeg"].includes(ext)) {
         const optimizedPath = `${imagePath}.preview`;
         optimizePreviewJpeg(imagePath, optimizedPath);
@@ -715,9 +761,10 @@ app.get("/api/platform/bootstrap", (req, res) => {
     const imageBytes = fs.readdirSync(IMAGES_DIR).reduce((total, name) => {
       try { return total + fs.statSync(path.join(IMAGES_DIR, name)).size; } catch (error) { return total; }
     }, 0);
-    const jobs = state.publishJobs.length ? state.publishJobs : [{
-      id: "local_initial", version: "local-current", environment: "开发预览", channel: "微信共享 AppID",
-      status: cfg._lastSync ? "succeeded" : "draft", statusLabel: cfg._lastSync ? "已同步" : "草稿",
+    const storedJobs = state.publishJobs.map(presentPublishJob);
+    const jobs = storedJobs.length ? storedJobs : [{
+      id: "local_initial", version: "local-current", environment: "preview", channel: "本地微信开发项目",
+      status: cfg._lastSync ? "generated" : "draft", statusLabel: cfg._lastSync ? "已生成开发预览" : "草稿",
       createdAtLabel: cfg._lastSync ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(cfg._lastSync)) : "尚未同步"
     }];
     res.json({
@@ -936,7 +983,7 @@ app.get("/v1/orders", (req, res) => {
 });
 app.get("/v1/publish-jobs", (req, res) => {
   const state = scopedWorkspace(req, res);
-  if (state) res.json({ ok: true, data: state.publishJobs });
+  if (state) res.json({ ok: true, data: state.publishJobs.map(presentPublishJob) });
 });
 app.get("/v1/ai/status", (req, res) => {
   const state = scopedWorkspace(req, res);
@@ -1002,11 +1049,12 @@ app.get("/ops/v1/bootstrap", (req, res) => {
   migrateLegacyAiConnection(state);
   const cfg = readConfig();
   const platformUsage = state.aiUsageEvents.filter(item => item.billingMode === "platform");
+  const releaseJobs = state.publishJobs.map(presentPublishJob).filter(item => item.status !== "generated");
   const metrics = {
     tenants: state.tenants.length,
     activeTenants: state.tenants.filter(item => item.status === "active").length,
     trials: state.tenants.filter(item => item.status === "trial").length,
-    publishSuccessRate: state.publishJobs.length ? Math.round(state.publishJobs.filter(item => item.status === "succeeded").length / state.publishJobs.length * 100) : 100,
+    publishSuccessRate: releaseJobs.length ? Math.round(releaseJobs.filter(item => item.status === "succeeded").length / releaseJobs.length * 100) : 0,
     aiPoints: platformUsage.reduce((total, item) => total + Number(item.weightedPoints || 0), 0),
     aiErrors: state.aiUsageEvents.filter(item => item.resultCode !== "ok").length,
     openTickets: state.supportTickets.filter(item => !["resolved", "closed"].includes(item.status)).length,
@@ -1027,7 +1075,7 @@ app.get("/ops/v1/bootstrap", (req, res) => {
       tenantConnections: state.aiConnections.filter(item => item.ownerType === "merchant").map(platformStore.publicConnection),
       aiPolicies: state.aiPolicies,
       aiUsage: state.aiUsageEvents.slice(0, 200),
-      publishJobs: state.publishJobs.slice(0, 100),
+      publishJobs: state.publishJobs.slice(0, 100).map(presentPublishJob),
       featureFlags: state.featureFlags,
       supportTickets: state.supportTickets,
       incidents: state.incidents,
@@ -1313,6 +1361,8 @@ app.get("/api/media", (req, res) => {
          usageCount: usage[f]?.length || 0,
          usedIn: (usage[f] || []).slice(0, 8),
          large: stat.size > 5 * 1024 * 1024,
+         packageEligible: stat.size <= 5 * 1024 * 1024,
+         packageWarning: stat.size > 5 * 1024 * 1024 ? "该素材应迁移至 CDN/COS 后再用于正式发布。" : "",
        };
     }).sort((a, b) => b.mtime.localeCompare(a.mtime));
     res.json(files);
@@ -1326,11 +1376,7 @@ app.post("/api/media/upload", (req, res) => {
     const folderData = readMediaFolders();
     if (requestedFolderId && !folderData.folders.some(folder => folder.id === requestedFolderId)) return res.status(400).json({ error: "目标文件夹不存在" });
     if (!name || !data) return res.status(400).json({ error: "缺少 name 或 data" });
-    const ext = path.extname(name).toLowerCase();
-    const allowed = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm", ".mov"];
-    if (!allowed.includes(ext)) return res.status(400).json({ error: "仅支持图片或 MP4/WebM/MOV 视频" });
-    const base64 = data.replace(/^data:[^;]+;base64,/, "");
-    const buf = Buffer.from(base64, "base64");
+    const { buffer: buf, kind } = decodeMediaUpload(name, data);
     if (buf.length > 80 * 1024 * 1024) return res.status(400).json({ error: "单个媒体文件不能超过 80MB" });
     // 防止覆盖：同名加后缀
     const safeName = path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -1348,10 +1394,9 @@ app.post("/api/media/upload", (req, res) => {
       folderData.assignments[destName] = requestedFolderId;
       writeMediaFolders(folderData);
     }
-    const kind = [".mp4", ".webm", ".mov"].includes(path.extname(destName).toLowerCase()) ? "video" : "image";
     const folder = folderData.folders.find(item => item.id === requestedFolderId);
-    res.json({ ok: true, name: destName, path: `/mp-images/${destName}`, mpPath: `/images/${destName}`, kind, size: buf.length, sizeKB: Math.round(buf.length / 1024), folderId: requestedFolderId, folderName: folder?.name || "" });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ ok: true, name: destName, path: `/mp-images/${destName}`, mpPath: `/images/${destName}`, kind, size: buf.length, sizeKB: Math.round(buf.length / 1024), large: buf.length > 5 * 1024 * 1024, packageEligible: buf.length <= 5 * 1024 * 1024, packageWarning: buf.length > 5 * 1024 * 1024 ? "该素材应迁移至 CDN/COS 后再用于正式发布。" : "", folderId: requestedFolderId, folderName: folder?.name || "" });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.post("/api/media/move", (req, res) => {
@@ -1526,21 +1571,22 @@ app.post("/api/sync", (req, res) => {
     }
     migrateCenterTabCrop(cfg);
     const result = sync(cfg, ROOT);
+    const warnings = packageAssetWarnings(cfg);
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);
     const ownedPaths = [...(result.files || []), "admin/config.json", ...collectConfigAssetPaths(cfg)];
     const state = readSaasState();
     const version = `v${cfg._lastSync.replace(/[-:TZ.]/g, "").slice(0, 14)}`;
     const publishJob = {
-      id: requestId("publish"), version, environment: "开发预览",
-      channel: state.workspace.channelMode === "shared" ? "微信共享 AppID" : "商户独立 AppID",
-      status: "succeeded", statusLabel: "已同步", createdAt: cfg._lastSync,
+      id: requestId("publish"), version, environment: "preview", kind: "local_sync",
+      channel: "本地微信开发项目",
+      status: "generated", statusLabel: warnings.length ? "已生成，存在包体风险" : "已生成开发预览", createdAt: cfg._lastSync,
       createdAtLabel: new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(cfg._lastSync))
     };
     state.publishJobs.unshift(publishJob);
     state.publishJobs = state.publishJobs.slice(0, 50);
     writeSaasState(state);
-    res.json({ ok: true, ...result, lastSync: cfg._lastSync, version, publishJob, git: autoSyncGitHub("mini program sync", [...ownedPaths, "admin/saas-state.json"]) });
+    res.json({ ok: true, ...result, warnings, lastSync: cfg._lastSync, version, publishJob, git: autoSyncGitHub("mini program sync", [...ownedPaths, "admin/saas-state.json"]) });
   } catch (e) { res.status(500).json({ error: e.message, stack: e.stack });
   }
 });
@@ -1563,7 +1609,7 @@ app.post("/api/preview", (req, res) => {
       throw error;
     }
     const tempQrPath = path.join(path.dirname(PREVIEW_QR_PATH), `preview-qr-${Date.now()}-${process.pid}.png`);
-    const cmd = `cd /d "${cliDir}" && set NODE_OPTIONS= && "${cliPath}" preview --project "${previewProject}" --port 9420 -f image -o "${tempQrPath}" 2>&1`;
+    const cmd = `cd /d "${cliDir}" && set NODE_OPTIONS= && "${cliPath}" preview --project "${previewProject}" -f image -o "${tempQrPath}" 2>&1`;
     const output = execSync(cmd, { timeout: 120000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     if (!fs.existsSync(tempQrPath)) {
       const error = new Error(output.trim() || "微信开发者工具未生成新的预览二维码，请先修复小程序编译错误。");
