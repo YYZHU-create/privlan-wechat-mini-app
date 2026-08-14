@@ -100,6 +100,7 @@ createApp({
     let dragSlideIndex = -1;
     let tabBarCropImage = null;
     let tabBarCropDrag = null;
+    let aiConnectionDrawerTrigger = null;
 
     try {
       leftPanelOpen.value = localStorage.getItem("privlan:left-panel") !== "closed";
@@ -803,8 +804,36 @@ createApp({
     }
 
     function openAiConnectionEditor() {
+      aiConnectionDrawerTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const preset = platform.providerCatalog.find(item => item.id === "deepseek") || platform.providerCatalog[0] || {};
       Object.assign(aiConnectionEditor, { open: true, saving: false, error: "", providerPreset: preset.id || "openai-compatible", providerName: preset.name || "", protocol: preset.protocol || "openai", baseUrl: preset.baseUrl || "", model: preset.model || "", apiKey: "", timeoutMs: 12000, maxTokens: 500 });
+      nextTick(() => document.getElementById("ai-provider-preset")?.focus());
+    }
+
+    function closeAiConnectionEditor(force = false) {
+      if (aiConnectionEditor.saving && !force) return;
+      aiConnectionEditor.open = false;
+      aiConnectionEditor.error = "";
+      aiConnectionEditor.apiKey = "";
+      const trigger = aiConnectionDrawerTrigger;
+      aiConnectionDrawerTrigger = null;
+      nextTick(() => trigger?.focus?.());
+    }
+
+    function trapAiConnectionFocus(event) {
+      const dialog = event.currentTarget;
+      const focusable = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter(element => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
 
     function applyAiProviderPreset() {
@@ -831,9 +860,8 @@ createApp({
           timeoutMs: aiConnectionEditor.timeoutMs, maxTokens: aiConnectionEditor.maxTokens
         }) });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || `保存失败（${response.status}）`);
-        aiConnectionEditor.open = false;
-        aiConnectionEditor.apiKey = "";
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || `保存失败（${response.status}）`);
+        closeAiConnectionEditor(true);
         await loadPlatform();
         toast("模型连接已保存", "API Key 已加密保存且不会回显。", "success");
       } catch (error) { aiConnectionEditor.error = error.message || "模型连接保存失败"; }
@@ -846,7 +874,7 @@ createApp({
       try {
         const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId }) });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || `测试失败（${response.status}）`);
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || `测试失败（${response.status}）`);
         await loadPlatform();
         toast("连接测试成功", `${connection.providerName} / ${connection.model} 可以正常回答。`, "success");
       } catch (error) { toast("连接测试失败", error.message || "请检查模型配置。", "error"); }
@@ -860,7 +888,7 @@ createApp({
       try {
         const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}/rotate-secret`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId: platform.workspace?.tenantId, storeId: platform.workspace?.storeId, apiKey }) });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || `更新失败（${response.status}）`);
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || `更新失败（${response.status}）`);
         await loadPlatform();
         toast("API Key 已更新", "请重新测试连接后再启用。", "success");
       } catch (error) { toast("API Key 更新失败", error.message || "请稍后重试。", "error"); }
@@ -873,7 +901,7 @@ createApp({
       try {
         const response = await fetch(`/v1/ai/connections/${encodeURIComponent(connection.id)}?tenantId=${encodeURIComponent(platform.workspace?.tenantId || "")}&storeId=${encodeURIComponent(platform.workspace?.storeId || "")}`, { method: "DELETE" });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || `删除失败（${response.status}）`);
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || `删除失败（${response.status}）`);
         await loadPlatform();
         toast("模型连接已删除", "智能客服已切换到规则 FAQ。", "success");
       } catch (error) { toast("删除失败", error.message || "请稍后重试。", "error"); }
@@ -891,7 +919,7 @@ createApp({
           fallbackToRules: true
         }) });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || `切换失败（${response.status}）`);
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || `切换失败（${response.status}）`);
         await loadPlatform();
         toast("客服路由已更新", mode === "rules" ? "当前仅使用规则 FAQ。" : mode === "byok" ? "当前使用商户自带 API。" : "当前使用平台托管额度。", "success");
       } catch (error) { toast("客服路由更新失败", error.message || "请稍后重试。", "error"); }
@@ -2392,7 +2420,7 @@ createApp({
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2771,11 +2799,11 @@ createApp({
       </template>
 
       <template v-if="aiConnectionEditor.open">
-        <div class="drawer-backdrop" @click="aiConnectionEditor.open=false"></div>
-        <form class="drawer ai-connection-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-connection-title" @submit.prevent="saveAiConnection">
-          <div class="drawer-header"><div><h2 id="ai-connection-title">添加模型连接</h2><p>首版支持采用 OpenAI Chat Completions 规范的模型接口。密钥只发送到平台服务并加密保存。</p></div><button type="button" class="icon-btn" aria-label="关闭模型连接设置" @click="aiConnectionEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+        <div class="drawer-backdrop" @click="closeAiConnectionEditor()"></div>
+        <form class="drawer ai-connection-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-connection-title" aria-describedby="ai-connection-description" @submit.prevent="saveAiConnection" @keydown.tab="trapAiConnectionFocus" @keydown.esc.prevent.stop="closeAiConnectionEditor()">
+          <div class="drawer-header"><div><h2 id="ai-connection-title">添加模型连接</h2><p id="ai-connection-description">首版支持采用 OpenAI Chat Completions 规范的模型接口。密钥只发送到平台服务并加密保存。</p></div><button type="button" class="icon-btn" aria-label="关闭模型连接设置" :disabled="aiConnectionEditor.saving" @click="closeAiConnectionEditor()"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
           <div class="drawer-body"><div class="security-notice"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>API Key 不会回显</strong><p>保存后只能测试、轮换或删除。它不会写入店铺配置、小程序文件、浏览器存储或 GitHub。</p></div></div><div class="field"><label for="ai-provider-preset">供应商预设</label><select id="ai-provider-preset" v-model="aiConnectionEditor.providerPreset" name="ai-provider-preset" @change="applyAiProviderPreset"><option v-for="provider in platform.providerCatalog" :key="provider.id" :value="provider.id">{{ provider.name }} · {{ provider.region }}</option></select></div><div class="field"><label for="ai-protocol">接口协议</label><select id="ai-protocol" v-model="aiConnectionEditor.protocol" name="ai-protocol" disabled><option value="openai">OpenAI Chat Completions 兼容协议</option></select><small class="field-help">当前仅支持此协议。Anthropic、Gemini 等原生协议需由平台增加正式适配器后才能选择。</small></div><div class="field"><label for="ai-provider-name">显示名称</label><input id="ai-provider-name" v-model.trim="aiConnectionEditor.providerName" name="ai-provider-name" type="text" maxlength="60" autocomplete="off" placeholder="例如：公司客服模型…"></div><div class="field"><label for="ai-base-url">API 基础地址</label><input id="ai-base-url" v-model.trim="aiConnectionEditor.baseUrl" name="ai-base-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1"><small class="field-help">系统会调用 <code>/chat/completions</code>；如果地址已包含该路径则直接使用。</small></div><div class="field"><label for="ai-model-name">模型名称</label><input id="ai-model-name" v-model.trim="aiConnectionEditor.model" name="ai-model-name" type="text" autocomplete="off" spellcheck="false" placeholder="例如：deepseek-chat…"></div><div class="field"><label for="ai-api-key">API Key</label><input id="ai-api-key" v-model="aiConnectionEditor.apiKey" name="ai-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="sk-…"></div><div class="field-row"><div class="field"><label for="ai-timeout">超时（毫秒）</label><input id="ai-timeout" v-model.number="aiConnectionEditor.timeoutMs" name="ai-timeout" type="number" min="3000" max="60000" step="1000"></div><div class="field"><label for="ai-max-tokens">最大输出 Token</label><input id="ai-max-tokens" v-model.number="aiConnectionEditor.maxTokens" name="ai-max-tokens" type="number" min="100" max="2000" step="100"></div></div><div v-if="aiConnectionEditor.error" class="form-error" role="alert">{{ aiConnectionEditor.error }}</div></div>
-          <div class="drawer-footer"><button type="button" class="btn subtle" @click="aiConnectionEditor.open=false">取消</button><button type="submit" class="btn primary" :disabled="aiConnectionEditor.saving"><iconify-icon class="icon" :icon="aiConnectionEditor.saving ? 'ph:spinner-gap' : 'ph:lock-key'"></iconify-icon>{{ aiConnectionEditor.saving ? '正在加密保存…' : '加密保存连接' }}</button></div>
+          <div class="drawer-footer"><button type="button" class="btn subtle" :disabled="aiConnectionEditor.saving" @click="closeAiConnectionEditor()">取消</button><button type="submit" class="btn primary" :disabled="aiConnectionEditor.saving"><iconify-icon class="icon" :icon="aiConnectionEditor.saving ? 'ph:spinner-gap' : 'ph:lock-key'"></iconify-icon>{{ aiConnectionEditor.saving ? '正在加密保存…' : '加密保存连接' }}</button></div>
         </form>
       </template>
 

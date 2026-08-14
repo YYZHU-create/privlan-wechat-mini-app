@@ -240,6 +240,20 @@ function appendAuditAndWrite(state, event) {
   return writeSaasState(state);
 }
 
+function aiSuccess(res, { status = 200, code = "OK", message = "操作成功", data = null, requestId: id = requestId("ai"), legacy = {} } = {}) {
+  return res.status(status).json({ ok: true, code, message, data, requestId: id, ...legacy });
+}
+
+function aiFailure(res, status, code, message, id = requestId("ai"), data = null) {
+  return res.status(status).json({ ok: false, code, message, error: message, data, requestId: id });
+}
+
+function isMerchantConnectionForStore(connection, state) {
+  return connection?.ownerType === "merchant"
+    && connection.tenantId === state.workspace.tenantId
+    && connection.storeId === state.workspace.storeId;
+}
+
 function connectionFromInput(input, scope) {
   const providerPreset = String(input.providerPreset || "openai-compatible");
   const preset = platformStore.PROVIDER_PRESETS.find(item => item.id === providerPreset) || platformStore.PROVIDER_PRESETS.at(-1);
@@ -291,7 +305,8 @@ function publicAiStatus() {
   migrateLegacyAiConnection(state);
   const policy = platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId);
   const selectedId = policy.mode === "platform" ? policy.platformConnectionId : policy.connectionId;
-  const connection = state.aiConnections.find(item => item.id === selectedId && item.status !== "disabled");
+  const connection = state.aiConnections.find(item => item.id === selectedId && item.status !== "disabled"
+    && (policy.mode === "platform" ? item.ownerType === "platform" : isMerchantConnectionForStore(item, state)));
   return {
     configured: Boolean(connection),
     provider: connection?.providerName || "rules",
@@ -358,7 +373,10 @@ function selectedAiConnection(state, tenantId, storeId) {
   migrateLegacyAiConnection(state);
   const policy = platformStore.findScopedPolicy(state, tenantId, storeId);
   const connectionId = policy.mode === "platform" ? policy.platformConnectionId : policy.connectionId;
-  const connection = state.aiConnections.find(item => item.id === connectionId && item.status !== "disabled");
+  const connection = state.aiConnections.find(item => item.id === connectionId && item.status !== "disabled"
+    && (policy.mode === "platform"
+      ? item.ownerType === "platform"
+      : item.ownerType === "merchant" && item.tenantId === tenantId && item.storeId === storeId));
   return { policy, connection };
 }
 
@@ -708,7 +726,7 @@ app.get("/api/platform/bootstrap", (req, res) => {
       plans: state.plans,
       publishJobs: jobs.slice(0, 20),
       ai: publicAiStatus(),
-      aiConnections: state.aiConnections.filter(item => item.tenantId === state.workspace.tenantId).map(platformStore.publicConnection),
+      aiConnections: state.aiConnections.filter(item => isMerchantConnectionForStore(item, state)).map(platformStore.publicConnection),
       platformAiConnections: state.aiConnections.filter(item => item.ownerType === "platform" && item.status !== "disabled").map(item => ({ id: item.id, providerName: item.providerName, providerPreset: item.providerPreset, model: item.model, status: item.status, lastTestOk: item.lastTestOk, lastTestAt: item.lastTestAt })),
       aiPolicy: platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId),
       providerCatalog: state.providerCatalog,
@@ -732,18 +750,22 @@ app.post(["/api/ai/query", "/v1/ai/query"], async (req, res) => {
     if (req.path === "/v1/ai/query") {
       const expectedToken = String(process.env.ATELIER_AI_GATEWAY_TOKEN || "").trim();
       const suppliedToken = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      if (!expectedToken) return res.status(503).json({ ok: false, requestId: id, code: "AI_GATEWAY_TOKEN_MISSING", error: "平台尚未配置云函数网关凭证" });
-      if (!suppliedToken || suppliedToken !== expectedToken) return res.status(401).json({ ok: false, requestId: id, code: "AI_GATEWAY_UNAUTHORIZED", error: "AI 网关凭证无效" });
+      if (!expectedToken) return aiFailure(res, 503, "AI_GATEWAY_TOKEN_MISSING", "平台尚未配置云函数网关凭证", id);
+      if (!suppliedToken || suppliedToken !== expectedToken) return aiFailure(res, 401, "AI_GATEWAY_UNAUTHORIZED", "AI 网关凭证无效", id);
     }
     const text = String(req.body?.text || "").trim().slice(0, 400);
-    if (!text) return res.status(400).json({ ok: false, requestId: id, error: "请输入问题" });
+    if (!text) return aiFailure(res, 400, "AI_QUERY_EMPTY", "请输入问题", id);
     const state = readSaasState();
     const scope = currentScopedIds(req, state);
-    if (!scope) return res.status(403).json({ ok: false, requestId: id, error: "工作区权限不匹配" });
+    if (!scope) return aiFailure(res, 403, "TENANT_SCOPE_MISMATCH", "工作区权限不匹配", id);
     const { tenantId, storeId } = scope;
     const action = deterministicServiceAction(text);
-    if (action) return res.json({ ok: true, requestId: id, provider: "tools", confidence: 1, citations: [], ...action });
+    if (action) {
+      const payload = { provider: "tools", confidence: 1, citations: [], ...action };
+      return aiSuccess(res, { message: "请通过安全操作继续", data: payload, requestId: id, legacy: payload });
+    }
     const cfg = readConfig();
+    let providerFailureCode = null;
     try {
       const answer = await queryConfiguredModel(text, cfg, state, tenantId, storeId);
       if (answer) {
@@ -755,116 +777,129 @@ app.post(["/api/ai/query", "/v1/ai/query"], async (req, res) => {
         aiUsage.requests += 1;
         aiUsage.inputTokens += answer.usage.prompt_tokens;
         aiUsage.outputTokens += answer.usage.completion_tokens;
-        return res.json({ ok: true, requestId: id, provider: answer.connection.providerName, providerId: answer.connection.providerPreset, billingMode: answer.policy.mode, type: "answer", confidence: 0.78, citations: ["店铺商品与页面知识"], content: answer.content, usage: { promptTokens: answer.usage.prompt_tokens, completionTokens: answer.usage.completion_tokens, weightedPoints: points }, model: answer.model, fallback: false });
+        const payload = { provider: answer.connection.providerName, providerId: answer.connection.providerPreset, billingMode: answer.policy.mode, type: "answer", confidence: 0.78, citations: ["店铺商品与页面知识"], content: answer.content, usage: { promptTokens: answer.usage.prompt_tokens, completionTokens: answer.usage.completion_tokens, weightedPoints: points }, model: answer.model, fallback: false };
+        return aiSuccess(res, { message: "模型已生成回答", data: payload, requestId: id, legacy: payload });
       }
     } catch (error) {
       aiUsage.errors += 1;
+      providerFailureCode = error.code || "AI_PROVIDER_ERROR";
       const latest = readSaasState();
-      latest.aiUsageEvents.unshift({ id, tenantId, storeId, provider: "gateway", model: null, billingMode: platformStore.findScopedPolicy(latest, tenantId, storeId).mode, resultCode: error.code || "provider_error", inputTokens: 0, outputTokens: 0, weightedPoints: 0, createdAt: new Date().toISOString() });
+      latest.aiUsageEvents.unshift({ id, tenantId, storeId, provider: "gateway", model: null, billingMode: platformStore.findScopedPolicy(latest, tenantId, storeId).mode, resultCode: providerFailureCode, inputTokens: 0, outputTokens: 0, weightedPoints: 0, createdAt: new Date().toISOString() });
       writeSaasState(latest);
-      if (error.code === "AI_QUOTA_EXHAUSTED") return res.status(402).json({ ok: false, requestId: id, code: error.code, error: error.message });
+      if (error.code === "AI_QUOTA_EXHAUSTED") return aiFailure(res, 402, error.code, error.message, id);
     }
     aiUsage.fallbackRequests += 1;
     const fallback = fallbackFaq(text, cfg);
-    return res.json({ ok: true, requestId: id, provider: "rules", confidence: fallback.type === "faq" ? 0.9 : 0.35, fallback: true, ...fallback });
+    const payload = { provider: "rules", confidence: fallback.type === "faq" ? 0.9 : 0.35, fallback: true, fallbackReason: providerFailureCode, ...fallback };
+    return aiSuccess(res, { code: providerFailureCode ? "AI_FALLBACK" : "OK", message: providerFailureCode ? "模型不可用，已使用规则知识回答" : "已使用规则知识回答", data: payload, requestId: id, legacy: payload });
   } catch (error) {
     aiUsage.errors += 1;
-    res.status(500).json({ ok: false, requestId: id, error: "客服服务暂时不可用，请重试或转人工" });
+    return aiFailure(res, 500, "AI_SERVICE_ERROR", "客服服务暂时不可用，请重试或转人工", id);
   }
 });
 
 app.get("/api/ai/status", (req, res) => {
-  res.json({ ok: true, ...publicAiStatus(), usage: { ...aiUsage, weightedPoints: aiUsage.inputTokens + aiUsage.outputTokens * 4 } });
+  const data = { ...publicAiStatus(), usage: { ...aiUsage, weightedPoints: aiUsage.inputTokens + aiUsage.outputTokens * 4 } };
+  return aiSuccess(res, { message: "AI 服务状态已获取", data, legacy: data });
 });
 
 app.get("/v1/ai/connections", (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aic");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
-  res.json({ ok: true, data: state.aiConnections.filter(item => item.tenantId === state.workspace.tenantId).map(platformStore.publicConnection), providerCatalog: state.providerCatalog });
+  const data = state.aiConnections.filter(item => isMerchantConnectionForStore(item, state)).map(platformStore.publicConnection);
+  return aiSuccess(res, { message: "模型连接已获取", data, requestId: id, legacy: { providerCatalog: state.providerCatalog } });
 });
 
 app.post("/v1/ai/connections", (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aic");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
   try {
     const connection = connectionFromInput(req.body || {}, { tenantId: state.workspace.tenantId, storeId: state.workspace.storeId, ownerType: "merchant" });
     state.aiConnections.push(connection);
     platformStore.appendAudit(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.create", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { provider: connection.providerName, model: connection.model } });
     writeSaasState(state);
-    res.status(201).json({ ok: true, data: platformStore.publicConnection(connection) });
+    return aiSuccess(res, { status: 201, message: "模型连接已加密保存", data: platformStore.publicConnection(connection), requestId: id });
   } catch (error) {
-    res.status(400).json({ ok: false, error: error.message });
+    return aiFailure(res, error.status || 400, error.code || "AI_CONNECTION_INVALID", error.message, id);
   }
 });
 
 app.post("/v1/ai/connections/:id/test", async (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aict");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
-  const connection = state.aiConnections.find(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
-  if (!connection) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  const connection = state.aiConnections.find(item => item.id === req.params.id && isMerchantConnectionForStore(item, state));
+  if (!connection) return aiFailure(res, 404, "AI_CONNECTION_NOT_FOUND", "未找到模型连接", id);
   try {
     const result = await callOpenAiCompatible({ baseUrl: connection.baseUrl, apiKey: platformStore.decryptSecret(connection.secret), model: connection.model, text: "请只回答：连接成功", context: "这是连接测试。", timeoutMs: connection.timeoutMs, maxTokens: 50 });
     connection.lastTestOk = true; connection.lastTestAt = new Date().toISOString(); connection.lastError = ""; connection.updatedAt = connection.lastTestAt;
     appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { ok: true } });
-    res.json({ ok: true, data: { connection: platformStore.publicConnection(connection), sample: result.content.slice(0, 80) } });
+    return aiSuccess(res, { message: "模型连接测试成功", data: { connection: platformStore.publicConnection(connection), sample: result.content.slice(0, 80) }, requestId: id });
   } catch (error) {
     connection.lastTestOk = false; connection.lastTestAt = new Date().toISOString(); connection.lastError = error.message.slice(0, 240); connection.updatedAt = connection.lastTestAt;
     appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { ok: false, code: "PROVIDER_TEST_FAILED" } });
-    res.status(502).json({ ok: false, error: `${error.message}。请检查接口地址、模型名称和 API Key。`, data: platformStore.publicConnection(connection) });
+    return aiFailure(res, error.status || 502, error.code || "AI_PROVIDER_TEST_FAILED", `${error.message}。请检查接口地址、模型名称和 API Key。`, id, platformStore.publicConnection(connection));
   }
 });
 
 app.post("/v1/ai/connections/:id/rotate-secret", (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aicr");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
-  const connection = state.aiConnections.find(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
-  if (!connection) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  const connection = state.aiConnections.find(item => item.id === req.params.id && isMerchantConnectionForStore(item, state));
+  if (!connection) return aiFailure(res, 404, "AI_CONNECTION_NOT_FOUND", "未找到模型连接", id);
   const apiKey = String(req.body?.apiKey || "").trim();
-  if (!apiKey) return res.status(400).json({ ok: false, error: "请输入新的 API Key" });
+  if (!apiKey) return aiFailure(res, 400, "AI_PROVIDER_KEY_MISSING", "请输入新的 API Key", id);
   connection.secret = platformStore.encryptSecret(apiKey); connection.lastTestOk = null; connection.lastError = ""; connection.updatedAt = new Date().toISOString();
   appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.rotate_secret", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: {} });
-  res.json({ ok: true, data: platformStore.publicConnection(connection) });
+  return aiSuccess(res, { message: "API Key 已轮换，请重新测试连接", data: platformStore.publicConnection(connection), requestId: id });
 });
 
 app.delete("/v1/ai/connections/:id", (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aicd");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
-  const index = state.aiConnections.findIndex(item => item.id === req.params.id && item.tenantId === state.workspace.tenantId);
-  if (index < 0) return res.status(404).json({ ok: false, error: "未找到模型连接" });
+  const index = state.aiConnections.findIndex(item => item.id === req.params.id && isMerchantConnectionForStore(item, state));
+  if (index < 0) return aiFailure(res, 404, "AI_CONNECTION_NOT_FOUND", "未找到模型连接", id);
   const [connection] = state.aiConnections.splice(index, 1);
   state.aiPolicies.forEach(policy => { if (policy.connectionId === connection.id) { policy.connectionId = null; policy.mode = "rules"; } });
   appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.delete", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: {} });
-  res.json({ ok: true });
+  return aiSuccess(res, { message: "模型连接已删除，客服已切换到规则 FAQ", requestId: id });
 });
 
 app.get("/v1/ai/policy", (req, res) => {
-  const state = scopedWorkspace(req, res);
-  if (state) res.json({ ok: true, data: platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId) });
+  const id = requestId("aip");
+  const state = scopedWorkspace(req, res, id);
+  if (state) return aiSuccess(res, { message: "客服模型策略已获取", data: platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId), requestId: id });
 });
 
 app.put("/v1/ai/policy", (req, res) => {
-  const state = scopedWorkspace(req, res);
+  const id = requestId("aip");
+  const state = scopedWorkspace(req, res, id);
   if (!state) return;
   const mode = ["rules", "byok", "platform"].includes(req.body?.mode) ? req.body.mode : "rules";
   const policy = platformStore.findScopedPolicy(state, state.workspace.tenantId, state.workspace.storeId);
   const candidateId = mode === "platform" ? req.body?.platformConnectionId : req.body?.connectionId;
   if (mode !== "rules") {
-    const valid = state.aiConnections.some(item => item.id === candidateId && (mode === "platform" ? item.ownerType === "platform" : item.tenantId === state.workspace.tenantId));
-    if (!valid) return res.status(400).json({ ok: false, error: "请选择有效的模型连接" });
+    const valid = state.aiConnections.some(item => item.id === candidateId && item.status !== "disabled"
+      && (mode === "platform" ? item.ownerType === "platform" : isMerchantConnectionForStore(item, state)));
+    if (!valid) return aiFailure(res, 400, "AI_CONNECTION_INVALID", "请选择当前店铺可用的模型连接", id);
   }
   Object.assign(policy, { mode, connectionId: mode === "byok" ? candidateId : null, platformConnectionId: mode === "platform" ? candidateId : null, dailyPointLimit: Math.max(0, Number(req.body?.dailyPointLimit) || policy.dailyPointLimit || 100000), fallbackToRules: req.body?.fallbackToRules !== false, updatedAt: new Date().toISOString() });
   const index = state.aiPolicies.findIndex(item => item.tenantId === policy.tenantId && item.storeId === policy.storeId);
   if (index >= 0) state.aiPolicies[index] = policy; else state.aiPolicies.push(policy);
   appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.policy.update", resourceType: "ai_policy", resourceId: state.workspace.storeId, tenantId: state.workspace.tenantId, metadata: { mode } });
-  res.json({ ok: true, data: policy });
+  return aiSuccess(res, { message: "客服模型策略已更新", data: policy, requestId: id });
 });
 
-function scopedWorkspace(req, res) {
+function scopedWorkspace(req, res, id = requestId("scope")) {
   const state = readSaasState();
   const tenantId = String(req.query.tenantId || req.body?.tenantId || state.workspace.tenantId);
   const storeId = String(req.query.storeId || req.body?.storeId || state.workspace.storeId);
   if (tenantId !== state.workspace.tenantId || storeId !== state.workspace.storeId) {
-    res.status(403).json({ ok: false, code: "TENANT_SCOPE_MISMATCH", error: "租户或店铺作用域不匹配" });
+    aiFailure(res, 403, "TENANT_SCOPE_MISMATCH", "租户或店铺作用域不匹配", id);
     return null;
   }
   return state;

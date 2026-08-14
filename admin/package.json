@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test",
+    "test:ai": "node --test test/ai-api.test.js",
+    "qa:ai-drawer": "node qa/ai-drawer-layout.js"
   },
   "dependencies": {
     "express": "^4.18.0"

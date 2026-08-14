@@ -1,4 +1,5 @@
 :root {
+  --app-topbar-height: 64px;
   --ink: #151411;
   --muted: #77746d;
   --line: #e7e2d8;
@@ -30,7 +31,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .icon { width: 20px; height: 20px; }
 .serif { font-family: "Noto Serif SC", "Songti SC", Georgia, serif; }
 
-.app-shell { display: grid; grid-template-rows: 64px minmax(0, 1fr); height: 100%; }
+.app-shell { display: grid; grid-template-rows: var(--app-topbar-height) minmax(0, 1fr); height: 100%; }
 .topbar {
   position: relative; z-index: 30; display: grid; grid-template-columns: 248px 1fr auto;
   align-items: center; min-width: 0; padding: 0 18px 0 20px; background: rgba(255,255,255,.96);
@@ -451,12 +452,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .preset-name { margin-top: 8px; font-size: 11px; font-weight: 600; }
 .theme-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-.drawer-backdrop { position: fixed; inset: 64px 0 0; background: rgba(22,20,16,.28); z-index: 40; animation: fade .14s ease; }
-.drawer { position: fixed; right: 0; top: 64px; bottom: 0; width: min(430px, 94vw); background: white; z-index: 41; box-shadow: -18px 0 50px rgba(30,27,22,.15); display: grid; grid-template-rows: 64px minmax(0,1fr) 66px; animation: slide .2s ease; }
-.drawer-header { padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
-.drawer-header h2 { margin: 0; font-size: 15px; }
+.drawer-backdrop { position: fixed; inset: var(--app-topbar-height) 0 0; background: rgba(22,20,16,.28); z-index: 40; animation: fade .14s ease; }
+.drawer { position: fixed; right: 0; top: var(--app-topbar-height); bottom: 0; width: min(430px, 94vw); background: white; z-index: 41; box-shadow: -18px 0 50px rgba(30,27,22,.15); display: grid; grid-template-rows: auto minmax(0,1fr) auto; animation: slide .2s ease; }
+.drawer-header { min-height: 76px; padding: 14px 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+.drawer-header > div { min-width: 0; }
+.drawer-header h2 { margin: 0; font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; }
+.drawer-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.drawer-header > .icon-btn { flex: 0 0 auto; margin-top: -4px; }
 .drawer-body { overflow: auto; padding: 20px; }
-.drawer-footer { border-top: 1px solid var(--line); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; }
+.drawer-footer { min-height: 72px; border-top: 1px solid var(--line); padding: 12px 20px max(12px, env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .new-page-dialog { position: fixed; left: 50%; top: calc(50% + 32px); transform: translate(-50%,-50%); width: min(520px,92vw); max-height: calc(100vh - 96px); background: white; z-index: 41; border-radius: 18px; box-shadow: 0 28px 90px rgba(27,24,18,.24); overflow: hidden; display: grid; grid-template-rows: 78px minmax(0,1fr) 68px; animation: fade .16s ease; }
 .new-page-dialog .drawer-header { padding: 0 24px; }
 .new-page-dialog .drawer-header h2 { font-size: 17px; }
@@ -1473,6 +1477,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .field label { margin-bottom: 7px; color: var(--ui-text-secondary); font-size: 13px; line-height: 1.5; }
 .field input:not([type="color"]):not([type="range"]), .field select, .field textarea,
 .drawer input:not([type="color"]):not([type="range"]), .drawer select, .drawer textarea {
+  width: 100%; min-width: 0;
   min-height: var(--ui-control);
   padding: 0 11px;
   border: 1px solid var(--ui-line-strong);
@@ -1535,8 +1540,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .media-kind-badge, .slide-number, .hotspot-marker > span { font-size: 12px; }
 .data-table th { font-size: 12px; }
 .drawer { border-left-color: var(--ui-line); background: var(--ui-surface); box-shadow: var(--ui-shadow-lg); }
-.drawer-head { min-height: 64px; border-bottom-color: var(--ui-line); }
-.drawer-head h2 { font-size: 20px; }
+.drawer-header { border-bottom-color: var(--ui-line); }
+.drawer-header h2 { font-size: 18px; }
 .drawer-body { padding: 20px; }
 .drawer-footer { min-height: 72px; border-top-color: var(--ui-line); }
 .modal-backdrop, .drawer-backdrop { background: rgba(22,22,20,.52); }
@@ -1588,7 +1593,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (max-width: 900px) {
-  .app-shell { grid-template-rows: 60px minmax(0,1fr); }
+  :root { --app-topbar-height: 60px; }
+  .app-shell { grid-template-rows: var(--app-topbar-height) minmax(0,1fr); }
   .topbar { grid-template-columns: auto minmax(0,1fr) auto; padding: 0 12px; }
   .brand-edition, .top-context .crumb:first-child, .top-context > .icon, .top-context .action-divider, .save-state { display: none; }
   .top-actions .btn-label.optional { display: none; }
@@ -1616,6 +1622,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .management { padding: 20px 16px; overflow-x: hidden; }
   .management-head h1 { font-size: 24px; }
   .data-card { overflow-x: auto; }
+  .drawer { width: 100vw; }
+  .drawer-header { min-height: 72px; padding: 12px 16px; }
+  .drawer-body { padding: 18px 16px; }
+  .drawer-footer { padding-inline: 16px; }
+  .ai-connection-drawer .field-row { grid-template-columns: 1fr; }
+  .ai-connection-drawer .drawer-footer .btn { min-width: 0; }
 }
 
 @media (hover: none), (pointer: coarse) {

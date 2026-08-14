@@ -2,8 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const STATE_PATH = path.join(__dirname, "saas-state.json");
-const MASTER_KEY_PATH = path.join(__dirname, ".platform-master-key");
+const STATE_PATH = process.env.ATELIER_STATE_PATH ? path.resolve(process.env.ATELIER_STATE_PATH) : path.join(__dirname, "saas-state.json");
+const MASTER_KEY_PATH = process.env.ATELIER_MASTER_KEY_PATH ? path.resolve(process.env.ATELIER_MASTER_KEY_PATH) : path.join(__dirname, ".platform-master-key");
 
 const PROVIDER_PRESETS = [
   { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat", protocol: "openai", region: "中国大陆" },
@@ -95,6 +95,7 @@ function readState() {
 function writeState(state) {
   const next = normalizeState(state);
   const tempPath = `${STATE_PATH}.tmp`;
+  fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
   fs.writeFileSync(tempPath, JSON.stringify(next, null, 2), "utf8");
   fs.renameSync(tempPath, STATE_PATH);
   return next;
