@@ -9,10 +9,11 @@ The MVP container does not provide WeChat automatic publishing, WeChat Pay, SMS,
 ## Production Configuration
 
 1. Create environment values from `admin/.env.example`. Do not commit the completed file.
-2. Set `DATABASE_URL`, `ATELIER_LICENSE_PEPPER`, `ATELIER_MASTER_KEY`, `ATELIER_OPS_EMAIL`, and `ATELIER_OPS_PASSWORD`.
+2. Set `DATABASE_URL`, `ATELIER_LICENSE_PEPPER`, `ATELIER_MASTER_KEY`, `ATELIER_OPS_EMAIL`, `ATELIER_OPS_PASSWORD`, `ATELIER_APPOINTMENT_GATEWAY_TOKEN`, and the independent `ATELIER_OPENID_HASH_KEY`.
 3. Keep `PRIVLAN_DISABLE_GIT_SYNC=1` for tenant runtime processes.
 4. Run migrations in one controlled process with `ATELIER_AUTO_MIGRATE=1`, then set it back to `0` for horizontally scaled application instances.
 5. Keep `PRIVLAN_LEGACY_FALLBACK=0` after the verified PRIVLAN import.
+6. Configure the three appointment cloud functions with the public HTTPS `ATELIER_API_BASE_URL`, the matching gateway token, and `ATELIER_APPOINTMENT_BACKEND=postgres`. Secrets remain cloud/server environment values and are never generated into the mini-program.
 
 `GET /health` returns only application name, database status, and version. A missing or unavailable production database returns HTTP `503`.
 
@@ -43,3 +44,13 @@ Store backup files and manifests outside the application host. Test restores aga
 ## Legacy PRIVLAN Import
 
 Run `admin/migrate-legacy.js` only after the external file backup and SHA-256 manifest succeed. The importer requires uncommitted `PRIVLAN_LEGACY_OWNER_LOGIN` and `PRIVLAN_LEGACY_OWNER_PASSWORD`, uses a source hash to prevent duplicate imports, and leaves the legacy JSON files unchanged.
+
+Historical appointment exports use a separate adapter. Dry-run is the default and does not write the database:
+
+```powershell
+cd admin
+node import-legacy-appointments.js --source .\legacy-appointments.json --public-store-id store_public_x --report .\legacy-appointment-report.json
+node import-legacy-appointments.js --source .\legacy-appointments.json --public-store-id store_public_x --apply --report .\legacy-appointment-report.json
+```
+
+The normalized version-1 JSON contains `services`, `advisors`, optional `businessHours`, and `appointments`. The adapter hashes the exact source bytes, records successful imports, and leaves the source file unchanged. A report from real production history is not included in this repository.

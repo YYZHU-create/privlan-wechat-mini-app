@@ -70,6 +70,22 @@ function httpJson(url, options = {}) {
   });
 }
 
+async function appointmentApi(pathname, body) {
+  const baseUrl = env("ATELIER_API_BASE_URL").replace(/\/+$/, "");
+  const token = env("ATELIER_APPOINTMENT_GATEWAY_TOKEN");
+  if (!baseUrl || !token) throw createError("APPOINTMENT_GATEWAY_NOT_CONFIGURED", "预约服务尚未配置", 503);
+  let url; try { url = new URL(`${baseUrl}${pathname}`); } catch (error) { throw createError("APPOINTMENT_GATEWAY_NOT_CONFIGURED", "预约服务地址无效", 503); }
+  if (url.protocol !== "https:") throw createError("APPOINTMENT_GATEWAY_NOT_CONFIGURED", "预约服务必须使用 HTTPS", 503);
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body || {});
+    const request = https.request(url, { method: "POST", timeout: 12000, headers: { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(payload), Authorization: `Bearer ${token}` } }, response => {
+      let raw = ""; response.setEncoding("utf8"); response.on("data", chunk => { raw += chunk; }); response.on("end", () => { try { resolve(JSON.parse(raw || "{}")); } catch (error) { reject(createError("INVALID_REMOTE_RESPONSE", "预约服务返回了无效数据", 502)); } });
+    });
+    request.on("timeout", () => request.destroy(createError("APPOINTMENT_GATEWAY_TIMEOUT", "预约服务响应超时", 504)));
+    request.on("error", reject); request.write(payload); request.end();
+  });
+}
+
 async function getTenantToken() {
   if (tenantToken && tenantTokenExpiresAt > Date.now() + 60000) return tenantToken;
   const appId = env("FEISHU_APP_ID");
@@ -280,7 +296,7 @@ function handleError(error, id = requestId()) {
 module.exports = {
   cloud, db, command, ok, fail, createError, env, hash, requestId, escapeFilterValue,
   searchRecords, getRecord, createRecord, updateRecord, plainValue, fieldName, fieldValue,
-  currentOpenId, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot,
+  currentOpenId, appointmentApi, enforceRateLimit, createSession, requireSession, audit, reserveSlot, releaseSlot,
   intervalBucketIds, reserveAppointmentInterval, releaseAppointmentInterval,
   reserveAppointmentRequest, releaseAppointmentRequest, handleError
 };

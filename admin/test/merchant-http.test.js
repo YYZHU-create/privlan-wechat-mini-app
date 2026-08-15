@@ -7,6 +7,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const ADMIN_DIR = path.resolve(__dirname, "..");
+const APPOINTMENT_TOKEN = "appointment-http-gateway-token-32-bytes";
+const OPENID_HASH_KEY = "appointment-http-openid-key-32-bytes";
 let processHandle;
 let temp;
 let baseUrl;
@@ -32,7 +34,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${serverPort}`;
   processHandle = spawn(process.execPath, ["server.js"], {
     cwd: ADMIN_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NODE_ENV: "test", PORT: String(serverPort), PRIVLAN_ADMIN_HOST: "127.0.0.1", ATELIER_TEST_DATABASE: "portable", ATELIER_LICENSE_PEPPER: "http-test-pepper", ATELIER_MASTER_KEY: Buffer.alloc(32, 5).toString("base64"), PRIVLAN_ROOT: temp, PRIVLAN_CONFIG_PATH: path.join(temp, "config.json"), PRIVLAN_CONFIG_BACKUP_DIR: path.join(temp, "backups"), PRIVLAN_IMAGES_DIR: path.join(temp, "images"), PRIVLAN_FONTS_DIR: path.join(temp, "fonts"), PRIVLAN_MEDIA_FOLDERS_PATH: path.join(temp, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(temp, "trash"), PRIVLAN_DISABLE_GIT_SYNC: "1", ATELIER_OPS_PASSWORD: "operator-test-password" }
+    env: { ...process.env, NODE_ENV: "test", PORT: String(serverPort), PRIVLAN_ADMIN_HOST: "127.0.0.1", ATELIER_TEST_DATABASE: "portable", ATELIER_LICENSE_PEPPER: "http-test-pepper", ATELIER_MASTER_KEY: Buffer.alloc(32, 5).toString("base64"), ATELIER_APPOINTMENT_GATEWAY_TOKEN: APPOINTMENT_TOKEN, ATELIER_OPENID_HASH_KEY: OPENID_HASH_KEY, PRIVLAN_ROOT: temp, PRIVLAN_CONFIG_PATH: path.join(temp, "config.json"), PRIVLAN_CONFIG_BACKUP_DIR: path.join(temp, "backups"), PRIVLAN_IMAGES_DIR: path.join(temp, "images"), PRIVLAN_FONTS_DIR: path.join(temp, "fonts"), PRIVLAN_MEDIA_FOLDERS_PATH: path.join(temp, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(temp, "trash"), PRIVLAN_DISABLE_GIT_SYNC: "1", ATELIER_OPS_PASSWORD: "operator-test-password" }
   });
   for (let index = 0; index < 80; index += 1) {
     try { if ((await fetch(`${baseUrl}/health`)).status === 200) return; } catch (error) {}
@@ -93,4 +95,64 @@ test("rejects mutation without CSRF before subscription checks", async () => {
   const result = await api("/api/config", { method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ products: [] }) });
   assert.equal(result.status, 403);
   assert.equal(result.data.code, "CSRF_INVALID");
+});
+
+test("appointment gateway and merchant APIs enforce token, scope, CSRF, subscription, and PII boundaries", async () => {
+  const registered = await api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "appointments@example.com", password: "appointments-password", storeName: "预约 HTTP 店", template: "blank" }) });
+  assert.equal(registered.status, 201);
+  const merchantCookies = cookieValues(registered.response); const merchantCookie = cookieJar(merchantCookies); const merchantCsrf = csrf(merchantCookies);
+  const publicStoreId = registered.data.data.workspace.publicStoreId;
+  assert.match(publicStoreId, /^store_public_/);
+
+  const inactiveRead = await api("/v1/appointment-settings", { headers: { Cookie: merchantCookie } });
+  assert.equal(inactiveRead.status, 200);
+  const noCsrf = await api("/v1/appointment-settings", { method: "PUT", headers: { Cookie: merchantCookie, "Content-Type": "application/json" }, body: JSON.stringify(inactiveRead.data.data) });
+  assert.equal(noCsrf.status, 403); assert.equal(noCsrf.data.code, "CSRF_INVALID");
+  const inactiveWrite = await api("/v1/appointment-settings", { method: "PUT", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify(inactiveRead.data.data) });
+  assert.equal(inactiveWrite.status, 403); assert.equal(inactiveWrite.data.code, "SUBSCRIPTION_REQUIRED");
+
+  const opsLogin = await api("/ops/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "ops-admin@localhost", password: "operator-test-password" }) });
+  const opsCookie = cookieJar(cookieValues(opsLogin.response));
+  const generated = await api("/ops/v1/license-codes", { method: "POST", headers: { Cookie: opsCookie, "Content-Type": "application/json" }, body: JSON.stringify({ planId: "PRO", durationHours: 720, count: 1 }) });
+  const redeemed = await api("/v1/licenses/redeem", { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ code: generated.data.data[0].code }) });
+  assert.equal(redeemed.status, 200);
+
+  const services = await api("/v1/appointment-services", { headers: { Cookie: merchantCookie } });
+  const advisors = await api("/v1/appointment-advisors", { headers: { Cookie: merchantCookie } });
+  const temporaryService = await api("/v1/appointment-services", { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name: "可删除服务", durationMinutes: 30, bufferMinutesOverride: null, enabled: true }) });
+  assert.equal(temporaryService.status, 201);
+  assert.equal((await api(`/v1/appointment-services/${temporaryService.data.data.id}`, { method: "DELETE", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf } })).status, 200);
+  const optionsBody = { publicStoreId, serviceId: services.data.data[0].id };
+  assert.equal((await api("/v1/miniprogram/appointment-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(optionsBody) })).status, 401);
+  assert.equal((await api("/v1/miniprogram/appointment-options", { method: "POST", headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" }, body: JSON.stringify(optionsBody) })).status, 401);
+  const gatewayHeaders = { Authorization: `Bearer ${APPOINTMENT_TOKEN}`, "Content-Type": "application/json" };
+  const dates = await api("/v1/miniprogram/appointment-options", { method: "POST", headers: gatewayHeaders, body: JSON.stringify(optionsBody) });
+  assert.equal(dates.status, 200);
+  let slot = null;
+  for (const date of dates.data.data.dates) {
+    const option = await api("/v1/miniprogram/appointment-options", { method: "POST", headers: gatewayHeaders, body: JSON.stringify({ ...optionsBody, date: date.value, advisorId: advisors.data.data[0].id }) });
+    slot = option.data.data.slots.find(item => item.available);
+    if (slot) break;
+  }
+  assert.ok(slot, "an active store exposes at least one valid slot");
+  const booking = { publicStoreId, openid: "openid-http-private", customerName: "网关客户", customerPhone: "13800138000", serviceId: services.data.data[0].id, advisorId: advisors.data.data[0].id, startAt: slot.startAt, notes: "HTTP 私密备注", idempotencyKey: "http-idempotency-key" };
+  const created = await api("/v1/miniprogram/appointments", { method: "POST", headers: gatewayHeaders, body: JSON.stringify(booking) });
+  assert.equal(created.status, 200); assert.equal(created.data.data.status, "待确认");
+  assert.doesNotMatch(JSON.stringify(created.data), /openid-http-private|13800138000|HTTP 私密备注|wechat_openid_hash/);
+  const repeated = await api("/v1/miniprogram/appointments", { method: "POST", headers: gatewayHeaders, body: JSON.stringify(booking) });
+  assert.equal(repeated.data.data.number, created.data.data.number); assert.equal(repeated.data.data.idempotent, true);
+
+  const merchantList = await api("/v1/appointments", { headers: { Cookie: merchantCookie } });
+  assert.equal(merchantList.data.data[0].customerPhoneMasked, "138****8000");
+  assert.doesNotMatch(JSON.stringify(merchantList.data), /openid-http-private|wechat_openid_hash|13800138000|HTTP 私密备注/);
+  const publicList = await api("/v1/miniprogram/appointments/list", { method: "POST", headers: gatewayHeaders, body: JSON.stringify({ publicStoreId, openid: "openid-http-private" }) });
+  assert.equal(publicList.data.data.length, 1);
+  assert.doesNotMatch(JSON.stringify(publicList.data), /openid-http-private|wechat_openid_hash|13800138000|HTTP 私密备注/);
+  const tampered = await api("/v1/appointments?workspaceId=foreign-workspace", { headers: { Cookie: merchantCookie } });
+  assert.equal(tampered.status, 403); assert.equal(tampered.data.code, "WORKSPACE_ACCESS_DENIED");
+  const appointmentId = merchantList.data.data[0].id;
+  const statusNoCsrf = await api(`/v1/appointments/${appointmentId}/status`, { method: "PATCH", headers: { Cookie: merchantCookie, "Content-Type": "application/json" }, body: JSON.stringify({ status: "confirmed" }) });
+  assert.equal(statusNoCsrf.status, 403);
+  const confirmed = await api(`/v1/appointments/${appointmentId}/status`, { method: "PATCH", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ status: "confirmed" }) });
+  assert.equal(confirmed.status, 200); assert.equal(confirmed.data.data.status, "confirmed");
 });

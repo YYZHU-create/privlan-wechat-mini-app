@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const { ServiceError } = require("./saas-service");
 const { createWorkspaceMedia } = require("./workspace-media");
 const { callOpenAiCompatible } = require("./ai-gateway");
+const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -151,6 +152,8 @@ function registerMerchantRoutes(app, getService, options = {}) {
       return res.json({ ok: true, workspace, subscription, plans: [{ id: "trial", name: "24小时体验", monthlyPrice: 0 }, { id: "pro", name: "PRO", monthlyPrice: 299 }], publishJobs: [], ai: { status: aiPolicy.mode === "byok" ? "configured" : "fallback", provider: aiPolicy.mode }, aiConnections, platformAiConnections: [], aiPolicy, providerCatalog: [{ id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" }, { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" }, { id: "custom", name: "自定义兼容接口", baseUrl: "", model: "" }], usage: { aiPointsUsed: 0, aiPointsLimit: 0, storageGbUsed: 0, storageGbLimit: 0, skuUsed: (config.products || []).length, skuLimit: 0 } });
     } catch (error) { return failure(res, error, req.requestId); }
   });
+
+  registerMerchantAppointmentRoutes(app);
 
   app.get("/v1/subscription", async (req, res) => {
     try { return success(res, await req.saasService.getSubscription(req.merchantScope), "订阅已获取", 200, req.requestId); }

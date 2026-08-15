@@ -12,6 +12,7 @@ const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 const { createDatabaseFromEnv } = require("./database");
 const { createSaasService } = require("./saas-service");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
+const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { validateProductionEnvironment } = require("./runtime-config");
 
 validateProductionEnvironment(process.env);
@@ -117,6 +118,7 @@ app.use("/ops/v1", (req, res, next) => {
 app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
+registerAppointmentGatewayRoutes(app, getSaasService);
 registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT });
 registerOpsAuthRoutes(app, getSaasService);
 
@@ -1601,7 +1603,7 @@ app.post("/api/sync", (req, res) => {
       cfg = readConfig();
     }
     migrateCenterTabCrop(cfg);
-    const result = sync(cfg, ROOT);
+    const result = sync(cfg, ROOT, { publicStoreId: req.merchantScope?.workspace?.publicStoreId || "" });
     const warnings = packageAssetWarnings(cfg);
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);

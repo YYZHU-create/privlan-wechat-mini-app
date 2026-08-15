@@ -104,4 +104,13 @@ function createHandler(core) {
 }
 
 exports.createHandler = createHandler;
-exports.main = event => createHandler(require("./common"))(event);
+
+function createPostgresHandler(core) {
+  return async event => {
+    const requestId=core.requestId();
+    try { return await core.appointmentApi("/v1/miniprogram/appointment-options", { publicStoreId:String(event.publicStoreId||""), date:String(event.date||""), serviceId:String(event.serviceId||""), advisorId:String(event.advisorId||"") }); }
+    catch(error){ return core.handleError(error,requestId); }
+  };
+}
+exports.createPostgresHandler=createPostgresHandler;
+exports.main=event=>{const core=require("./common");return core.env("ATELIER_APPOINTMENT_BACKEND","postgres") === "feishu" ? createHandler(core)(event) : createPostgresHandler(core)(event);};

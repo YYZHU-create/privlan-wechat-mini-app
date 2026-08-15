@@ -1,4 +1,5 @@
 const api = require("../../utils/service-api");
+const appointmentRuntime = require("../../utils/appointment-runtime");
 
 Page({
   data: { upcoming: [], history: [], loading: false, cacheOnly: false, loadError: "" },
@@ -16,7 +17,7 @@ Page({
     const cached = wx.getStorageSync("privlanAppointments");
     this.renderAppointments(cached);
     this.setData({ loading: true, cacheOnly: false, loadError: "" });
-    const result = await api.listAppointments();
+    const result = await api.listAppointments({ publicStoreId: appointmentRuntime.publicStoreId });
     if (!result.ok) {
       this.setData({ loading: false, cacheOnly: true, loadError: result.message || "云端预约读取失败" });
       return;

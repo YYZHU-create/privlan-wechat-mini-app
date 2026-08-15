@@ -17,7 +17,8 @@ async function freePort() { const server = net.createServer(); const port = awai
 test("production environment fails closed when database or secrets are missing", () => {
   assert.throws(() => validateProductionEnvironment({ NODE_ENV: "production" }), /DATABASE_URL/);
   assert.throws(() => validateProductionEnvironment({ NODE_ENV: "production", DATABASE_URL: "postgresql://db/app", ATELIER_LICENSE_PEPPER: "short", ATELIER_MASTER_KEY: "bad", ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "strong-password" }), /ATELIER_LICENSE_PEPPER/);
-  assert.equal(validateProductionEnvironment({ NODE_ENV: "production", DATABASE_URL: "postgresql://db/app", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "strong-password" }).ok, true);
+  assert.throws(() => validateProductionEnvironment({ NODE_ENV: "production", DATABASE_URL: "postgresql://db/app", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "strong-password" }), /ATELIER_APPOINTMENT_GATEWAY_TOKEN/);
+  assert.equal(validateProductionEnvironment({ NODE_ENV: "production", DATABASE_URL: "postgresql://db/app", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "strong-password", ATELIER_APPOINTMENT_GATEWAY_TOKEN: "g".repeat(32), ATELIER_OPENID_HASH_KEY: "o".repeat(32) }).ok, true);
 });
 
 test("portable PostgreSQL backup restores merchant and workspace data", async () => {
@@ -52,7 +53,7 @@ test("health reports an unavailable PostgreSQL connection without exposing detai
   const port = await freePort();
   const child = spawn(process.execPath, ["server.js"], {
     cwd: path.resolve(__dirname, ".."), windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NODE_ENV: "production", PORT: String(port), PRIVLAN_ADMIN_HOST: "127.0.0.1", DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:1/atelier", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 8).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "operator-password", PRIVLAN_DISABLE_GIT_SYNC: "1" }
+    env: { ...process.env, NODE_ENV: "production", PORT: String(port), PRIVLAN_ADMIN_HOST: "127.0.0.1", DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:1/atelier", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 8).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "operator-password", ATELIER_APPOINTMENT_GATEWAY_TOKEN: "g".repeat(32), ATELIER_OPENID_HASH_KEY: "o".repeat(32), PRIVLAN_DISABLE_GIT_SYNC: "1" }
   });
   try {
     let response;

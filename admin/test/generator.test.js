@@ -93,8 +93,11 @@ test("generator registers webview, gates cart methods and keeps handlers complet
   const target = copyFixture();
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "admin", "config.json"), "utf8"));
-    sync(cfg, target);
+    sync(cfg, target, { publicStoreId: "store_public_generator_test" });
     const app = JSON.parse(fs.readFileSync(path.join(target, "app.json"), "utf8"));
+    const appointmentRuntime = fs.readFileSync(path.join(target, "utils", "appointment-runtime.js"), "utf8");
+    assert.match(appointmentRuntime, /store_public_generator_test/);
+    assert.doesNotMatch(appointmentRuntime, /TOKEN|SECRET|gateway/i);
     assert.ok(app.pages.includes("pages/webview/webview"));
     for (const route of app.pages) {
       const base = path.join(target, route);
@@ -115,6 +118,7 @@ test("generator registers webview, gates cart methods and keeps handlers complet
         "../../utils/mock": { categories: [], products: [], heroes: [], memberBenefits: [] },
         "../../utils/service-api": {},
         "../../utils/appointment-config": { fields: {} },
+        "../../utils/appointment-runtime": { publicStoreId: "store_public_generator_test" },
         "../../utils/service-config": {}
       }).page;
       for (const handler of handlers) assert.equal(typeof page[handler], "function", `${path.relative(target, file)} missing ${handler}`);

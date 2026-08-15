@@ -1,0 +1,60 @@
+ATELIER OS Appointment and Customer SaaS 1.0 verification
+
+Branch: codex/atelier-os-saas-mvp
+Changed field: appointment_system_of_record
+Changed value: postgresql
+Baseline value: feishu
+Baseline commit: cea9d696ca6c1ec1aa111725a4a479bf38e3c70e
+Current HEAD before commit: cea9d696ca6c1ec1aa111725a4a479bf38e3c70e
+
+Artifacts:
+- MODIFIED_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-customer-saas-1.0/MODIFIED_FILE
+- DIFF_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-customer-saas-1.0/DIFF_FILE
+- VERIFICATION.txt: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-customer-saas-1.0/VERIFICATION.txt
+- ROLLBACK.sh: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-customer-saas-1.0/ROLLBACK.sh
+
+DIFF_FILE SHA-256: 6C7B7C2C6106DA84B0E4964BC3F12CFA6C3F5311B640A3E71C33CB31934440A9
+DIFF_FILE bytes: 580454
+
+BASELINE
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin; npm test
+Input: baseline commit cea9d696ca6c1ec1aa111725a4a479bf38e3c70e before appointment/customer implementation
+Literal output: tests 46; pass 46; fail 0; cancelled 0; skipped 0
+Exit status: 0
+
+MODIFIED
+Command: git worktree add --detach TARGET cea9d696ca6c1ec1aa111725a4a479bf38e3c70e; git -C TARGET apply DIFF_FILE; cd TARGET/admin; node --test test/appointment-saas.test.js test/appointment.test.js test/generator.test.js
+Input: independent rollback worktree C:/Users/Administrator/AppData/Local/Temp/atelier-appointment-final2-rollback-bc1a01effc8e48c3a835e87fafb63140 and DIFF_FILE SHA-256 6C7B7C2C6106DA84B0E4964BC3F12CFA6C3F5311B640A3E71C33CB31934440A9
+Literal output: tests 25; pass 25; fail 0; cancelled 0; skipped 0; MODIFIED_TEST_EXIT=0
+Exit status: 0
+
+ROLLBACK
+Command: bash admin/verification/appointment-customer-saas-1.0/ROLLBACK.sh TARGET; git -C TARGET diff --exit-code
+Input: modified independent worktree above
+Literal output: ROLLBACK_APPLIED target=/tmp/atelier-appointment-final2-rollback-bc1a01effc8e48c3a835e87fafb63140; ROLLBACK_EXIT=0; MIGRATION_003_EXISTS=False; POSTGRES_DEFAULT_EXISTS=False; ROLLBACK_DIFF_EXIT=0; TRACKED_STATUS=; ROLLBACK_TARGET_REMOVED=C:/Users/Administrator/AppData/Local/Temp/atelier-appointment-final2-rollback-bc1a01effc8e48c3a835e87fafb63140
+Exit status: 0
+Restored behavior/status: TARGET returned to baseline commit content with zero tracked diff; the main worktree remains modified.
+
+CURRENT VERIFICATION
+Command: cd admin; npm test
+Literal output: tests 58; pass 57; fail 0; cancelled 0; skipped 1 (real PostgreSQL test is separately run with an explicit local connection)
+Exit status: 0
+
+Command: cd admin; node --test test/appointment-postgres-integration.test.js with ATELIER_REAL_POSTGRES_URL from local runtime secrets
+Literal output: tests 1; pass 1; fail 0; skipped 0
+Exit status: 0
+
+Command: node admin/verification/appointment-ui-check.js with ATELIER_UI_BASE_URL=http://127.0.0.1:40001
+Literal output: Appointment UI checks passed: lists, appointment/customer drawers, rules, hours, services, advisors at 1366x768, 1920x1080, 430x932
+Exit status: 0
+
+Command: node --check on all modified server/cloud/page/runtime files; git diff --check; pnpm --dir admin install --lockfile-only --frozen-lockfile
+Literal output: all syntax checks passed; diff check passed; Lockfile passes supply-chain policies
+Exit status: 0
+
+Command: PostgreSQL migration and health query against the running local service
+Input: http://127.0.0.1:40001/health and information_schema/schema_migrations
+Literal output: {"app":"atelier-os","database":"ok","version":"development"}; migrations=["001_saas_mvp","002_workspace_resources","003_appointments"]; tables=["appointment_import_runs","appointments","customers"]
+Exit status: 0
+
+Security result: PostgreSQL stores only HMAC-SHA256 OpenID hashes; cloud adapters take OPENID from cloud.getWXContext(); gateway token and HMAC key are absent from generated mini-program runtime; list APIs mask phone numbers; audit metadata excludes OpenID, hashes, full phones, and notes.

@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
 const { createWorkspaceConfig } = require("./workspace-templates");
+const { createAppointmentService } = require("./appointment-service");
 
 class ServiceError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -25,6 +26,7 @@ function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-
 
 function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "" }) {
   if (!db) throw new Error("database is required");
+  const appointmentService = createAppointmentService({ db });
   const licenseHash = code => {
     if (!licensePepper) throw new ServiceError(503, "LICENSE_PEPPER_MISSING", "兑换服务尚未配置");
     return crypto.createHmac("sha256", licensePepper).update(String(code || "").trim().toUpperCase()).digest("hex");
@@ -58,14 +60,16 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       await tx.query("insert into tenants(id,name,status) values($1,$2,'trial')", [tenantId, storeName]);
       await tx.query("insert into users(id,login_identifier,password_hash,display_name) values($1,$2,$3,$4)", [userId, login, hashPassword(password), String(input.contactName || "").trim() || null]);
       await tx.query("insert into workspaces(id,tenant_id,name,plan_id) values($1,$2,$3,'TRIAL')", [workspaceId, tenantId, storeName]);
-      await tx.query("insert into stores(id,tenant_id,workspace_id,name,channel_mode,status) values($1,$2,$3,$4,'shared','draft')", [storeId, tenantId, workspaceId, storeName]);
+      const publicStoreId = `store_public_${crypto.randomBytes(16).toString("hex")}`;
+      await tx.query("insert into stores(id,tenant_id,workspace_id,name,channel_mode,status,public_store_id) values($1,$2,$3,$4,'shared','draft',$5)", [storeId, tenantId, workspaceId, storeName, publicStoreId]);
       await tx.query("insert into memberships(tenant_id,workspace_id,user_id,role) values($1,$2,$3,'owner')", [tenantId, workspaceId, userId]);
       await tx.query("insert into workspace_configs(workspace_id,tenant_id,store_id,document) values($1,$2,$3,$4::jsonb)", [workspaceId, tenantId, storeId, json(createWorkspaceConfig({ storeName, template }))]);
       const subscriptionId = id();
       await tx.query("insert into subscriptions(id,tenant_id,workspace_id,plan_id,status,source,metadata) values($1,$2,$3,'TRIAL','inactive','registration',$4::jsonb)", [subscriptionId, tenantId, workspaceId, json({ trialUsed: false })]);
+      await appointmentService.ensureDefaults(tx, { tenantId, workspaceId, storeId }, 60);
       const session = await issueSession(tx, { userId, workspaceId, ipAddress: context.ipAddress, userAgent: context.userAgent });
       await audit(tx, { tenantId, workspaceId, actorType: "merchant", actorId: userId, requestId: context.requestId }, "workspace.register", "workspace", workspaceId, { template });
-      return { session, user: { id: userId, login, displayName: String(input.contactName || "") }, workspace: { id: workspaceId, tenantId, storeId, name: storeName }, subscription: { id: subscriptionId, planId: "TRIAL", status: "inactive", expiresAt: null } };
+      return { session, user: { id: userId, login, displayName: String(input.contactName || "") }, workspace: { id: workspaceId, tenantId, storeId, publicStoreId, name: storeName }, subscription: { id: subscriptionId, planId: "TRIAL", status: "inactive", expiresAt: null } };
     });
   }
 
@@ -90,7 +94,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     if (!token) return null;
     const result = await db.query(`select s.id session_id,s.user_id,s.workspace_id,s.csrf_token_hash,s.expires_at,
       u.login_identifier,u.display_name,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
-      st.id store_id,st.name store_name,m.role,sub.id subscription_id,sub.status subscription_status,
+      st.id store_id,st.name store_name,st.public_store_id,m.role,sub.id subscription_id,sub.status subscription_status,
       sub.plan_id subscription_plan_id,sub.started_at,sub.expires_at
       from merchant_sessions s join users u on u.id=s.user_id join memberships m on m.user_id=u.id and m.workspace_id=s.workspace_id
       join workspaces w on w.id=s.workspace_id join stores st on st.workspace_id=w.id
@@ -101,7 +105,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const expired = row.expires_at && new Date(row.expires_at) <= new Date();
     return {
       sessionId: row.session_id, userId: row.user_id, tenantId: row.tenant_id, workspaceId: row.workspace_id, storeId: row.store_id,
-      role: row.role, csrfTokenHash: row.csrf_token_hash, user: publicUser(row), workspace: { id: row.workspace_id, tenantId: row.tenant_id, storeId: row.store_id, name: row.workspace_name, storeName: row.store_name },
+      role: row.role, csrfTokenHash: row.csrf_token_hash, user: publicUser(row), workspace: { id: row.workspace_id, tenantId: row.tenant_id, storeId: row.store_id, publicStoreId: row.public_store_id, name: row.workspace_name, storeName: row.store_name },
       subscription: { id: row.subscription_id, planId: row.subscription_plan_id || row.plan_id, status: expired ? "expired" : row.subscription_status, startedAt: row.started_at, expiresAt: row.expires_at }
     };
   }
@@ -319,7 +323,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  return { db, register, login, resolveSession, logout, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, register, login, resolveSession, logout, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

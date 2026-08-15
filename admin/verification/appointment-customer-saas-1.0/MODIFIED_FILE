@@ -1,0 +1,6 @@
+branch=codex/atelier-os-saas-mvp
+field=appointment_system_of_record
+value=postgresql
+baseline_value=feishu
+baseline_commit=cea9d696ca6c1ec1aa111725a4a479bf38e3c70e
+diff_sha256=6C7B7C2C6106DA84B0E4964BC3F12CFA6C3F5311B640A3E71C33CB31934440A9

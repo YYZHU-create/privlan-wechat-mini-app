@@ -49,6 +49,6 @@ module.exports = {
   loadMeasurements: sessionToken => callFunction("customerMeasurements", { sessionToken }),
   loadAppointmentOptions: data => callFunction("appointmentOptions", data),
   createAppointment: data => callFunction("appointmentCreate", data),
-  listAppointments: () => callFunction("appointmentList"),
+  listAppointments: data => callFunction("appointmentList", data),
   enableAppointmentReminder: data => callFunction("appointmentReminder", { action: "register", ...data })
 };
