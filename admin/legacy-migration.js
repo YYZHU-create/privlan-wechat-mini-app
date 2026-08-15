@@ -50,7 +50,7 @@ function createLegacyBackup({ root, backupRoot }) {
 async function importLegacyPrivlan({ db, root, backup, ownerLogin, ownerPassword, dataRoot }) {
   if (!backup?.path || !backup?.manifest?.sourceHash) throw new Error("Verified backup is required before import");
   if (!ownerLogin || !ownerPassword) throw new Error("PRIVLAN legacy owner credentials are required before import");
-  if (String(ownerPassword).length < 10) throw new Error("PRIVLAN legacy owner password must be at least 10 characters");
+  if (String(ownerPassword).length < 8) throw new Error("PRIVLAN legacy owner password must be at least 8 characters");
   const prior = await db.query("select tenant_id,workspace_id from legacy_imports where source_hash=$1", [backup.manifest.sourceHash]);
   if (prior.rows.length) return { imported: false, duplicate: true, tenantId: prior.rows[0].tenant_id, workspaceId: prior.rows[0].workspace_id, sourceHash: backup.manifest.sourceHash };
   const config = JSON.parse(fs.readFileSync(path.join(root, "admin", "config.json"), "utf8"));

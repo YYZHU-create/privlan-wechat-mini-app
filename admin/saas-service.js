@@ -50,7 +50,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const storeName = String(input.storeName || "").trim();
     const template = input.template === "blank" ? "blank" : "sample";
     if (!/^[\p{L}\p{N}_.@+-]{3,64}$/u.test(login)) throw new ServiceError(400, "INVALID_LOGIN", "登录账号格式不正确");
-    if (password.length < 10 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 10 至 128 位");
+    if (password.length < 8 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 8 至 128 位");
     if (storeName.length < 2 || storeName.length > 64) throw new ServiceError(400, "INVALID_STORE_NAME", "店铺名称长度需为 2 至 64 位");
     return db.transaction(async tx => {
       if ((await tx.query("select id from users where login_identifier=$1", [login])).rows.length) throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法注册");

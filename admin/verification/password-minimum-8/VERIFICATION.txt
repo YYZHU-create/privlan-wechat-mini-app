@@ -1,0 +1,41 @@
+ATELIER OS merchant password minimum verification
+
+Branch: codex/atelier-os-saas-mvp
+Changed field: merchant_password_minimum=8
+Baseline commit: a8a3aca83532297e2c35fc072c34b57fc40546ab
+
+Artifacts:
+- MODIFIED_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/password-minimum-8/MODIFIED_FILE
+- DIFF_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/password-minimum-8/DIFF_FILE
+- VERIFICATION.txt: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/password-minimum-8/VERIFICATION.txt
+- ROLLBACK.sh: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/password-minimum-8/ROLLBACK.sh
+
+DIFF_FILE SHA-256: 151EE1FAB94B1052E2C491A0ABB399C7E9A053E6F7B56A0043F689505E3B12F6
+
+BASELINE
+Command: node -e source boundary check
+Input: disposable clone at a8a3aca83532297e2c35fc072c34b57fc40546ab
+Literal result: PASSWORD_MINIMUM=10
+Exit status: 0
+
+MODIFIED
+Command: git apply DIFF_FILE; node --test test/merchant-auth.test.js test/merchant-http.test.js test/database-migration.test.js
+Input: DIFF_FILE SHA-256 151EE1FAB94B1052E2C491A0ABB399C7E9A053E6F7B56A0043F689505E3B12F6
+Literal result: PATCH_APPLY_EXIT=0; tests 5; pass 5; fail 0; duration_ms 2779.7939
+Exit status: 0
+
+ROLLBACK
+Command: ROLLBACK.sh C:/Users/Administrator/AppData/Local/Temp/password-minimum-rollback-01baf4233d1f407e93046be72af85ec4; node -e source boundary check; git diff --exit-code
+Input: modified disposable clone
+Literal result: ROLLBACK_APPLIED; PASSWORD_MINIMUM=10; ROLLBACK_TEST_EXIT=0; ROLLBACK_DIFF_EXIT=0
+Exit status: 0
+Restored behavior/status: merchant and legacy owner minimum returned to 10 and every tracked file matched a8a3aca.
+
+CURRENT VERIFICATION
+Command: node --test
+Literal result: tests 46; pass 46; fail 0; duration_ms 5147.6764
+Exit status: 0
+
+Command: runtime HTTP registration at http://127.0.0.1:40001
+Literal result: 7-character registration status 400; 8-character registration status 201; 8-character login status 200; FORM_MINLENGTH=8
+Exit status: 0

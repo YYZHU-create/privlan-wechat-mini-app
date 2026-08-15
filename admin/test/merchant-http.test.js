@@ -45,7 +45,9 @@ test.after(() => { if (processHandle && !processHandle.killed) processHandle.kil
 
 test("HTTP authentication sets secure server sessions and isolates workspace hints", async () => {
   const register = body => api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const a = await register({ login: "http-a@example.com", password: "http-password-a", storeName: "HTTP A", template: "blank" });
+  const tooShort = await register({ login: "short@example.com", password: "seven77", storeName: "Too Short", template: "blank" });
+  assert.equal(tooShort.status, 400); assert.equal(tooShort.data.code, "INVALID_PASSWORD");
+  const a = await register({ login: "http-a@example.com", password: "passw0rd", storeName: "HTTP A", template: "blank" });
   const b = await register({ login: "http-b@example.com", password: "http-password-b", storeName: "HTTP B", template: "blank" });
   assert.equal(a.status, 201); assert.equal(b.status, 201);
   const aCookies = cookieValues(a.response); const aCookie = cookieJar(aCookies); const aCsrf = csrf(aCookies);

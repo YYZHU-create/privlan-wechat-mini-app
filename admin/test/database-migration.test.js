@@ -21,8 +21,9 @@ test("backs up, verifies and imports legacy PRIVLAN exactly once", async () => {
   try {
     const backup = createLegacyBackup({ root, backupRoot: path.join(temp, "backups") });
     assert.ok(fs.existsSync(path.join(backup.path, "manifest.json")));
-    const first = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "migration-password" });
-    const second = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "migration-password" });
+    await assert.rejects(() => importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "short@privlan.test", ownerPassword: "seven77" }), /at least 8 characters/);
+    const first = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "Owner123" });
+    const second = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "Owner123" });
     assert.equal(first.imported, true);
     assert.equal(second.duplicate, true);
     assert.equal((await db.query("select count(*)::int count from legacy_imports")).rows[0].count, 1);
