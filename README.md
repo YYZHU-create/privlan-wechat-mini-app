@@ -2,6 +2,18 @@
 
 PRIVLAN 的微信小程序、云函数和本地运营后台。小程序包含首页、分类、商品详情、购物车、会员中心、预约、预约记录、客服与活动页面；云函数负责微信身份、预约、提醒、量体资料和客服数据；`admin/` 提供本地内容与生成工具。
 
+## 项目记忆
+
+新环境或新 Codex 会话应先读取 [AGENTS.md](./AGENTS.md)，再按其中顺序阅读：
+
+- [当前状态](./docs/PROJECT_STATE.md)
+- [当前架构](./docs/ARCHITECTURE.md)
+- [重要决策](./docs/DECISIONS.md)
+- [阶段路线图](./docs/ROADMAP.md)
+- [下一步](./docs/NEXT_STEPS.md)
+
+这些文件是跨电脑、跨会话的项目上下文；详细历史仍以 Git 为准。
+
 ## 目录
 
 - `pages/`：小程序页面。
