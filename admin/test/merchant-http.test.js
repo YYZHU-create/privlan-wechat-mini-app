@@ -97,6 +97,47 @@ test("rejects mutation without CSRF before subscription checks", async () => {
   assert.equal(result.data.code, "CSRF_INVALID");
 });
 
+test("merchant password change enforces session, CSRF, scope, validation and global session revocation", async () => {
+  const register = body => api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const accountA = await register({ login: "change-a@example.com", password: "current-a1", storeName: "Change A", template: "blank" });
+  const accountB = await register({ login: "change-b@example.com", password: "current-b1", storeName: "Change B", template: "blank" });
+  const cookiesA = cookieValues(accountA.response); const cookieA = cookieJar(cookiesA); const csrfA = csrf(cookiesA);
+  const secondA = await api("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "change-a@example.com", password: "current-a1" }) });
+  const secondCookieA = cookieJar(cookieValues(secondA.response));
+
+  assert.equal((await api("/auth/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: "current-a1", newPassword: "changed-a1" }) })).status, 401);
+  const noCsrf = await api("/auth/change-password", { method: "POST", headers: { Cookie: cookieA, "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: "current-a1", newPassword: "changed-a1" }) });
+  assert.equal(noCsrf.status, 403); assert.equal(noCsrf.data.code, "CSRF_INVALID");
+
+  const passwordRequest = body => api("/auth/change-password", { method: "POST", headers: { Cookie: cookieA, "x-atelier-csrf": csrfA, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const wrong = await passwordRequest({ currentPassword: "wrong-password", newPassword: "changed-a1" });
+  assert.equal(wrong.status, 400); assert.equal(wrong.data.code, "CURRENT_PASSWORD_INVALID");
+  const short = await passwordRequest({ currentPassword: "current-a1", newPassword: "seven77" });
+  assert.equal(short.status, 400); assert.equal(short.data.code, "INVALID_PASSWORD");
+  const reused = await passwordRequest({ currentPassword: "current-a1", newPassword: "current-a1" });
+  assert.equal(reused.status, 400); assert.equal(reused.data.code, "PASSWORD_REUSE_NOT_ALLOWED");
+  const scoped = await passwordRequest({ currentPassword: "current-a1", newPassword: "changed-a1", userId: accountB.data.data.user.id });
+  assert.equal(scoped.status, 400); assert.equal(scoped.data.code, "INVALID_PASSWORD_REQUEST");
+  assert.equal((await api("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "change-b@example.com", password: "current-b1" }) })).status, 200);
+
+  const changed = await passwordRequest({ currentPassword: "current-a1", newPassword: "changed-a1" });
+  assert.equal(changed.status, 200); assert.equal(changed.data.message, "密码已更新，请重新登录");
+  assert.equal((await api("/auth/session", { headers: { Cookie: cookieA } })).status, 401);
+  assert.equal((await api("/auth/session", { headers: { Cookie: secondCookieA } })).status, 401);
+  assert.equal((await api("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "change-a@example.com", password: "current-a1" }) })).status, 401);
+  assert.equal((await api("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "change-a@example.com", password: "changed-a1" }) })).status, 200);
+  assert.ok(changed.response.headers.getSetCookie().some(value => value.startsWith("atelier_merchant_session=") && /Expires=Thu, 01 Jan 1970/i.test(value)));
+});
+
+test("merchant password change is limited to five verified-session attempts per minute", async () => {
+  const registered = await api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "rate-password@example.com", password: "rate-current1", storeName: "Rate Password", template: "blank" }) });
+  const values = cookieValues(registered.response); const cookie = cookieJar(values); const csrfToken = csrf(values);
+  const request = () => api("/auth/change-password", { method: "POST", headers: { Cookie: cookie, "x-atelier-csrf": csrfToken, "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: "wrong-password", newPassword: "rate-changed1" }) });
+  for (let index = 0; index < 5; index += 1) assert.equal((await request()).status, 400);
+  const limited = await request();
+  assert.equal(limited.status, 429); assert.equal(limited.data.code, "RATE_LIMITED");
+});
+
 test("appointment gateway and merchant APIs enforce token, scope, CSRF, subscription, and PII boundaries", async () => {
   const registered = await api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: "appointments@example.com", password: "appointments-password", storeName: "预约 HTTP 店", template: "blank" }) });
   assert.equal(registered.status, 201);

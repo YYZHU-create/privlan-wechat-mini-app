@@ -946,6 +946,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .merchant-auth-panel .btn.primary:hover { border-color: #ddc89d; background: #ddc89d; }
 .merchant-auth-panel .btn.primary:focus-visible, .merchant-auth-panel .text-btn:focus-visible { outline-color: #e1c58f; }
 .merchant-auth-panel .text-btn { min-height: 44px; justify-self: start; color: #d5bd8d; }
+.merchant-auth-notice { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid rgba(180,210,188,.34); border-radius: 6px; background: rgba(39,79,53,.36); color: #d8efdf; font-size: 12px; line-height: 1.5; }
+.merchant-auth-notice .icon { flex: 0 0 18px; width: 18px; height: 18px; }
 @keyframes merchant-auth-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .text-btn { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--ui-bronze); font-size: 13px; cursor: pointer; }
 .app-shell.has-subscription-banner { grid-template-rows: auto var(--app-topbar-height) minmax(0,1fr); }
@@ -1992,6 +1994,77 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (prefers-reduced-motion: reduce) {
   .workspace, .nav-rail, .workspace.sidebar-collapsed .nav-item .nav-tooltip { transition-duration: .01ms !important; }
+}
+
+/* Merchant account entry and password security controls. */
+.nav-footer { position: relative; flex: 0 0 auto; width: 100%; display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.1); }
+.merchant-account { position: relative; min-width: 0; }
+.merchant-account-entry { position: relative; width: 100%; min-height: 54px; display: grid; grid-template-columns: 36px minmax(0,1fr) 24px; align-items: center; gap: 10px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: #b9b7af; text-align: left; cursor: pointer; transition: color .16s ease, background-color .16s ease; }
+.merchant-account-entry:hover, .merchant-account-entry.active { background: rgba(255,255,255,.07); color: #f5f1e8; }
+.merchant-account-entry:focus-visible, .account-menu button:focus-visible, .password-input button:focus-visible { outline: 2px solid #c29a5b; outline-offset: 2px; }
+.merchant-avatar { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid rgba(194,154,91,.46); border-radius: 50%; background: #151613; color: #dec7a4; font-family: "Noto Serif SC", "Songti SC", serif; font-size: 14px; font-weight: 650; line-height: 1; }
+.merchant-account-copy { min-width: 0; display: grid; gap: 3px; }
+.merchant-account-copy strong, .merchant-account-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-account-copy strong { color: #f2f1ed; font-size: 12px; font-weight: 620; }
+.merchant-account-copy small { color: #929189; font-size: 12px; }
+.merchant-account-more { width: 20px; height: 20px; color: #85847d; }
+.account-menu { position: absolute; z-index: 95; left: calc(100% + 12px); bottom: 0; width: 264px; max-height: min(420px, calc(100dvh - var(--app-topbar-height) - 24px)); overflow-y: auto; padding: 7px; border: 1px solid #d7d4cd; border-radius: 7px; background: #fff; color: var(--ui-text); box-shadow: 0 12px 30px rgba(24,24,21,.16); }
+.account-menu-summary { min-width: 0; display: grid; grid-template-columns: 36px minmax(0,1fr); align-items: center; gap: 10px; padding: 9px 8px 11px; }
+.account-menu-summary > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.account-menu-summary strong, .account-menu-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-summary strong { font-size: 13px; }
+.account-menu-summary small { color: var(--ui-text-secondary); font-size: 12px; }
+.account-menu-separator { height: 1px; margin: 2px 5px 5px; background: var(--ui-border); }
+.account-menu > button { width: 100%; min-height: 40px; display: grid; grid-template-columns: 20px minmax(0,1fr); align-items: center; gap: 9px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.account-menu > button:hover { background: #f2f2ee; }
+.account-menu > button:disabled { opacity: .55; cursor: wait; }
+.account-menu > button .icon { width: 18px; height: 18px; color: var(--ui-text-secondary); }
+.account-menu-signout { color: #8a3939 !important; }
+.account-menu-error { margin: 5px 8px 3px; color: var(--ui-red); font-size: 12px; line-height: 1.5; }
+
+.change-password-backdrop { position: fixed; inset: 0; z-index: 110; background: rgba(22,22,20,.5); }
+.change-password-dialog { position: fixed; top: 50%; left: 50%; z-index: 111; width: min(430px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); display: grid; grid-template-rows: auto minmax(0,1fr) auto; overflow: hidden; border: 1px solid #d5d2ca; border-radius: 8px; background: #fff; color: var(--ui-text); box-shadow: 0 20px 52px rgba(24,24,21,.22); transform: translate(-50%,-50%); }
+.change-password-dialog > header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 20px 16px; border-bottom: 1px solid var(--ui-border); }
+.change-password-dialog > header > div { min-width: 0; }
+.change-password-dialog h2 { margin: 0; font-size: 16px; line-height: 1.4; }
+.change-password-dialog header p { margin: 5px 0 0; color: var(--ui-text-secondary); font-size: 12px; line-height: 1.6; }
+.change-password-dialog > header .icon-btn { flex: 0 0 36px; }
+.change-password-body { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr; align-content: start; gap: 7px; padding: 18px 20px; }
+.change-password-body > label { margin-top: 5px; font-size: 13px; font-weight: 650; }
+.password-input { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) 42px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: #fff; transition: border-color .16s ease, box-shadow .16s ease; }
+.password-input:focus-within { border-color: #a98248; box-shadow: 0 0 0 3px rgba(169,130,72,.14); }
+.password-input input { min-width: 0; min-height: 44px; padding: 0 12px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+.password-input input[aria-invalid="true"] { color: var(--ui-red); }
+.password-input button { width: 42px; min-height: 42px; display: grid; place-items: center; padding: 0; border: 0; border-left: 1px solid var(--ui-border); background: transparent; color: var(--ui-text-secondary); cursor: pointer; }
+.password-input button:hover { background: #f4f4f0; color: var(--ui-text); }
+.password-input button .icon { width: 18px; height: 18px; }
+.change-password-body .field-help, .change-password-body .form-error { margin: 0; font-size: 12px; line-height: 1.5; }
+.change-password-body .field-help { color: var(--ui-text-secondary); }
+.change-password-error { display: flex; align-items: flex-start; gap: 7px; margin: 6px 0 0; padding: 10px; border: 1px solid #e7c6c3; border-radius: 6px; background: #fff5f4; color: var(--ui-red); font-size: 12px; line-height: 1.5; }
+.change-password-error .icon { flex: 0 0 18px; width: 18px; height: 18px; }
+.change-password-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--ui-border); background: #fafaf8; }
+
+@media (min-width: 1024px) {
+  .workspace.sidebar-collapsed .nav-footer { justify-items: center; }
+  .workspace.sidebar-collapsed .nav-footer .nav-item { width: 52px; padding: 0; justify-content: center; }
+  .workspace.sidebar-collapsed .merchant-account { width: 52px; }
+  .workspace.sidebar-collapsed .merchant-account-entry { width: 52px; min-height: 52px; display: grid; grid-template-columns: 36px; justify-content: center; padding: 0; }
+  .workspace.sidebar-collapsed .merchant-account-copy, .workspace.sidebar-collapsed .merchant-account-more { display: none; }
+  .workspace.sidebar-collapsed .merchant-account-entry .nav-tooltip { position: absolute; left: calc(100% + 10px); top: 50%; z-index: 90; display: block; width: max-content; padding: 7px 9px; border: 1px solid #3b3b35; border-radius: 5px; background: #171714; color: #f4f1ea; font-size: 12px; line-height: 1.3; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(3px,-50%); transition: opacity .14s ease, transform .14s ease; }
+  .workspace.sidebar-collapsed .merchant-account-entry:hover .nav-tooltip, .workspace.sidebar-collapsed .merchant-account-entry:focus-visible .nav-tooltip { opacity: 1; transform: translate(0,-50%); }
+}
+
+@media (max-width: 1023px) {
+  .nav-footer { padding-top: 8px; }
+  .merchant-account-entry { min-height: 56px; }
+  .account-menu { left: 0; right: 0; bottom: calc(100% + 8px); width: 100%; max-height: min(390px, calc(100dvh - var(--app-topbar-height) - 100px)); }
+}
+
+@media (max-width: 480px) {
+  .change-password-dialog { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); width: calc(100vw - 20px); max-height: calc(100dvh - 20px - env(safe-area-inset-bottom)); transform: translateX(-50%); }
+  .change-password-dialog > header, .change-password-body { padding-inline: 16px; }
+  .change-password-dialog > footer { padding: 12px 16px; }
+  .change-password-dialog > footer .btn { min-height: 44px; flex: 1; }
 }
 
 /* Appointment and customer operations. */

@@ -33,10 +33,10 @@ function clearSessionCookies(res) {
   res.clearCookie(CSRF_COOKIE, { ...common, httpOnly: false });
 }
 
-function createRateLimiter({ windowMs, limit }) {
+function createRateLimiter({ windowMs, limit, key: keyForRequest }) {
   const buckets = new Map();
   return (req, res, next) => {
-    const key = req.ip || req.socket.remoteAddress || "unknown";
+    const key = keyForRequest ? keyForRequest(req) : (req.ip || req.socket.remoteAddress || "unknown");
     const now = Date.now();
     const values = (buckets.get(key) || []).filter(value => now - value < windowMs);
     if (values.length >= limit) return failure(res, new ServiceError(429, "RATE_LIMITED", "操作过于频繁，请稍后重试"));
@@ -49,6 +49,11 @@ function createRateLimiter({ windowMs, limit }) {
 function registerMerchantRoutes(app, getService, options = {}) {
   const authLimit = createRateLimiter({ windowMs: 60_000, limit: 12 });
   const redeemLimit = createRateLimiter({ windowMs: 60_000, limit: 10 });
+  const changePasswordLimit = createRateLimiter({
+    windowMs: 60_000,
+    limit: 5,
+    key: req => crypto.createHash("sha256").update(`${req.ip || req.socket.remoteAddress || "unknown"}|${cookies(req)[SESSION_COOKIE] || "anonymous"}`).digest("hex")
+  });
   const mediaByService = new WeakMap();
   const workspaceMedia = service => {
     if (!mediaByService.has(service)) mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot }));
@@ -103,6 +108,25 @@ function registerMerchantRoutes(app, getService, options = {}) {
       }
       clearSessionCookies(res);
       return success(res, null, "已退出登录", 200, id);
+    } catch (error) { return failure(res, error, id); }
+  });
+
+  app.post("/auth/change-password", async (req, res) => {
+    const id = requestId("password");
+    try {
+      const service = await serviceOrThrow();
+      const scope = await service.resolveSession(cookies(req)[SESSION_COOKIE]);
+      if (!scope) throw new ServiceError(401, "AUTH_REQUIRED", "请先登录");
+      if (!service.verifyCsrf(scope, String(req.get("x-atelier-csrf") || ""))) throw new ServiceError(403, "CSRF_INVALID", "页面会话已更新，请刷新后重试");
+      let allowed = false;
+      changePasswordLimit(req, res, () => { allowed = true; });
+      if (!allowed) return;
+      for (const key of ["userId", "tenantId", "workspaceId", "storeId"]) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) throw new ServiceError(400, "INVALID_PASSWORD_REQUEST", "修改密码请求包含不允许的字段");
+      }
+      await service.changePassword(scope, req.body || {}, { requestId: id });
+      clearSessionCookies(res);
+      return success(res, null, "密码已更新，请重新登录", 200, id);
     } catch (error) { return failure(res, error, id); }
   });
 

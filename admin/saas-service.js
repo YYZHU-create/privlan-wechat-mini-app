@@ -118,6 +118,24 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     });
   }
 
+  async function changePassword(scope, input = {}, context = {}) {
+    if (!scope?.userId) throw new ServiceError(401, "AUTH_REQUIRED", "请先登录");
+    const currentPassword = String(input.currentPassword || "");
+    const newPassword = String(input.newPassword || "");
+    if (!currentPassword) throw new ServiceError(400, "CURRENT_PASSWORD_REQUIRED", "请输入当前密码");
+    if (newPassword.length < 8 || newPassword.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码至少 8 位");
+    return db.transaction(async tx => {
+      const user = (await tx.query("select id,password_hash,status from users where id=$1 for update", [scope.userId])).rows[0];
+      if (!user || user.status !== "active") throw new ServiceError(401, "AUTH_REQUIRED", "请先登录");
+      if (!verifyPassword(currentPassword, user.password_hash)) throw new ServiceError(400, "CURRENT_PASSWORD_INVALID", "当前密码不正确");
+      if (newPassword === currentPassword) throw new ServiceError(400, "PASSWORD_REUSE_NOT_ALLOWED", "新密码不能与当前密码相同");
+      await tx.query("update users set password_hash=$1,updated_at=now() where id=$2", [hashPassword(newPassword), scope.userId]);
+      await tx.query("update merchant_sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [scope.userId]);
+      await audit(tx, { tenantId: scope.tenantId, workspaceId: scope.workspaceId, actorType: "merchant", actorId: scope.userId, requestId: context.requestId }, "merchant.password_changed", "user", scope.userId);
+      return { passwordChanged: true };
+    });
+  }
+
   function verifyCsrf(scope, token) { return Boolean(token && scope?.csrfTokenHash && crypto.timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(scope.csrfTokenHash))); }
 
   async function readConfig(scope) {
@@ -323,7 +341,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  return { db, appointmentService, register, login, resolveSession, logout, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, register, login, resolveSession, logout, changePassword, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

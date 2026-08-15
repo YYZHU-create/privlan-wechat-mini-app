@@ -18,8 +18,14 @@ createApp({
     });
     const loading = ref(true);
     const loadError = ref("");
-    const auth = reactive({ loading: true, session: null, mode: "login", login: "", password: "", storeName: "", contactName: "", template: "sample", sending: false, error: "" });
+    const auth = reactive({ loading: true, session: null, mode: "login", login: "", password: "", storeName: "", contactName: "", template: "sample", sending: false, error: "", notice: "" });
     const account = reactive({ loading: false, subscription: null, code: "", redeeming: false, error: "" });
+    const accountMenu = reactive({ open: false, signingOut: false, error: "" });
+    const changePassword = reactive({
+      open: false, saving: false, error: "", currentPassword: "", newPassword: "", confirmPassword: "",
+      showCurrent: false, showNew: false, showConfirm: false,
+      errors: { currentPassword: "", newPassword: "", confirmPassword: "" }
+    });
     const mvpFeatureFlags = Object.freeze({ orders: false, marketing: false, analytics: false });
     const mvpViews = new Set(["overview", "editor", "products", "categories", "media", "customers", "ai-service", "channels", "account", "settings", "theme"]);
     const requestedView = new URLSearchParams(window.location.search).get("view") || "overview";
@@ -123,6 +129,8 @@ createApp({
     let tabBarCropDrag = null;
     let aiConnectionDrawerTrigger = null;
     let mobileSidebarTrigger = null;
+    let accountMenuTrigger = null;
+    let changePasswordTrigger = null;
 
     try {
       sidebarCollapsed.value = localStorage.getItem("atelier:sidebar-collapsed") === "true";
@@ -198,6 +206,10 @@ createApp({
         "ai-service": "智能客服", channels: "小程序预览", account: "账户与订阅", settings: "全局设置"
       })[currentView.value] || "工作台";
     });
+
+    const merchantDisplayName = computed(() => auth.session?.user?.displayName || auth.session?.user?.login || "当前账户");
+    const merchantInitial = computed(() => String(auth.session?.user?.displayName || auth.session?.user?.login || "A").trim().slice(0, 1).toUpperCase());
+    const merchantStoreName = computed(() => platform.workspace?.storeName || auth.session?.workspace?.storeName || auth.session?.workspace?.name || "当前店铺");
 
     const currentPageMeta = computed(() => pageDefinitions.value.find(page => page.id === currentPage.value) || pageDefinitions.value[0]);
     const sections = computed(() => cfg.value?.pageLayouts?.[currentPage.value] || []);
@@ -770,7 +782,7 @@ createApp({
 
     async function submitAuth() {
       if (auth.sending) return;
-      auth.sending = true; auth.error = "";
+      auth.sending = true; auth.error = ""; auth.notice = "";
       const endpoint = auth.mode === "register" ? "/auth/register" : "/auth/login";
       try {
         const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: auth.login, password: auth.password, storeName: auth.storeName, contactName: auth.contactName, template: auth.template }) });
@@ -794,7 +806,149 @@ createApp({
     }
 
     async function merchantSignOut() {
-      await fetch("/auth/logout", { method: "POST" }); auth.session = null; account.subscription = null; auth.mode = "login";
+      if (accountMenu.signingOut) return;
+      accountMenu.signingOut = true;
+      accountMenu.error = "";
+      try {
+        const response = await fetch("/auth/logout", { method: "POST" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.message || result.error || "退出失败，请重试");
+        accountMenu.open = false;
+        auth.session = null;
+        auth.password = "";
+        auth.mode = "login";
+        auth.notice = "";
+        account.subscription = null;
+      } catch (error) {
+        accountMenu.error = "退出失败，请重试";
+        toast("退出失败，请重试", error.message === "退出失败，请重试" ? "当前登录状态已保留。" : error.message, "error");
+      } finally {
+        accountMenu.signingOut = false;
+      }
+    }
+
+    function closeAccountMenu({ restoreFocus = false } = {}) {
+      if (!accountMenu.open) return;
+      accountMenu.open = false;
+      accountMenu.error = "";
+      if (restoreFocus) nextTick(() => accountMenuTrigger?.focus?.());
+    }
+
+    function toggleAccountMenu(event) {
+      if (accountMenu.open) {
+        closeAccountMenu({ restoreFocus: true });
+        return;
+      }
+      accountMenuTrigger = event?.currentTarget || document.activeElement;
+      accountMenu.error = "";
+      accountMenu.open = true;
+      nextTick(() => document.querySelector(".account-menu [role='menuitem']")?.focus());
+    }
+
+    function handleAccountMenuKeydown(event) {
+      const items = [...event.currentTarget.querySelectorAll("[role='menuitem']:not([disabled])")];
+      if (!items.length) return;
+      const index = Math.max(0, items.indexOf(document.activeElement));
+      let next = null;
+      if (event.key === "ArrowDown") next = items[(index + 1) % items.length];
+      if (event.key === "ArrowUp") next = items[(index - 1 + items.length) % items.length];
+      if (event.key === "Home") next = items[0];
+      if (event.key === "End") next = items.at(-1);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAccountMenu({ restoreFocus: true });
+        return;
+      }
+      if (next) {
+        event.preventDefault();
+        next.focus();
+      }
+    }
+
+    function resetChangePassword() {
+      changePassword.currentPassword = "";
+      changePassword.newPassword = "";
+      changePassword.confirmPassword = "";
+      changePassword.showCurrent = false;
+      changePassword.showNew = false;
+      changePassword.showConfirm = false;
+      changePassword.error = "";
+      Object.keys(changePassword.errors).forEach(key => { changePassword.errors[key] = ""; });
+    }
+
+    function openChangePassword(event) {
+      changePasswordTrigger = accountMenuTrigger || event?.currentTarget || document.activeElement;
+      closeAccountMenu({ restoreFocus: false });
+      resetChangePassword();
+      changePassword.open = true;
+      nextTick(() => document.getElementById("current-password")?.focus());
+    }
+
+    function closeChangePassword(force = false) {
+      if (changePassword.saving && !force) return;
+      changePassword.open = false;
+      resetChangePassword();
+      const trigger = changePasswordTrigger;
+      changePasswordTrigger = null;
+      nextTick(() => trigger?.focus?.());
+    }
+
+    function trapChangePasswordFocus(event) {
+      const focusable = [...event.currentTarget.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter(element => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    async function submitChangePassword() {
+      if (changePassword.saving) return;
+      Object.keys(changePassword.errors).forEach(key => { changePassword.errors[key] = ""; });
+      changePassword.error = "";
+      if (!changePassword.currentPassword) changePassword.errors.currentPassword = "请输入当前密码";
+      if (changePassword.newPassword.length < 8 || changePassword.newPassword.length > 128) changePassword.errors.newPassword = "新密码需为 8–128 位";
+      else if (changePassword.newPassword === changePassword.currentPassword) changePassword.errors.newPassword = "新密码不能与当前密码相同";
+      if (changePassword.confirmPassword !== changePassword.newPassword) changePassword.errors.confirmPassword = "两次输入的新密码不一致";
+      if (Object.values(changePassword.errors).some(Boolean)) {
+        nextTick(() => document.querySelector(".change-password-dialog [aria-invalid='true']")?.focus());
+        return;
+      }
+      changePassword.saving = true;
+      try {
+        const response = await fetch("/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ currentPassword: changePassword.currentPassword, newPassword: changePassword.newPassword })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          const error = new Error(result.message || result.error || "密码修改失败，请重试");
+          error.code = result.code;
+          throw error;
+        }
+        changePassword.open = false;
+        resetChangePassword();
+        changePasswordTrigger = null;
+        auth.session = null;
+        auth.password = "";
+        auth.mode = "login";
+        auth.error = "";
+        auth.notice = result.message || "密码已更新，请重新登录";
+        account.subscription = null;
+      } catch (error) {
+        if (error.code === "CURRENT_PASSWORD_INVALID" || error.code === "CURRENT_PASSWORD_REQUIRED") changePassword.errors.currentPassword = error.message;
+        else if (error.code === "INVALID_PASSWORD" || error.code === "PASSWORD_REUSE_NOT_ALLOWED") changePassword.errors.newPassword = error.message;
+        else changePassword.error = error.message || "密码修改失败，请重试";
+      } finally {
+        changePassword.saving = false;
+      }
     }
 
     async function testAiService(text) {
@@ -1245,6 +1399,7 @@ createApp({
 
     function switchView(id) {
       if (!mvpViews.has(id) || mvpFeatureFlags[id] === false) id = "overview";
+      closeAccountMenu({ restoreFocus: false });
       currentView.value = id;
       if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
       if (id === "media" && !media.value.length) loadMedia();
@@ -1255,6 +1410,7 @@ createApp({
     }
 
     function toggleSidebar() {
+      closeAccountMenu({ restoreFocus: false });
       sidebarCollapsed.value = !sidebarCollapsed.value;
       try {
         localStorage.setItem("atelier:sidebar-collapsed", String(sidebarCollapsed.value));
@@ -2518,7 +2674,21 @@ createApp({
       return "所有更改已保存";
     }
 
+    window.addEventListener("pointerdown", event => {
+      if (accountMenu.open && !event.target.closest?.(".merchant-account")) closeAccountMenu({ restoreFocus: false });
+    });
+
     window.addEventListener("keydown", event => {
+      if (changePassword.open && event.key === "Escape") {
+        event.preventDefault();
+        closeChangePassword();
+        return;
+      }
+      if (accountMenu.open && event.key === "Escape") {
+        event.preventDefault();
+        closeAccountMenu({ restoreFocus: true });
+        return;
+      }
       if (mobileSidebarOpen.value && event.key === "Escape") {
         event.preventDefault();
         closeMobileSidebar();
@@ -2551,12 +2721,12 @@ createApp({
     checkMerchantSession();
 
     return {
-      cfg, loading, loadError, auth, account, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
+      cfg, loading, loadError, auth, account, accountMenu, changePassword, merchantDisplayName, merchantInitial, merchantStoreName, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, appointmentWorkspace, appointmentDrawer, customerDrawer, bookingSettings, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2574,7 +2744,7 @@ createApp({
       <div class="merchant-auth-layout">
         <header class="merchant-auth-brand"><strong translate="no">ATELIER OS</strong><span>现代商户数字工作台</span></header>
         <section class="merchant-auth-narrative" aria-label="ATELIER OS 产品介绍"><span>BUSINESS OPERATING SYSTEM</span><h2>让设计、运营与服务，<br>在同一个系统中发生。</h2><p>为不同业务形态建立清晰、可持续的数字工作方式。</p></section>
-        <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-copy"><span>{{ auth.mode==='login'?'WELCOME BACK':'NEW WORKSPACE' }}</span><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，建立属于你的商户工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="8" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
+        <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-copy"><span>{{ auth.mode==='login'?'WELCOME BACK':'NEW WORKSPACE' }}</span><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，建立属于你的商户工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="8" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.notice" class="merchant-auth-notice" role="status"><iconify-icon class="icon" icon="ph:check-circle"></iconify-icon>{{ auth.notice }}</p><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error='';auth.notice=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
       </div>
     </main>
     <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
@@ -2622,8 +2792,22 @@ createApp({
               <iconify-icon class="icon" :icon="item.icon" aria-hidden="true"></iconify-icon><span class="nav-label">{{ item.label }}</span><span class="nav-tooltip" role="tooltip">{{ item.label }}</span>
             </button>
           </nav>
-          <div class="nav-spacer"></div>
-          <button class="nav-item" aria-label="帮助" title="帮助" @click="helpOpen=true;mobileSidebarOpen=false"><iconify-icon class="icon" icon="ph:question" aria-hidden="true"></iconify-icon><span class="nav-label">帮助</span><span class="nav-tooltip" role="tooltip">帮助</span></button>
+          <div class="nav-footer">
+            <button class="nav-item nav-help" aria-label="帮助" :title="sidebarCollapsed ? '帮助' : null" @click="helpOpen=true;mobileSidebarOpen=false"><iconify-icon class="icon" icon="ph:question" aria-hidden="true"></iconify-icon><span class="nav-label">帮助</span><span class="nav-tooltip" role="tooltip">帮助</span></button>
+            <div class="merchant-account" @pointerdown.stop>
+              <button type="button" class="merchant-account-entry" :class="{active:accountMenu.open}" aria-haspopup="menu" :aria-expanded="accountMenu.open" aria-controls="merchant-account-menu" aria-label="账户" :title="sidebarCollapsed ? '账户' : null" @click="toggleAccountMenu">
+                <span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span class="merchant-account-copy"><strong>{{ merchantDisplayName }}</strong><small>{{ merchantStoreName }}</small></span><iconify-icon class="merchant-account-more" icon="ph:dots-three" aria-hidden="true"></iconify-icon><span class="nav-tooltip" role="tooltip">账户</span>
+              </button>
+              <div v-if="accountMenu.open" id="merchant-account-menu" class="account-menu" role="menu" aria-label="账户操作" @keydown="handleAccountMenuKeydown">
+                <div class="account-menu-summary" role="none"><span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span><strong>{{ merchantDisplayName }}</strong><small>{{ auth.session?.user?.login }}</small><small>{{ merchantStoreName }}</small></span></div>
+                <div class="account-menu-separator" role="separator"></div>
+                <button type="button" role="menuitem" @click="switchView('account')"><iconify-icon class="icon" icon="ph:identification-card" aria-hidden="true"></iconify-icon><span>账户与订阅</span></button>
+                <button type="button" role="menuitem" @click="openChangePassword"><iconify-icon class="icon" icon="ph:key" aria-hidden="true"></iconify-icon><span>修改密码</span></button>
+                <button type="button" role="menuitem" class="account-menu-signout" :disabled="accountMenu.signingOut" @click="merchantSignOut"><iconify-icon class="icon" :icon="accountMenu.signingOut ? 'ph:spinner-gap' : 'ph:sign-out'" aria-hidden="true"></iconify-icon><span>{{ accountMenu.signingOut ? '正在退出…' : '退出登录' }}</span></button>
+                <p v-if="accountMenu.error" class="account-menu-error" role="alert">{{ accountMenu.error }}</p>
+              </div>
+            </div>
+          </div>
         </aside>
 
         <main id="main-content" class="workspace-main" tabindex="-1">
@@ -2937,7 +3121,7 @@ createApp({
               <section class="atelier-panel account-identity" aria-labelledby="account-identity-title">
                 <div class="atelier-panel-head"><div><h2 id="account-identity-title">账户信息</h2><p>当前登录身份只可访问所属工作区。</p></div></div>
                 <dl class="subscription-details"><div><dt>登录账号</dt><dd>{{ auth.session?.user?.login || auth.session?.user?.loginIdentifier || '当前商户' }}</dd></div><div><dt>工作区</dt><dd>{{ auth.session?.workspace?.name || platform.workspace?.workspaceName }}</dd></div><div><dt>店铺</dt><dd>{{ platform.workspace?.storeName || auth.session?.workspace?.name }}</dd></div><div><dt>角色</dt><dd>{{ auth.session?.role==='owner'?'所有者':auth.session?.role || '所有者' }}</dd></div></dl>
-                <button type="button" class="btn" @click="merchantSignOut"><iconify-icon class="icon" icon="ph:sign-out"></iconify-icon>退出登录</button>
+                <button type="button" class="btn" :disabled="accountMenu.signingOut" @click="merchantSignOut"><iconify-icon class="icon" :icon="accountMenu.signingOut ? 'ph:spinner-gap' : 'ph:sign-out'"></iconify-icon>{{ accountMenu.signingOut ? '正在退出…' : '退出当前账户' }}</button>
               </section>
               <aside class="account-retention-note"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>到期不会删除数据</strong><p>页面、商品和素材继续保留并可查看；保存设计、上传素材、修改商品、生成预览和修改 AI 配置会暂停，兑换后恢复。</p></div></aside>
             </div>
@@ -3146,6 +3330,20 @@ createApp({
           </div>
           <div class="drawer-footer"><button class="btn subtle" type="button" @click="closePhonePreview">关闭</button><button class="btn primary" type="button" :disabled="previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>{{ previewDialog.state === 'ready' ? '重新生成' : '重试生成' }}</button></div>
         </section>
+      </template>
+
+      <template v-if="changePassword.open">
+        <div class="change-password-backdrop" @click="closeChangePassword()"></div>
+        <form class="change-password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" @submit.prevent="submitChangePassword" @keydown.tab="trapChangePasswordFocus" @keydown.esc.prevent.stop="closeChangePassword()">
+          <header><div><h2 id="change-password-title">修改密码</h2><p>更新后，当前账户在所有设备上的商户会话都会退出。</p></div><button type="button" class="icon-btn" aria-label="关闭修改密码" title="关闭" :disabled="changePassword.saving" @click="closeChangePassword()"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></header>
+          <div class="change-password-body">
+            <label for="current-password">当前密码</label><div class="password-input"><input id="current-password" v-model="changePassword.currentPassword" name="current-password" :type="changePassword.showCurrent ? 'text' : 'password'" autocomplete="current-password" maxlength="128" :aria-invalid="!!changePassword.errors.currentPassword" aria-describedby="current-password-error" @input="changePassword.errors.currentPassword=''" /><button type="button" :aria-label="changePassword.showCurrent ? '隐藏当前密码' : '显示当前密码'" :title="changePassword.showCurrent ? '隐藏密码' : '显示密码'" @click="changePassword.showCurrent=!changePassword.showCurrent"><iconify-icon class="icon" :icon="changePassword.showCurrent ? 'ph:eye-slash' : 'ph:eye'"></iconify-icon></button></div><p v-if="changePassword.errors.currentPassword" id="current-password-error" class="form-error" role="alert">{{ changePassword.errors.currentPassword }}</p>
+            <label for="new-password">新密码</label><div class="password-input"><input id="new-password" v-model="changePassword.newPassword" name="new-password" :type="changePassword.showNew ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" :aria-invalid="!!changePassword.errors.newPassword" aria-describedby="new-password-help new-password-error" @input="changePassword.errors.newPassword=''" /><button type="button" :aria-label="changePassword.showNew ? '隐藏新密码' : '显示新密码'" :title="changePassword.showNew ? '隐藏密码' : '显示密码'" @click="changePassword.showNew=!changePassword.showNew"><iconify-icon class="icon" :icon="changePassword.showNew ? 'ph:eye-slash' : 'ph:eye'"></iconify-icon></button></div><p id="new-password-help" class="field-help">使用 8–128 位字符，且不能与当前密码相同。</p><p v-if="changePassword.errors.newPassword" id="new-password-error" class="form-error" role="alert">{{ changePassword.errors.newPassword }}</p>
+            <label for="confirm-password">确认新密码</label><div class="password-input"><input id="confirm-password" v-model="changePassword.confirmPassword" name="confirm-password" :type="changePassword.showConfirm ? 'text' : 'password'" autocomplete="new-password" minlength="8" maxlength="128" :aria-invalid="!!changePassword.errors.confirmPassword" aria-describedby="confirm-password-error" @input="changePassword.errors.confirmPassword=''" /><button type="button" :aria-label="changePassword.showConfirm ? '隐藏确认密码' : '显示确认密码'" :title="changePassword.showConfirm ? '隐藏密码' : '显示密码'" @click="changePassword.showConfirm=!changePassword.showConfirm"><iconify-icon class="icon" :icon="changePassword.showConfirm ? 'ph:eye-slash' : 'ph:eye'"></iconify-icon></button></div><p v-if="changePassword.errors.confirmPassword" id="confirm-password-error" class="form-error" role="alert">{{ changePassword.errors.confirmPassword }}</p>
+            <p v-if="changePassword.error" class="change-password-error" role="alert"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon>{{ changePassword.error }}</p>
+          </div>
+          <footer><button type="button" class="btn" :disabled="changePassword.saving" @click="closeChangePassword()">取消</button><button type="submit" class="btn primary" :disabled="changePassword.saving"><iconify-icon class="icon" :icon="changePassword.saving ? 'ph:spinner-gap' : 'ph:check'"></iconify-icon>{{ changePassword.saving ? '正在更新…' : '更新密码' }}</button></footer>
+        </form>
       </template>
 
       <div class="toast-stack" aria-live="polite"><div v-for="item in toasts" :key="item.id" class="toast" :class="item.type"><iconify-icon class="icon" :icon="item.type === 'error' ? 'ph:warning-circle' : 'ph:check-circle'"></iconify-icon><div class="toast-copy"><div class="toast-title">{{ item.title }}</div><div v-if="item.message" class="toast-message">{{ item.message }}</div></div></div></div>
