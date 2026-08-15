@@ -25,6 +25,8 @@ createApp({
     const requestedView = new URLSearchParams(window.location.search).get("view") || "overview";
     const currentView = ref(mvpViews.has(requestedView) ? requestedView : "overview");
     const currentPage = ref("home");
+    const sidebarCollapsed = ref(false);
+    const mobileSidebarOpen = ref(false);
     const leftPanelOpen = ref(true);
     const rightPanelOpen = ref(true);
     const selectedId = ref(null);
@@ -116,8 +118,10 @@ createApp({
     let tabBarCropImage = null;
     let tabBarCropDrag = null;
     let aiConnectionDrawerTrigger = null;
+    let mobileSidebarTrigger = null;
 
     try {
+      sidebarCollapsed.value = localStorage.getItem("atelier:sidebar-collapsed") === "true";
       leftPanelOpen.value = localStorage.getItem("privlan:left-panel") !== "closed";
       rightPanelOpen.value = localStorage.getItem("privlan:right-panel") !== "closed";
       if (window.innerWidth < 1280) {
@@ -1204,10 +1208,34 @@ createApp({
     function switchView(id) {
       if (!mvpViews.has(id) || mvpFeatureFlags[id] === false) id = "overview";
       currentView.value = id;
+      if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
       if (id === "media" && !media.value.length) loadMedia();
       const url = new URL(window.location.href);
       url.searchParams.set("view", id);
       window.history.replaceState({}, "", url);
+    }
+
+    function toggleSidebar() {
+      sidebarCollapsed.value = !sidebarCollapsed.value;
+      try {
+        localStorage.setItem("atelier:sidebar-collapsed", String(sidebarCollapsed.value));
+      } catch (error) { /* storage is optional */ }
+    }
+
+    function toggleMobileSidebar(event) {
+      if (!mobileSidebarOpen.value) mobileSidebarTrigger = event?.currentTarget || document.activeElement;
+      mobileSidebarOpen.value = !mobileSidebarOpen.value;
+      if (mobileSidebarOpen.value) {
+        nextTick(() => document.querySelector("#merchant-sidebar .nav-item")?.focus());
+      } else {
+        nextTick(() => mobileSidebarTrigger?.focus?.());
+      }
+    }
+
+    function closeMobileSidebar({ restoreFocus = true } = {}) {
+      if (!mobileSidebarOpen.value) return;
+      mobileSidebarOpen.value = false;
+      if (restoreFocus) nextTick(() => mobileSidebarTrigger?.focus?.());
     }
 
     function togglePanel(side) {
@@ -2452,6 +2480,11 @@ createApp({
     }
 
     window.addEventListener("keydown", event => {
+      if (mobileSidebarOpen.value && event.key === "Escape") {
+        event.preventDefault();
+        closeMobileSidebar();
+        return;
+      }
       if (editingProduct.value && event.key === "Escape") {
         event.preventDefault();
         closeProductEditor();
@@ -2479,12 +2512,12 @@ createApp({
     checkMerchantSession();
 
     return {
-      cfg, loading, loadError, auth, account, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, leftPanelOpen, rightPanelOpen,
+      cfg, loading, loadError, auth, account, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
@@ -2504,6 +2537,9 @@ createApp({
       <div v-else-if="account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3" class="subscription-banner warning" role="status"><span><strong>PRO 将于 {{ account.subscription.remainingDays }} 天后到期</strong></span><button type="button" @click="switchView('account')">查看订阅</button></div>
       <header class="topbar">
         <div class="brand-lockup">
+          <button class="icon-btn mobile-sidebar-toggle" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" :aria-label="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" :title="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" @click="toggleMobileSidebar">
+            <iconify-icon class="icon" :icon="mobileSidebarOpen ? 'ph:x' : 'ph:list'" aria-hidden="true"></iconify-icon>
+          </button>
           <div class="atelier-wordmark" translate="no" aria-label="ATELIER OS"><span class="atelier-name">ATELIER</span><span class="atelier-os">OS</span></div>
         </div>
         <div class="top-context">
@@ -2523,15 +2559,26 @@ createApp({
         </div>
       </header>
 
-      <div class="workspace">
-        <aside class="nav-rail">
+      <div class="workspace" :class="{'sidebar-collapsed':sidebarCollapsed,'sidebar-mobile-open':mobileSidebarOpen}">
+        <button v-if="mobileSidebarOpen" class="sidebar-backdrop" type="button" aria-label="关闭主导航" @click="closeMobileSidebar()"></button>
+        <aside id="merchant-sidebar" class="nav-rail" aria-label="商户工作区导航">
+          <div class="nav-context">
+            <span class="nav-store-mark" aria-hidden="true">{{ (platform.workspace?.storeName || auth.session.workspace?.name || 'A').slice(0,1) }}</span>
+            <span class="nav-context-copy"><strong>{{ platform.workspace?.storeName || auth.session.workspace?.name }}</strong><small>{{ account.subscription?.planId || '未激活' }}</small></span>
+            <button class="sidebar-collapse-btn" type="button" aria-controls="merchant-sidebar" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? '展开主导航' : '收起主导航'" :title="sidebarCollapsed ? '展开主导航' : '收起主导航'" @click="toggleSidebar">
+              <iconify-icon class="icon" :icon="sidebarCollapsed ? 'ph:caret-right' : 'ph:caret-left'" aria-hidden="true"></iconify-icon>
+            </button>
+            <button class="sidebar-mobile-close" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" aria-label="关闭主导航" title="关闭主导航" @click="closeMobileSidebar()">
+              <iconify-icon class="icon" icon="ph:x" aria-hidden="true"></iconify-icon>
+            </button>
+          </div>
           <nav class="nav-main" aria-label="主导航">
-            <button v-for="item in navItems" :key="item.id" class="nav-item" :class="{active: currentView === item.id}" :aria-current="currentView === item.id ? 'page' : null" @click="switchView(item.id)">
-              <iconify-icon class="icon" :icon="item.icon" aria-hidden="true"></iconify-icon><span>{{ item.label }}</span>
+            <button v-for="item in navItems" :key="item.id" class="nav-item" :class="{active: currentView === item.id}" :aria-current="currentView === item.id ? 'page' : null" :aria-label="item.label" :title="sidebarCollapsed ? item.label : null" @click="switchView(item.id)">
+              <iconify-icon class="icon" :icon="item.icon" aria-hidden="true"></iconify-icon><span class="nav-label">{{ item.label }}</span><span class="nav-tooltip" role="tooltip">{{ item.label }}</span>
             </button>
           </nav>
           <div class="nav-spacer"></div>
-          <button class="nav-item" title="帮助" @click="helpOpen=true"><iconify-icon class="icon" icon="ph:question" aria-hidden="true"></iconify-icon><span>帮助</span></button>
+          <button class="nav-item" aria-label="帮助" title="帮助" @click="helpOpen=true;mobileSidebarOpen=false"><iconify-icon class="icon" icon="ph:question" aria-hidden="true"></iconify-icon><span class="nav-label">帮助</span><span class="nav-tooltip" role="tooltip">帮助</span></button>
         </aside>
 
         <main id="main-content" class="workspace-main" tabindex="-1">
