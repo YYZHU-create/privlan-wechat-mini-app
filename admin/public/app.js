@@ -671,8 +671,7 @@ createApp({
     function installCustomFonts(fonts = []) {
       let style = document.getElementById("privlan-custom-fonts");
       if (!style) { style = document.createElement("style"); style.id = "privlan-custom-fonts"; document.head.appendChild(style); }
-      style.textContent = fonts.filter(font => font.url).map(font => `@font-face{font-family:"${font.id}";src:url("${font.url.replace(/^\/fonts\//, "/mp-fonts/")}") format("${font.format || "woff2"}");font-display:swap;}`).join("\
-");
+      style.textContent = fonts.filter(font => font.url).map(font => `@font-face{font-family:"${font.id}";src:url("${font.url.replace(/^\/fonts\//, "/mp-fonts/")}") format("${font.format || "woff2"}");font-display:swap;}`).join("\n");
     }
 
     async function loadConfig() {
@@ -2488,9 +2487,7 @@ createApp({
       if (!targets.length || mediaDeleting.value) return;
       const referenceCount = targets.reduce((total, item) => total + mediaReferenceCount(item.mpPath), 0);
       const usageWarning = referenceCount
-        ? `\
-\
-检测到这些素材在当前配置中共有 ${referenceCount} 处引用，删除后对应页面可能出现空图。`
+        ? `\n\n检测到这些素材在当前配置中共有 ${referenceCount} 处引用，删除后对应页面可能出现空图。`
         : "";
       if (!window.confirm(`确定将 ${targets.length} 个素材移入回收站吗？30 天内可以恢复。${usageWarning}`)) return;
       mediaDeleting.value = true;
