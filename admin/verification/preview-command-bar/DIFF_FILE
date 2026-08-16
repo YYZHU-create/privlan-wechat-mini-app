@@ -1,0 +1,252 @@
+diff --git a/admin/public/app.js b/admin/public/app.js
+index e0436c8..cb8bd28 100644
+--- a/admin/public/app.js
++++ b/admin/public/app.js
+@@ -2676,0 +2677,8 @@ createApp({
++    function previewStatusText() {
++      if (saveMode.value === "saving") return "保存中…";
++      if (saveMode.value === "syncing") return "正在生成…";
++      if (saveMode.value === "error") return "操作失败";
++      if (isDirty.value) return "未保存";
++      return "✓ 已保存";
++    }
++
+@@ -2730 +2738 @@ createApp({
+-      statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
++      statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+@@ -2750 +2758 @@ createApp({
+-    <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
++    <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'preview-command-shell': currentView === 'channels', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
+@@ -2753,0 +2762,18 @@ createApp({
++        <template v-if="currentView === 'channels'">
++          <div class="preview-command-left">
++            <button class="icon-btn mobile-sidebar-toggle" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" :aria-label="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" :title="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" @click="toggleMobileSidebar">
++              <iconify-icon class="icon" :icon="mobileSidebarOpen ? 'ph:x' : 'ph:list'" aria-hidden="true"></iconify-icon>
++            </button>
++            <strong>小程序预览</strong>
++          </div>
++          <div class="preview-command-actions">
++            <span class="save-state preview-save-state" :class="{ dirty: isDirty, error: saveMode === 'error' }" role="status"><i class="save-dot"></i>{{ previewStatusText() }}</span>
++            <span class="action-divider" aria-hidden="true"></span>
++            <button class="icon-btn" title="撤销 Ctrl+Z" aria-label="撤销" :disabled="!canUndo" @click="undo"><iconify-icon class="icon" icon="ph:arrow-u-up-left" aria-hidden="true"></iconify-icon></button>
++            <button class="icon-btn" title="重做 Ctrl+Shift+Z" aria-label="重做" :disabled="!canRedo" @click="redo"><iconify-icon class="icon" icon="ph:arrow-u-up-right" aria-hidden="true"></iconify-icon></button>
++            <button class="icon-btn" title="保存当前更改" aria-label="保存当前更改" :disabled="saveMode === 'saving' || !isDirty" @click="saveConfig(false)"><iconify-icon class="icon" icon="ph:floppy-disk" aria-hidden="true"></iconify-icon></button>
++            <button class="btn preview-scan-action" title="扫码预览" aria-label="扫码预览" :disabled="saveMode === 'syncing' || previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera" aria-hidden="true"></iconify-icon><span class="btn-label">扫码预览</span></button>
++            <button class="btn primary preview-generate-action" title="生成预览" aria-label="生成预览" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise" aria-hidden="true"></iconify-icon><span class="btn-label">生成预览</span></button>
++          </div>
++        </template>
++        <template v-else>
+@@ -2774,0 +2801 @@ createApp({
++        </template>
+@@ -3090 +3116,0 @@ createApp({
+-            <div class="management-header"><div><h1>小程序预览</h1><p>先保存工作区配置，再生成开发预览。扫码预览会调用本机微信开发者工具，不代表已正式发布。</p></div><div class="management-actions"><button type="button" class="btn" :disabled="saveMode==='syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:code"></iconify-icon>生成预览文件</button><button type="button" class="btn primary" :disabled="previewDialog.state==='syncing'||previewDialog.state==='generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon>手机扫码预览</button></div></div>
+diff --git a/admin/public/styles.css b/admin/public/styles.css
+index 82ec49e..253d77e 100644
+--- a/admin/public/styles.css
++++ b/admin/public/styles.css
+@@ -2124,0 +2125,52 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
++
++/* Preview-only editor command bar. The global topbar remains unchanged elsewhere. */
++.preview-command-shell {
++  --app-topbar-height: 58px;
++  grid-template-rows: var(--app-topbar-height) minmax(0, 1fr);
++}
++.preview-command-shell.has-subscription-banner {
++  grid-template-rows: auto var(--app-topbar-height) minmax(0, 1fr);
++}
++.preview-command-shell .topbar {
++  grid-template-columns: minmax(0, 1fr) auto;
++  height: var(--app-topbar-height);
++  min-height: var(--app-topbar-height);
++  padding: 0 20px;
++  border-bottom: 1px solid var(--ui-line);
++  background: var(--ui-surface);
++  box-shadow: none;
++  backdrop-filter: none;
++}
++.preview-command-left,
++.preview-command-actions {
++  min-width: 0;
++  display: flex;
++  align-items: center;
++}
++.preview-command-left { gap: 10px; }
++.preview-command-left strong { color: var(--ui-text); font-size: 15px; font-weight: 620; white-space: nowrap; }
++.preview-command-actions { justify-content: flex-end; gap: 6px; }
++.preview-command-actions .action-divider { height: 22px; margin: 0 8px; }
++.preview-command-actions .icon-btn { width: 36px; min-width: 36px; height: 36px; background: transparent; border-color: transparent; }
++.preview-command-actions .icon-btn:hover { border-color: var(--ui-line); background: var(--ui-bg-subtle); }
++.preview-command-actions .preview-scan-action { border-color: var(--ui-line-strong); background: transparent; }
++.preview-command-actions .preview-scan-action:hover { border-color: #aaa79f; background: var(--ui-bg-subtle); }
++.preview-command-actions .preview-generate-action { min-height: 36px; padding-inline: 14px; }
++.preview-save-state { min-height: 28px; padding: 0 2px; border-radius: 0; background: transparent; color: var(--ui-text-tertiary); font-size: 12px; font-weight: 500; white-space: nowrap; }
++.preview-save-state.dirty { background: transparent; color: #775018; }
++.preview-save-state.error { background: transparent; color: var(--ui-danger); }
++.preview-management .preview-explanation > .btn { flex: 0 0 auto; white-space: nowrap; }
++
++@media (max-width: 900px) {
++  .preview-command-shell .preview-save-state { display: none; }
++  .preview-command-shell .topbar { padding-inline: 12px; }
++  .preview-command-actions .action-divider { margin-inline: 4px; }
++}
++@media (max-width: 680px) {
++  .preview-command-actions { gap: 4px; }
++  .preview-command-actions .preview-scan-action { width: 36px; min-width: 36px; padding: 0; }
++  .preview-command-actions .preview-scan-action .btn-label { display: none; }
++  .preview-command-actions .preview-generate-action { padding-inline: 10px; }
++  .preview-command-left { gap: 7px; }
++  .preview-command-left strong { font-size: 14px; }
++}
+diff --git a/admin/verification/preview-command-bar-ui.js b/admin/verification/preview-command-bar-ui.js
+new file mode 100644
+index 0000000..345dcd7
+--- /dev/null
++++ b/admin/verification/preview-command-bar-ui.js
+@@ -0,0 +1,147 @@
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const path = require("node:path");
++const { chromium } = require("playwright");
++
++const baseUrl = process.env.ATELIER_UI_BASE_URL || "http://127.0.0.1:40001";
++const outputDir = path.join(__dirname, "preview-command-bar");
++
++async function assertViewport(page, viewport) {
++  const metrics = await page.evaluate(() => {
++    const visible = node => {
++      const box = node.getBoundingClientRect();
++      return box.width > 0 && box.height > 0;
++    };
++    const bar = document.querySelector(".preview-command-shell .topbar");
++    const actionBoxes = [...document.querySelectorAll(".preview-command-actions > *")].filter(visible).map(node => {
++      const box = node.getBoundingClientRect();
++      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
++    });
++    return {
++      viewport: { width: innerWidth, height: innerHeight },
++      documentWidth: document.documentElement.scrollWidth,
++      bodyWidth: document.body.scrollWidth,
++      bar: bar ? { left: bar.getBoundingClientRect().left, right: bar.getBoundingClientRect().right, height: bar.getBoundingClientRect().height } : null,
++      actionBoxes,
++      statusVisible: !!document.querySelector(".preview-save-state") && getComputedStyle(document.querySelector(".preview-save-state")).display !== "none",
++      scanLabelVisible: !!document.querySelector(".preview-scan-action .btn-label") && getComputedStyle(document.querySelector(".preview-scan-action .btn-label")).display !== "none"
++    };
++  });
++  assert.ok(metrics.bar, `${viewport.width}px: command bar missing`);
++  assert.equal(Math.round(metrics.bar.height), 58, `${viewport.width}px: command bar height`);
++  assert.ok(metrics.documentWidth <= metrics.viewport.width + 1, `${viewport.width}px: document overflow`);
++  assert.ok(metrics.bodyWidth <= metrics.viewport.width + 1, `${viewport.width}px: body overflow`);
++  assert.ok(metrics.actionBoxes.every(box => box.left >= -1 && box.right <= metrics.viewport.width + 1), `${viewport.width}px: action outside viewport`);
++  for (let index = 1; index < metrics.actionBoxes.length; index += 1) {
++    assert.ok(metrics.actionBoxes[index - 1].right <= metrics.actionBoxes[index].left + 1, `${viewport.width}px: command actions overlap`);
++  }
++  assert.equal(metrics.statusVisible, viewport.width > 900, `${viewport.width}px: status visibility`);
++  assert.equal(metrics.scanLabelVisible, viewport.width > 680, `${viewport.width}px: scan label visibility`);
++}
++
++async function register(page) {
++  await page.goto(baseUrl, { waitUntil: "networkidle" });
++  if (await page.locator(".merchant-auth-page").count()) {
++    await page.getByRole("button", { name: "还没有账户？创建店铺" }).click();
++    await page.getByLabel("登录账号").fill(`preview-command-${Date.now()}@example.com`);
++    await page.getByLabel("密码").fill("preview-command-password");
++    await page.getByLabel("店铺名称").fill("预览命令栏验收店铺");
++    await page.getByLabel("创建空白店铺").check();
++    await page.getByRole("button", { name: "创建我的工作区" }).click();
++  }
++  await page.locator(".topbar").waitFor();
++}
++
++async function run() {
++  fs.mkdirSync(outputDir, { recursive: true });
++  const browser = await chromium.launch({ headless: true });
++  const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: "zh-CN" });
++  const page = await context.newPage();
++  const errors = [];
++  const calls = [];
++  page.on("pageerror", error => errors.push(error.message));
++  for (const endpoint of ["/api/config", "/api/sync", "/api/preview"]) {
++    await page.route(`**${endpoint}`, async route => {
++      calls.push({ endpoint, method: route.request().method() });
++      if (route.request().method() === "POST") {
++        const body = endpoint === "/api/config"
++          ? { ok: true, git: { ok: true } }
++          : endpoint === "/api/sync"
++            ? { ok: true, lastSync: new Date().toISOString(), files: [], git: { ok: true } }
++            : { ok: true, qrUrl: "/api/preview/qr?v=preview-command-bar" };
++        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
++        return;
++      }
++      await route.continue();
++    });
++  }
++  try {
++    await register(page);
++    await page.goto(`${baseUrl}/?view=channels`, { waitUntil: "networkidle" });
++    await page.locator(".preview-command-shell .topbar").waitFor();
++    const topbarText = await page.locator(".preview-command-shell .topbar").innerText();
++    assert.match(topbarText, /小程序预览/);
++    assert.match(topbarText, /已保存|未保存|保存中|正在生成|操作失败/);
++    assert.equal(await page.locator(".preview-command-shell .atelier-wordmark").count(), 0);
++    assert.equal(await page.locator(".preview-command-shell .workspace-switcher").count(), 0);
++    assert.equal(await page.locator(".preview-command-shell .crumb").count(), 0);
++    assert.equal(await page.locator(".preview-command-actions .icon-btn").count(), 3);
++    assert.equal(await page.getByRole("button", { name: "扫码预览" }).count(), 1);
++    assert.equal(await page.getByRole("button", { name: "生成预览" }).count(), 1);
++    assert.ok(await page.getByRole("button", { name: "保存当前更改" }).count());
++
++    await page.goto(`${baseUrl}/?view=account`, { waitUntil: "networkidle" });
++    assert.equal(await page.locator(".topbar .atelier-wordmark").count(), 1, "non-preview brand remains");
++    assert.equal(await page.locator(".topbar .workspace-switcher").count(), 1, "non-preview workspace context remains");
++    assert.equal(await page.locator(".topbar .crumb-current").count(), 1, "non-preview breadcrumb remains");
++
++    await page.goto(`${baseUrl}/?view=settings`, { waitUntil: "networkidle" });
++    const editable = page.locator("#brand-name");
++    await editable.waitFor();
++    await editable.fill(`${await editable.inputValue()} command-bar`);
++    await page.waitForTimeout(250);
++    assert.match((await page.locator(".save-state").first().innerText()).trim(), /未保存|有未保存更改/, "settings edit did not mark config dirty");
++    await page.getByRole("button", { name: "小程序预览", exact: true }).click();
++    await page.locator(".preview-command-shell .topbar").waitFor();
++    const status = page.locator(".preview-save-state");
++    await status.waitFor();
++    assert.equal((await status.innerText()).trim(), "未保存");
++    const save = page.getByRole("button", { name: "保存当前更改" });
++    assert.equal(await save.isEnabled(), true);
++    await page.getByRole("button", { name: "撤销" }).click();
++    await page.getByRole("button", { name: "重做" }).click();
++    const configResponse = page.waitForResponse(response => response.url().endsWith("/api/config") && response.request().method() === "POST");
++    await save.click();
++    assert.equal((await configResponse).status(), 200);
++    await page.waitForTimeout(150);
++    assert.equal((await status.innerText()).trim(), "✓ 已保存");
++
++    const syncResponses = [];
++    page.on("response", response => {
++      if (["/api/sync", "/api/preview"].some(endpoint => response.url().endsWith(endpoint))) syncResponses.push({ path: new URL(response.url()).pathname, status: response.status() });
++    });
++    const scanResponse = page.waitForResponse(response => response.url().endsWith("/api/preview") || response.url().endsWith("/api/sync"));
++    await page.getByRole("button", { name: "扫码预览" }).click();
++    await scanResponse;
++    await page.locator(".preview-dialog").waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
++    assert.ok(syncResponses.some(item => item.path === "/api/sync"), "scan uses sync handler");
++    assert.ok(syncResponses.some(item => item.path === "/api/preview"), "scan uses preview handler");
++    const closePreview = page.locator(".preview-dialog .drawer-footer .btn").filter({ hasText: "关闭" });
++    if (await closePreview.isVisible()) await closePreview.click({ force: true });
++    await page.waitForTimeout(3600);
++
++    for (const viewport of [{ width: 2560, height: 1440 }, { width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }, { width: 430, height: 932 }]) {
++      await page.setViewportSize(viewport);
++      await page.waitForTimeout(100);
++      await assertViewport(page, viewport);
++      await page.screenshot({ path: path.join(outputDir, `command-bar-${viewport.width}x${viewport.height}.png`) });
++    }
++    assert.deepEqual(errors, [], `page errors: ${errors.join(" | ")}`);
++    process.stdout.write(`Preview Command Bar UI checks passed: ${calls.map(call => `${call.method} ${call.endpoint}`).join(", ")}\n`);
++  } finally {
++    await context.close();
++    await browser.close();
++  }
++}
++
++run().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

@@ -1,0 +1,60 @@
+ATELIER OS Preview Command Bar verification
+
+Branch: codex/atelier-os-saas-mvp
+Changed field: preview_command_bar
+Changed value: channels-only 58px command bar; status/divider/undo/redo/icon-save/scan/generate order; duplicate Preview heading/actions removed
+Baseline commit: d57946c
+
+Artifacts:
+- MODIFIED_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/preview-command-bar/MODIFIED_FILE
+- DIFF_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/preview-command-bar/DIFF_FILE
+- VERIFICATION.txt: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/preview-command-bar/VERIFICATION.txt
+- ROLLBACK.sh: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/preview-command-bar/ROLLBACK.sh
+
+Hashes:
+- Baseline physical app.js SHA-256 (before this task, including preserved dirty AI edits): D7E96AE1FB66FF590A5FD22C231F737CA4ECA03D3A4DAE7736FC338358375DF1
+- Baseline physical styles.css SHA-256: 3D926B15601AC0A4568DE25A84254289C94843D7A584F9FD8C9209E8ABC4DA21
+- Modified physical app.js SHA-256: 506AB2ED6C6A3013456497945B4C27777307A9531C59C09881880E35020EFCC6
+- Modified physical styles.css SHA-256: A0963C4462728337F8775EB2DF568C40F91A80C02C06AA0E73E05B094FB83748
+- Focused QA script SHA-256: E9D873C1FDE056400DD1A05B1FA0146D63C3C8B7DC0A514A6062A4AF13222C4D
+- DIFF_FILE SHA-256: 95A11C514D1F0BC24977319A2EF91E4224E3AA9047FCFC80204BE3BC4F7D6BF4
+
+BASELINE
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin; node --check public/app.js; npm test
+Input: existing worktree at commit d57946c before Preview Command Bar edits; unrelated app.js AI edits and images/pinterest_video.mp4 deletion preserved
+Literal output/result: node --check exit 0; tests 63; pass 62; fail 0; cancelled 0; skipped 1; todo 0
+Exit status: 0 for both commands
+
+MODIFIED
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin; node --check public/app.js; set NODE_PATH=C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules; node verification/preview-command-bar-ui.js
+Input: ATELIER_UI_BASE_URL=http://127.0.0.1:40001; Playwright route interception returns successful JSON for POST /api/config, /api/sync and /api/preview while preserving original handlers and request paths
+Literal output/result: Preview Command Bar UI checks passed: GET /api/config, GET /api/config, GET /api/config, GET /api/config, POST /api/config, POST /api/sync, POST /api/preview
+Exit status: 0
+
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin; npm test
+Input: modified worktree with task files staged selectively; existing AI and video changes left unstaged
+Literal output/result: tests 63; pass 62; fail 0; cancelled 0; skipped 1; todo 0
+Exit status: 0
+
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo; git diff --check
+Input: working tree and staged task diff
+Literal output/result: no output
+Exit status: 0
+
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo; Get-NetTCPConnection -LocalPort 40001 -State Listen; Invoke-WebRequest http://127.0.0.1:40001/?view=channels
+Input: running local service
+Literal output/result: listener 127.0.0.1:40001; HTTP 200; Preview Command Bar screenshots generated at 2560x1440, 1920x1080, 1366x768, 1024x768 and 430x932
+Exit status: 0
+
+ROLLBACK
+Command: git worktree add --detach TARGET d57946c; git -C TARGET apply --unidiff-zero DIFF_FILE; cd TARGET/admin; node --check public/app.js; bash ROLLBACK.sh TARGET; git -C TARGET diff --exit-code
+Input: independent copy TARGET; DIFF_FILE SHA-256 95A11C514D1F0BC24977319A2EF91E4224E3AA9047FCFC80204BE3BC4F7D6BF4
+Literal output/result: ROLLBACK_APPLIED target=/tmp/atelier-preview-command-final-a51aae13bf83418bb36b6ed0520c4c0e; MODIFIED_TEST_EXIT=0; ROLLBACK_EXIT=0; ROLLBACK_DIFF_EXIT=0; TRACKED_STATUS=; restored TARGET matches d57946c
+Exit status: 0
+Restored behavior/status: independent TARGET returned to baseline commit with no task files or task diff; main worktree remains changed.
+
+Existing UI regression note:
+Command: set ATELIER_UI_BASE_URL=http://127.0.0.1:40001; node verification/ui-browser-check.js
+Literal output/result: failed at existing AI drawer navigation after switching to 430px: nav item “客服” was outside viewport; no Command Bar assertion or page error was reported.
+Exit status: 1
+Assessment: focused Preview Command Bar QA and full npm test passed; this unrelated fixed-script viewport navigation failure remains.

@@ -2122,3 +2122,55 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .appointment-detail-drawer > footer { display: grid; grid-template-columns: 1fr 1fr; padding: 12px 16px; }.appointment-detail-drawer > footer .btn { width: 100%; }
   .customer-metrics { grid-template-columns: 1fr; }.booking-rules, .booking-resource { grid-template-columns: 1fr; }.booking-rules > label, .booking-rules .toggle-row, .booking-rules > .btn { grid-column: 1; }
 }
+
+/* Preview-only editor command bar. The global topbar remains unchanged elsewhere. */
+.preview-command-shell {
+  --app-topbar-height: 58px;
+  grid-template-rows: var(--app-topbar-height) minmax(0, 1fr);
+}
+.preview-command-shell.has-subscription-banner {
+  grid-template-rows: auto var(--app-topbar-height) minmax(0, 1fr);
+}
+.preview-command-shell .topbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  height: var(--app-topbar-height);
+  min-height: var(--app-topbar-height);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.preview-command-left,
+.preview-command-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.preview-command-left { gap: 10px; }
+.preview-command-left strong { color: var(--ui-text); font-size: 15px; font-weight: 620; white-space: nowrap; }
+.preview-command-actions { justify-content: flex-end; gap: 6px; }
+.preview-command-actions .action-divider { height: 22px; margin: 0 8px; }
+.preview-command-actions .icon-btn { width: 36px; min-width: 36px; height: 36px; background: transparent; border-color: transparent; }
+.preview-command-actions .icon-btn:hover { border-color: var(--ui-line); background: var(--ui-bg-subtle); }
+.preview-command-actions .preview-scan-action { border-color: var(--ui-line-strong); background: transparent; }
+.preview-command-actions .preview-scan-action:hover { border-color: #aaa79f; background: var(--ui-bg-subtle); }
+.preview-command-actions .preview-generate-action { min-height: 36px; padding-inline: 14px; }
+.preview-save-state { min-height: 28px; padding: 0 2px; border-radius: 0; background: transparent; color: var(--ui-text-tertiary); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.preview-save-state.dirty { background: transparent; color: #775018; }
+.preview-save-state.error { background: transparent; color: var(--ui-danger); }
+.preview-management .preview-explanation > .btn { flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .preview-command-shell .preview-save-state { display: none; }
+  .preview-command-shell .topbar { padding-inline: 12px; }
+  .preview-command-actions .action-divider { margin-inline: 4px; }
+}
+@media (max-width: 680px) {
+  .preview-command-actions { gap: 4px; }
+  .preview-command-actions .preview-scan-action { width: 36px; min-width: 36px; padding: 0; }
+  .preview-command-actions .preview-scan-action .btn-label { display: none; }
+  .preview-command-actions .preview-generate-action { padding-inline: 10px; }
+  .preview-command-left { gap: 7px; }
+  .preview-command-left strong { font-size: 14px; }
+}

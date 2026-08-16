@@ -2674,6 +2674,14 @@ createApp({
       return "所有更改已保存";
     }
 
+    function previewStatusText() {
+      if (saveMode.value === "saving") return "保存中…";
+      if (saveMode.value === "syncing") return "正在生成…";
+      if (saveMode.value === "error") return "操作失败";
+      if (isDirty.value) return "未保存";
+      return "✓ 已保存";
+    }
+
     window.addEventListener("pointerdown", event => {
       if (accountMenu.open && !event.target.closest?.(".merchant-account")) closeAccountMenu({ restoreFocus: false });
     });
@@ -2727,7 +2735,7 @@ createApp({
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiConnectionEditor, faqEditor, knowledgeSourceEditor, aiConnectionBusy, appointmentWorkspace, appointmentDrawer, customerDrawer, bookingSettings, navItems, blockLibrary, viewTitle, sections, selectedSection, isDirty,
       canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService, openAiConnectionEditor, closeAiConnectionEditor, trapAiConnectionFocus, applyAiProviderPreset, saveAiConnection, testAiConnection, rotateAiConnectionSecret, deleteAiConnection, updateAiPolicy, openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
-      statusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+      statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
@@ -2747,10 +2755,28 @@ createApp({
         <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-copy"><span>{{ auth.mode==='login'?'WELCOME BACK':'NEW WORKSPACE' }}</span><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，建立属于你的商户工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="8" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.notice" class="merchant-auth-notice" role="status"><iconify-icon class="icon" icon="ph:check-circle"></iconify-icon>{{ auth.notice }}</p><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error='';auth.notice=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
       </div>
     </main>
-    <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
+    <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'preview-command-shell': currentView === 'channels', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
       <div v-if="account.subscription?.status==='expired' || account.subscription?.status==='inactive'" class="subscription-banner" role="status"><span><strong>{{ account.subscription?.status==='expired'?'订阅已到期':'工作区尚未激活' }}</strong> 数据仍安全保留，输入兑换码即可继续编辑。</span><button type="button" @click="switchView('account')">输入兑换码</button></div>
       <div v-else-if="account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3" class="subscription-banner warning" role="status"><span><strong>PRO 将于 {{ account.subscription.remainingDays }} 天后到期</strong></span><button type="button" @click="switchView('account')">查看订阅</button></div>
       <header class="topbar">
+        <template v-if="currentView === 'channels'">
+          <div class="preview-command-left">
+            <button class="icon-btn mobile-sidebar-toggle" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" :aria-label="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" :title="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" @click="toggleMobileSidebar">
+              <iconify-icon class="icon" :icon="mobileSidebarOpen ? 'ph:x' : 'ph:list'" aria-hidden="true"></iconify-icon>
+            </button>
+            <strong>小程序预览</strong>
+          </div>
+          <div class="preview-command-actions">
+            <span class="save-state preview-save-state" :class="{ dirty: isDirty, error: saveMode === 'error' }" role="status"><i class="save-dot"></i>{{ previewStatusText() }}</span>
+            <span class="action-divider" aria-hidden="true"></span>
+            <button class="icon-btn" title="撤销 Ctrl+Z" aria-label="撤销" :disabled="!canUndo" @click="undo"><iconify-icon class="icon" icon="ph:arrow-u-up-left" aria-hidden="true"></iconify-icon></button>
+            <button class="icon-btn" title="重做 Ctrl+Shift+Z" aria-label="重做" :disabled="!canRedo" @click="redo"><iconify-icon class="icon" icon="ph:arrow-u-up-right" aria-hidden="true"></iconify-icon></button>
+            <button class="icon-btn" title="保存当前更改" aria-label="保存当前更改" :disabled="saveMode === 'saving' || !isDirty" @click="saveConfig(false)"><iconify-icon class="icon" icon="ph:floppy-disk" aria-hidden="true"></iconify-icon></button>
+            <button class="btn preview-scan-action" title="扫码预览" aria-label="扫码预览" :disabled="saveMode === 'syncing' || previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera" aria-hidden="true"></iconify-icon><span class="btn-label">扫码预览</span></button>
+            <button class="btn primary preview-generate-action" title="生成预览" aria-label="生成预览" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise" aria-hidden="true"></iconify-icon><span class="btn-label">生成预览</span></button>
+          </div>
+        </template>
+        <template v-else>
         <div class="brand-lockup">
           <button class="icon-btn mobile-sidebar-toggle" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" :aria-label="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" :title="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" @click="toggleMobileSidebar">
             <iconify-icon class="icon" :icon="mobileSidebarOpen ? 'ph:x' : 'ph:list'" aria-hidden="true"></iconify-icon>
@@ -2772,6 +2798,7 @@ createApp({
           <button class="btn" title="手机扫码预览" :disabled="saveMode === 'syncing' || previewDialog.state === 'syncing' || previewDialog.state === 'generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon><span class="btn-label">手机扫码预览</span></button>
           <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">生成预览</span></button>
         </div>
+        </template>
       </header>
 
       <div class="workspace" :class="{'sidebar-collapsed':sidebarCollapsed,'sidebar-mobile-open':mobileSidebarOpen}">
@@ -3087,7 +3114,6 @@ createApp({
           </section>
 
           <section v-else-if="currentView === 'channels'" class="management preview-management">
-            <div class="management-header"><div><h1>小程序预览</h1><p>先保存工作区配置，再生成开发预览。扫码预览会调用本机微信开发者工具，不代表已正式发布。</p></div><div class="management-actions"><button type="button" class="btn" :disabled="saveMode==='syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:code"></iconify-icon>生成预览文件</button><button type="button" class="btn primary" :disabled="previewDialog.state==='syncing'||previewDialog.state==='generating'" @click="openPhonePreview"><iconify-icon class="icon" icon="ph:device-mobile-camera"></iconify-icon>手机扫码预览</button></div></div>
             <div class="preview-flow" aria-label="预览步骤"><article :class="{complete:!isDirty}"><span>1</span><div><strong>保存配置</strong><p>{{ isDirty?'当前有未保存更改':'配置已保存' }}</p></div></article><i></i><article :class="{complete:!!cfg._lastSync}"><span>2</span><div><strong>生成开发文件</strong><p>{{ cfg._lastSync?'最近生成于 '+new Date(cfg._lastSync).toLocaleString('zh-CN'):'尚未生成' }}</p></div></article><i></i><article><span>3</span><div><strong>扫码检查</strong><p>在真实手机上核对页面和交互</p></div></article></div>
             <section class="atelier-panel preview-explanation"><div><iconify-icon class="icon" icon="ph:info"></iconify-icon><div><h2>预览与发布是两个阶段</h2><p>这里生成的是微信开发项目和临时预览二维码。正式提审、发布、支付和自动发布流水线不在当前 MVP 范围内。</p></div></div><button type="button" class="btn" @click="switchView('editor')">返回设计</button></section>
             <details class="atelier-panel support-details"><summary>高级支持信息 <iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></summary><dl><div><dt>租户</dt><dd>{{ platform.workspace?.tenantId }}</dd></div><div><dt>工作区</dt><dd>{{ platform.workspace?.workspaceId || platform.workspace?.workspaceName }}</dd></div><div><dt>店铺</dt><dd>{{ platform.workspace?.storeId || platform.workspace?.storeName }}</dd></div><div><dt>运行方式</dt><dd>开发预览</dd></div></dl></details>
