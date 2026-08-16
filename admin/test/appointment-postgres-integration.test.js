@@ -17,7 +17,7 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
     await db.query("update subscriptions set status='active',expires_at=now()+interval '1 day' where workspace_id=$1", [account.workspace.id]);
     const scope = { tenantId: account.workspace.tenantId, workspaceId: account.workspace.id, storeId: account.workspace.storeId, userId: account.user.id, subscription: { status: "active" } };
     const service = createAppointmentService({ db, openIdHashKey: hashKey });
-    await service.updateSettings(scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 15, defaultBufferMinutes: 0, minAdvanceMinutes: 0, maxAdvanceDays: 30, bookingEnabled: true });
+    await service.updateSettings(scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 15, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true });
     const services = await service.listServices(scope); const advisors = await service.listAdvisors(scope);
     const secondAdvisor = await service.saveAdvisor(scope, { name: "并发顾问 B", enabled: true });
     const start = DateTime.now().setZone("Asia/Shanghai").plus({ days: 2 }).startOf("day").plus({ hours: 10 }).toUTC().toISO();

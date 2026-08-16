@@ -58,7 +58,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   async function publicScope(publicStoreId, { requireBooking = false } = {}) {
     const row = (await db.query(`select st.id store_id,st.tenant_id,st.workspace_id,st.name store_name,st.public_store_id,
       sub.status subscription_status,sub.expires_at,aset.timezone,aset.slot_interval_minutes,aset.default_buffer_minutes,
-      aset.min_advance_minutes,aset.max_advance_days,aset.booking_enabled
+      aset.max_advance_days,aset.booking_enabled
       from stores st join appointment_settings aset on aset.store_id=st.id
       left join subscriptions sub on sub.workspace_id=st.workspace_id where st.public_store_id=$1 limit 1`, [String(publicStoreId || "")])).rows[0];
     if (!row) throw new AppointmentError(404, "STORE_NOT_FOUND", "未找到预约门店");
@@ -105,7 +105,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       const startText = String(interval.start_time).slice(0,5); const endText = String(interval.end_time).slice(0,5);
       const { start: windowStart, end: windowEnd } = businessWindow(selectedDate, startText, endText, settings.timezone);
       for (let candidate = windowStart; candidate.plus({ minutes: Number(service.duration_minutes) + buffer }) <= windowEnd; candidate = candidate.plus({ minutes: Number(settings.slot_interval_minutes) })) {
-        if (candidate < current.plus({ minutes: Number(settings.min_advance_minutes) })) continue;
+        if (candidate < current) continue;
         const occupiedUntil = candidate.plus({ minutes: Number(service.duration_minutes) + buffer });
         const availableAdvisorIds = candidates.filter(advisor => !existing.some(item => item.advisor_id === advisor.id && overlaps(DateTime.fromJSDate(new Date(item.start_at)), DateTime.fromJSDate(new Date(item.occupied_until)), candidate, occupiedUntil))).map(item => item.id);
         slots.push({ id: candidate.toUTC().toISO(), startAt: candidate.toUTC().toISO(), label: `${candidate.toFormat("HH:mm")}–${candidate.plus({ minutes: Number(service.duration_minutes) }).toFormat("HH:mm")}`, available: availableAdvisorIds.length > 0, availableAdvisorIds });
@@ -128,7 +128,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     const start = utcInstant(input.startAt);
     if (!start.isValid) throw new AppointmentError(400, "INVALID_INPUT", "预约时间无效");
     const local = start.setZone(settings.timezone); const current = now().setZone(settings.timezone);
-    if (local < current.plus({ minutes: Number(settings.min_advance_minutes) }) || local > current.endOf("day").plus({ days: Number(settings.max_advance_days) })) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "预约时间不在可预约范围内");
+    if (local < current || local > current.endOf("day").plus({ days: Number(settings.max_advance_days) })) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "预约时间不在可预约范围内");
     const buffer = service.buffer_minutes_override === null ? Number(settings.default_buffer_minutes) : Number(service.buffer_minutes_override);
     const serviceEnd = start.plus({ minutes: Number(service.duration_minutes) }); const occupiedUntil = serviceEnd.plus({ minutes: buffer });
     const hours = (await tx.query("select * from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3 and weekday=$4 and enabled=true", [...rowScope(scope), storeWeekday(local)])).rows;
@@ -232,13 +232,13 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   async function getSettings(scope) {
     const row = (await db.query("select * from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows[0];
     if (!row) throw new AppointmentError(404, "APPOINTMENT_SETTINGS_NOT_FOUND", "预约设置不存在");
-    return { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), minAdvanceMinutes: Number(row.min_advance_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled };
+    return { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled };
   }
 
   async function updateSettings(scope, input) {
-    assertWritable(scope); const timezone = String(input.timezone || ""); const slot = int(input.slotIntervalMinutes,5,120,-1); const buffer = int(input.defaultBufferMinutes,0,480,-1); const advance = int(input.minAdvanceMinutes,0,525600,-1); const days = int(input.maxAdvanceDays,1,365,-1);
-    if (!assertTimezone(timezone) || slot < 0 || slot % 5 || buffer < 0 || advance < 0 || days < 0) throw new AppointmentError(400, "APPOINTMENT_SETTINGS_INVALID", "预约规则设置无效");
-    await db.transaction(async tx => { await tx.query("update appointment_settings set timezone=$1,slot_interval_minutes=$2,default_buffer_minutes=$3,min_advance_minutes=$4,max_advance_days=$5,booking_enabled=$6,updated_at=now() where tenant_id=$7 and workspace_id=$8 and store_id=$9", [timezone,slot,buffer,advance,days,input.bookingEnabled !== false,...rowScope(scope)]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
+    assertWritable(scope); const timezone = String(input.timezone || ""); const slot = int(input.slotIntervalMinutes,5,300,-1); const buffer = int(input.defaultBufferMinutes,1,30,-1); const days = int(input.maxAdvanceDays,1,365,-1);
+    if (!assertTimezone(timezone) || slot < 0 || slot % 5 || buffer < 0 || days < 0) throw new AppointmentError(400, "APPOINTMENT_SETTINGS_INVALID", "预约规则设置无效");
+    await db.transaction(async tx => { await tx.query("update appointment_settings set timezone=$1,slot_interval_minutes=$2,default_buffer_minutes=$3,min_advance_minutes=0,max_advance_days=$4,booking_enabled=$5,updated_at=now() where tenant_id=$6 and workspace_id=$7 and store_id=$8", [timezone,slot,buffer,days,input.bookingEnabled !== false,...rowScope(scope)]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
     return getSettings(scope);
   }
 

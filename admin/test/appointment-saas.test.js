@@ -25,7 +25,7 @@ async function fixture(name = "预约测试店") {
 }
 
 async function configure(base, values = {}) {
-  await base.service.updateSettings(base.scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 15, defaultBufferMinutes: 15, minAdvanceMinutes: 0, maxAdvanceDays: 30, bookingEnabled: true, ...values });
+  await base.service.updateSettings(base.scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 15, defaultBufferMinutes: 15, maxAdvanceDays: 30, bookingEnabled: true, ...values });
   const svc = base.services[0];
   await base.service.saveService(base.scope, { ...svc, durationMinutes: values.durationMinutes || 120, bufferMinutesOverride: values.bufferMinutesOverride ?? null }, svc.id);
   base.services = await base.service.listServices(base.scope);
@@ -35,16 +35,30 @@ function booking(base, overrides = {}) {
   return { publicStoreId: base.store.public_store_id, openid: "openid-a", customerName: "测试客户", customerPhone: "13800138000", serviceId: base.services[0].id, advisorId: base.advisors[0].id, startAt: "2030-01-02T01:00:00.000Z", notes: "需要深色面料", idempotencyKey: `key-${Math.random()}`, ...overrides };
 }
 
-test("slot generation supports 10, 15, 20, 30, 45 and 60 minute intervals", async () => {
+test("slot generation supports intervals through 300 minutes", async () => {
   const base = await fixture();
   try {
-    for (const interval of [10,15,20,30,45,60]) {
-      await configure(base, { slotIntervalMinutes: interval, durationMinutes: 60, defaultBufferMinutes: 0 });
+    for (const interval of [10,15,20,30,45,60,90,120,150,180,210,240,270,300]) {
+      await configure(base, { slotIntervalMinutes: interval, durationMinutes: 60, defaultBufferMinutes: 1, bufferMinutesOverride: 0 });
       const result = await base.service.availableOptions({ publicStoreId: base.store.public_store_id, date: "2030-01-02", serviceId: base.services[0].id });
-      assert.ok(result.slots.length > 2, `${interval} minute interval has slots`);
+      assert.ok(result.slots.length > 1, `${interval} minute interval has slots`);
       const first = DateTime.fromISO(result.slots[0].startAt); const second = DateTime.fromISO(result.slots[1].startAt);
       assert.equal(second.diff(first,"minutes").minutes, interval);
     }
+  } finally { await base.db.close(); }
+});
+
+test("booking rules accept interval and default buffer boundaries without lead time", async () => {
+  const base = await fixture();
+  const rules = { timezone: "Asia/Shanghai", slotIntervalMinutes: 300, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true };
+  try {
+    assert.deepEqual(await base.service.updateSettings(base.scope, { ...rules, minAdvanceMinutes: 525600 }), rules);
+    assert.equal((await base.db.query("select min_advance_minutes from appointment_settings where store_id=$1", [base.scope.storeId])).rows[0].min_advance_minutes, 0);
+    assert.equal((await base.service.availableOptions({ publicStoreId: base.store.public_store_id, date: "2030-01-01" })).slots[0].label, "09:00–10:00");
+    assert.equal((await base.service.updateSettings(base.scope, { ...rules, defaultBufferMinutes: 30 })).defaultBufferMinutes, 30);
+    await assert.rejects(() => base.service.updateSettings(base.scope, { ...rules, slotIntervalMinutes: 305 }), error => error.code === "APPOINTMENT_SETTINGS_INVALID");
+    await assert.rejects(() => base.service.updateSettings(base.scope, { ...rules, defaultBufferMinutes: 0 }), error => error.code === "APPOINTMENT_SETTINGS_INVALID");
+    await assert.rejects(() => base.service.updateSettings(base.scope, { ...rules, defaultBufferMinutes: 31 }), error => error.code === "APPOINTMENT_SETTINGS_INVALID");
   } finally { await base.db.close(); }
 });
 
@@ -88,7 +102,7 @@ test("idempotency, customer identity, advisor isolation and snapshots remain sta
 test("same OpenID is isolated by workspace and merchant reads are tenant scoped", async () => {
   const first = await fixture("工作区 A"); const second = await fixture("工作区 B");
   try {
-    await configure(first,{durationMinutes:60,defaultBufferMinutes:0}); await configure(second,{durationMinutes:60,defaultBufferMinutes:0});
+    await configure(first,{durationMinutes:60,defaultBufferMinutes:1,bufferMinutesOverride:0}); await configure(second,{durationMinutes:60,defaultBufferMinutes:1,bufferMinutesOverride:0});
     await first.service.createAppointment(booking(first,{openid:"shared-openid",idempotencyKey:"workspace-a"}));
     await second.service.createAppointment(booking(second,{openid:"shared-openid",idempotencyKey:"workspace-b"}));
     assert.equal((await first.service.listPublicAppointments({publicStoreId:first.store.public_store_id,openid:"shared-openid"})).length,1);
@@ -100,13 +114,13 @@ test("same OpenID is isolated by workspace and merchant reads are tenant scoped"
 
 test("expired subscription blocks options and create but preserves appointment history", async () => {
   const base=await fixture();
-  try{await configure(base,{durationMinutes:60,defaultBufferMinutes:0});await base.service.createAppointment(booking(base,{idempotencyKey:"before-expiry"}));await base.db.query("update subscriptions set status='inactive' where workspace_id=$1",[base.scope.workspaceId]);await assert.rejects(()=>base.service.availableOptions({publicStoreId:base.store.public_store_id,date:"2030-01-02"}),error=>error.code==="STORE_BOOKING_UNAVAILABLE");assert.equal((await base.service.listPublicAppointments({publicStoreId:base.store.public_store_id,openid:"openid-a"})).length,1);}finally{await base.db.close();}
+  try{await configure(base,{durationMinutes:60,defaultBufferMinutes:1,bufferMinutesOverride:0});await base.service.createAppointment(booking(base,{idempotencyKey:"before-expiry"}));await base.db.query("update subscriptions set status='inactive' where workspace_id=$1",[base.scope.workspaceId]);await assert.rejects(()=>base.service.availableOptions({publicStoreId:base.store.public_store_id,date:"2030-01-02"}),error=>error.code==="STORE_BOOKING_UNAVAILABLE");assert.equal((await base.service.listPublicAppointments({publicStoreId:base.store.public_store_id,openid:"openid-a"})).length,1);}finally{await base.db.close();}
 });
 
 test("explicit invalid services and non-aligned instants are rejected", async () => {
   const base = await fixture();
   try {
-    await configure(base, { durationMinutes: 60, defaultBufferMinutes: 0 });
+    await configure(base, { durationMinutes: 60, defaultBufferMinutes: 1, bufferMinutesOverride: 0 });
     await assert.rejects(() => base.service.availableOptions({ publicStoreId: base.store.public_store_id, date: "2030-01-02", serviceId: crypto.randomUUID() }), error => error.code === "INVALID_INPUT");
     await assert.rejects(() => base.service.createAppointment(booking(base, { startAt: "2030-01-02T01:00:30.000Z", idempotencyKey: "seconds-not-aligned" })), error => error.code === "SLOT_UNAVAILABLE");
   } finally { await base.db.close(); }
@@ -154,7 +168,7 @@ test("legacy appointment import is dry-run by default and idempotent by source h
 test("service and advisor deletes preserve resources referenced by appointment history", async () => {
   const base = await fixture();
   try {
-    await configure(base, { durationMinutes: 60, defaultBufferMinutes: 0 });
+    await configure(base, { durationMinutes: 60, defaultBufferMinutes: 1, bufferMinutesOverride: 0 });
     const disposableService = await base.service.saveService(base.scope, { name: "临时服务", durationMinutes: 30, bufferMinutesOverride: null, enabled: true });
     const disposableAdvisor = await base.service.saveAdvisor(base.scope, { name: "临时顾问", enabled: true });
     assert.deepEqual(await base.service.removeService(base.scope, disposableService.id), { id: disposableService.id, deleted: true });

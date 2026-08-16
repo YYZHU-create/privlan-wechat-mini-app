@@ -107,6 +107,13 @@ async function run() {
 
     await page.getByRole("button", { name: /预约设置/ }).click();
     await page.getByRole("heading", { name: "预约设置" }).waitFor();
+    const rulesForm = page.locator("form.booking-rules");
+    await rulesForm.waitFor();
+    const intervalOptions = await rulesForm.locator("select").nth(0).locator("option").allTextContents();
+    const bufferOptions = await rulesForm.locator("select").nth(1).locator("option").allTextContents();
+    assert.equal(intervalOptions.at(-1)?.trim(), "300 分钟");
+    assert.deepEqual(bufferOptions.map(value => value.trim()), Array.from({ length: 30 }, (_, index) => `${index + 1} 分钟`));
+    assert.equal(await page.getByText("最早提前预约", { exact: true }).count(), 0);
     for (const section of [{ name: "预约规则", slug: "rules" }, { name: "营业时间", slug: "hours" }, { name: "服务", slug: "services" }, { name: "服务人员", slug: "advisors" }]) {
       await page.getByRole("button", { name: section.name, exact: true }).click();
       await page.waitForTimeout(100);
@@ -114,7 +121,7 @@ async function run() {
       await page.screenshot({ path: path.join(outputDir, `settings-${section.slug}.png`) });
     }
     assert.deepEqual(errors, [], errors.join("\n"));
-    process.stdout.write("Appointment UI checks passed: lists, appointment/customer drawers, rules, hours, services, advisors at 1366x768, 1920x1080, 430x932\n");
+    process.stdout.write("Appointment UI checks passed: rule controls, lists, appointment/customer drawers, hours, services, advisors at 1366x768, 1920x1080, 430x932\n");
     await context.close();
   } finally { await browser.close(); }
 }
