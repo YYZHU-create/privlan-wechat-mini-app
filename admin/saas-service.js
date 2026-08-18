@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
 const { createWorkspaceConfig } = require("./workspace-templates");
 const { createAppointmentService } = require("./appointment-service");
+const { createCustomerService } = require("./customer-service");
 
 class ServiceError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -26,7 +27,8 @@ function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-
 
 function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "" }) {
   if (!db) throw new Error("database is required");
-  const appointmentService = createAppointmentService({ db });
+  const customerService = createCustomerService({ db });
+  const appointmentService = createAppointmentService({ db, customerService });
   const licenseHash = code => {
     if (!licensePepper) throw new ServiceError(503, "LICENSE_PEPPER_MISSING", "兑换服务尚未配置");
     return crypto.createHmac("sha256", licensePepper).update(String(code || "").trim().toUpperCase()).digest("hex");
@@ -67,6 +69,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       const subscriptionId = id();
       await tx.query("insert into subscriptions(id,tenant_id,workspace_id,plan_id,status,source,metadata) values($1,$2,$3,'TRIAL','inactive','registration',$4::jsonb)", [subscriptionId, tenantId, workspaceId, json({ trialUsed: false })]);
       await appointmentService.ensureDefaults(tx, { tenantId, workspaceId, storeId }, 60);
+      await customerService.ensureDefaults(tx, { tenantId, workspaceId, storeId });
       const session = await issueSession(tx, { userId, workspaceId, ipAddress: context.ipAddress, userAgent: context.userAgent });
       await audit(tx, { tenantId, workspaceId, actorType: "merchant", actorId: userId, requestId: context.requestId }, "workspace.register", "workspace", workspaceId, { template });
       return { session, user: { id: userId, login, displayName: String(input.contactName || "") }, workspace: { id: workspaceId, tenantId, storeId, publicStoreId, name: storeName }, subscription: { id: subscriptionId, planId: "TRIAL", status: "inactive", expiresAt: null } };
@@ -341,7 +344,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  return { db, appointmentService, register, login, resolveSession, logout, changePassword, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

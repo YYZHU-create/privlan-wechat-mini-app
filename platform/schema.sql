@@ -91,12 +91,14 @@ create table inventory_reservations (
 create table orders (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id),
+  workspace_id uuid,
   store_id uuid not null references stores(id),
   order_no text not null,
   status text not null,
   payment_status text not null,
   amount_fen bigint not null check (amount_fen >= 0),
   customer_ref text,
+  customer_id uuid,
   data jsonb not null default '{}',
   created_at timestamptz not null default now(),
   unique (tenant_id, store_id, order_no)
@@ -302,17 +304,88 @@ create table customers (
   tenant_id uuid not null,
   workspace_id uuid not null,
   store_id uuid not null,
-  source text not null check (source in ('mini_program','merchant_manual','import')),
-  name text not null,
-  phone text not null,
+  source text not null check (source in ('mini_program','merchant_manual','import','order','appointment')),
+  name text,
+  phone text,
+  display_name text,
+  avatar_url text,
+  status text not null default 'active' check (status in ('active','blocked')),
   wechat_openid_hash text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  first_order_at timestamptz,
+  last_order_at timestamptz,
+  order_count integer not null default 0 check (order_count >= 0),
+  total_spend_fen bigint not null default 0 check (total_spend_fen >= 0),
+  appointment_count integer not null default 0 check (appointment_count >= 0),
   foreign key (tenant_id,workspace_id) references workspaces(tenant_id,id),
   foreign key (tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
   unique (workspace_id,wechat_openid_hash),
   unique (tenant_id,workspace_id,store_id,id)
 );
+
+alter table orders add constraint orders_customer_scope_fk foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id);
+create index orders_customer_idx on orders (tenant_id,workspace_id,store_id,customer_id) where customer_id is not null;
+create index customers_activity_idx on customers (tenant_id,workspace_id,store_id,last_seen_at desc);
+create index customers_orders_idx on customers (tenant_id,workspace_id,store_id,last_order_at desc);
+
+create table customer_events (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null,
+  customer_id uuid not null, event_type text not null, source text not null, resource_type text, resource_id text,
+  metadata jsonb not null default '{}', occurred_at timestamptz not null default now(), created_at timestamptz not null default now(),
+  foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id),
+  unique (tenant_id,workspace_id,store_id,event_type,source,resource_type,resource_id)
+);
+create index customer_events_customer_idx on customer_events (tenant_id,workspace_id,store_id,customer_id,occurred_at desc);
+
+create table customer_tags (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null,
+  name text not null, created_at timestamptz not null default now(), unique(tenant_id,workspace_id,store_id,id),
+  foreign key (tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id)
+);
+create unique index customer_tags_name_idx on customer_tags (tenant_id,workspace_id,store_id,lower(name));
+create table customer_tag_links (
+  tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null, customer_id uuid not null, tag_id uuid not null,
+  created_at timestamptz not null default now(), primary key(customer_id,tag_id),
+  foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id),
+  foreign key (tenant_id,workspace_id,store_id,tag_id) references customer_tags(tenant_id,workspace_id,store_id,id)
+);
+create table customer_notes (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null,
+  customer_id uuid not null, author_user_id uuid, content text not null, created_at timestamptz not null default now(),
+  foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id)
+);
+create index customer_notes_customer_idx on customer_notes (tenant_id,workspace_id,store_id,customer_id,created_at desc);
+
+create table membership_programs (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null,
+  enabled boolean not null default false, points_enabled boolean not null default false, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  foreign key (tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id), unique(tenant_id,workspace_id,store_id)
+);
+create table membership_levels (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null,
+  name text not null, level_order integer not null, growth_threshold bigint not null default 0, enabled boolean not null default true, benefits jsonb not null default '{}',
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(), foreign key (tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
+  unique(tenant_id,workspace_id,store_id,id), unique(tenant_id,workspace_id,store_id,level_order), unique(tenant_id,workspace_id,store_id,name)
+);
+create table customer_memberships (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null, customer_id uuid not null, level_id uuid not null,
+  status text not null default 'active' check(status in ('active','inactive')), joined_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id), foreign key (tenant_id,workspace_id,store_id,level_id) references membership_levels(tenant_id,workspace_id,store_id,id)
+);
+create unique index customer_memberships_active_idx on customer_memberships (tenant_id,workspace_id,store_id,customer_id) where status='active';
+create table customer_points_accounts (
+  tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null, customer_id uuid not null, balance bigint not null default 0 check(balance >= 0), created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  primary key(tenant_id,workspace_id,store_id,customer_id), foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id)
+);
+create table customer_points_ledger (
+  id uuid primary key default gen_random_uuid(), tenant_id uuid not null, workspace_id uuid not null, store_id uuid not null, customer_id uuid not null, type text not null check(type in ('earn','spend','adjust','expire')), points bigint not null, balance_after bigint not null check(balance_after >= 0), reason text not null, source_type text not null, source_id text, operator_id uuid, idempotency_key text not null, created_at timestamptz not null default now(),
+  foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id), unique(tenant_id,workspace_id,store_id,idempotency_key)
+);
+create index customer_points_ledger_customer_idx on customer_points_ledger (tenant_id,workspace_id,store_id,customer_id,created_at desc);
+create unique index customer_points_ledger_source_idx on customer_points_ledger (tenant_id,workspace_id,store_id,source_type,source_id,type) where source_id is not null;
 
 create table appointment_settings (
   tenant_id uuid not null,

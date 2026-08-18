@@ -1,3 +1,6 @@
+const api = require("./utils/service-api");
+const appointmentRuntime = require("./utils/appointment-runtime");
+
 App({
   globalData: {
     cart: [],
@@ -10,6 +13,7 @@ App({
     if (wx.cloud) {
       wx.cloud.init({ traceUser: true });
       this.globalData.cloudReady = true;
+      if (appointmentRuntime.publicStoreId) api.touchCustomer({ publicStoreId: appointmentRuntime.publicStoreId }).catch(() => null);
     }
     const cart = wx.getStorageSync('cart');
     if (Array.isArray(cart)) {

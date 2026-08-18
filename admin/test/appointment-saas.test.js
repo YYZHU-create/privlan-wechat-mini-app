@@ -5,6 +5,7 @@ const { DateTime } = require("luxon");
 const { createPortableTestDatabase } = require("../database");
 const { createSaasService } = require("../saas-service");
 const { createAppointmentService } = require("../appointment-service");
+const { createCustomerService } = require("../customer-service");
 const { applyImport, inspectImport, sourceHash } = require("../appointment-import");
 const { verifyGateway } = require("../appointment-routes");
 
@@ -96,6 +97,18 @@ test("idempotency, customer identity, advisor isolation and snapshots remain sta
     await base.service.saveService(base.scope,{...base.services[0],durationMinutes:90,bufferMinutesOverride:0},base.services[0].id);
     const historical = (await base.db.query("select * from appointments where id=$1",[original.id])).rows[0];
     assert.equal(Number(historical.duration_minutes_snapshot),120); assert.equal(Number(historical.buffer_minutes_snapshot),15);
+  } finally { await base.db.close(); }
+});
+
+test("trusted identity touch followed by an anonymous appointment reuses one customer", async () => {
+  const base = await fixture();
+  try {
+    await configure(base);
+    const identity = createCustomerService({ db: base.db, openIdHashKey: OPENID_KEY });
+    const touched = await identity.touchMiniProgramCustomer(base.scope, { openid: "anonymous-openid" });
+    await base.service.createAppointment(booking(base, { openid: "anonymous-openid", customerName: "", customerPhone: "", idempotencyKey: "anonymous-booking" }));
+    assert.equal((await base.db.query("select count(*)::int count from customers where workspace_id=$1 and wechat_openid_hash=$2", [base.scope.workspaceId, identity.hashOpenId("anonymous-openid")])).rows[0].count, 1);
+    assert.equal((await base.db.query("select customer_id from appointments where idempotency_key='anonymous-booking'")).rows[0].customer_id, touched.id);
   } finally { await base.db.close(); }
 });
 

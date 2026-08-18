@@ -144,6 +144,11 @@ test("appointment gateway and merchant APIs enforce token, scope, CSRF, subscrip
   const merchantCookies = cookieValues(registered.response); const merchantCookie = cookieJar(merchantCookies); const merchantCsrf = csrf(merchantCookies);
   const publicStoreId = registered.data.data.workspace.publicStoreId;
   assert.match(publicStoreId, /^store_public_/);
+  const gatewayHeaders = { Authorization: `Bearer ${APPOINTMENT_TOKEN}`, "Content-Type": "application/json" };
+  assert.equal((await api("/v1/miniprogram/customers/touch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ publicStoreId, openid: "forged" }) })).status, 401);
+  const touched = await api("/v1/miniprogram/customers/touch", { method: "POST", headers: gatewayHeaders, body: JSON.stringify({ publicStoreId, openid: "openid-touch-private" }) });
+  assert.equal(touched.status, 200); assert.doesNotMatch(JSON.stringify(touched.data), /openid-touch-private|wechat_openid_hash/);
+  const anonymousCustomerId = touched.data.data.id;
 
   const inactiveRead = await api("/v1/appointment-settings", { headers: { Cookie: merchantCookie } });
   assert.equal(inactiveRead.status, 200);
@@ -151,6 +156,8 @@ test("appointment gateway and merchant APIs enforce token, scope, CSRF, subscrip
   assert.equal(noCsrf.status, 403); assert.equal(noCsrf.data.code, "CSRF_INVALID");
   const inactiveWrite = await api("/v1/appointment-settings", { method: "PUT", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify(inactiveRead.data.data) });
   assert.equal(inactiveWrite.status, 403); assert.equal(inactiveWrite.data.code, "SUBSCRIPTION_REQUIRED");
+  const inactiveCustomerWrite = await api("/v1/customer-tags", { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name: "高意向" }) });
+  assert.equal(inactiveCustomerWrite.status, 403); assert.equal(inactiveCustomerWrite.data.code, "SUBSCRIPTION_REQUIRED");
 
   const opsLogin = await api("/ops/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "ops-admin@localhost", password: "operator-test-password" }) });
   const opsCookie = cookieJar(cookieValues(opsLogin.response));
@@ -166,7 +173,13 @@ test("appointment gateway and merchant APIs enforce token, scope, CSRF, subscrip
   const optionsBody = { publicStoreId, serviceId: services.data.data[0].id };
   assert.equal((await api("/v1/miniprogram/appointment-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(optionsBody) })).status, 401);
   assert.equal((await api("/v1/miniprogram/appointment-options", { method: "POST", headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" }, body: JSON.stringify(optionsBody) })).status, 401);
-  const gatewayHeaders = { Authorization: `Bearer ${APPOINTMENT_TOKEN}`, "Content-Type": "application/json" };
+  const tag = await api("/v1/customer-tags", { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name: "高意向" }) });
+  assert.equal(tag.status, 201);
+  assert.equal((await api(`/v1/customers/${anonymousCustomerId}/tags`, { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ tagId: tag.data.data.id }) })).status, 200);
+  const points = await api(`/v1/customers/${anonymousCustomerId}/points/adjust`, { method: "POST", headers: { Cookie: merchantCookie, "x-atelier-csrf": merchantCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ points: 100, reason: "HTTP test", idempotencyKey: "http-points-1" }) });
+  assert.equal(points.status, 200); assert.equal(points.data.data.balance, 100);
+  const customerList = await api("/v1/customers?page=1&pageSize=25", { headers: { Cookie: merchantCookie } });
+  assert.equal(customerList.status, 200); assert.ok(customerList.data.data.items.some(item => item.id === anonymousCustomerId)); assert.doesNotMatch(JSON.stringify(customerList.data), /openid-touch-private|wechat_openid_hash/);
   const dates = await api("/v1/miniprogram/appointment-options", { method: "POST", headers: gatewayHeaders, body: JSON.stringify(optionsBody) });
   assert.equal(dates.status, 200);
   let slot = null;

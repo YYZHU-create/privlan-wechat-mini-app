@@ -60,7 +60,7 @@
 
 ## 生产部署检查
 
-- 部署 `appointmentCreate`、`appointmentOptions`、`appointmentList`，并确认 `privlan_appointment_records` 仅用于提醒通知镜像。预约列表与商户后台均从 PostgreSQL 读取，客户端提交的 `openId` 会被忽略，身份只取 `cloud.getWXContext().OPENID`。
+- 部署 `appointmentCreate`、`appointmentOptions`、`appointmentList`、`customerTouch`，并确认 `privlan_appointment_records` 仅用于提醒通知镜像。客户触达、预约列表与商户后台均从 PostgreSQL 读取，客户端提交的 `openId` 会被忽略，身份只取 `cloud.getWXContext().OPENID`。
 - 未配置 `AUTH_MODE` 时系统默认使用 `wechat`。测试认证只有在同时设置 `AUTH_MODE=test` 和 `TEST_AUTH_CODE` 时才会启用。
 - 正式环境必须设置 `AUTH_MODE=wechat` 并删除 `TEST_AUTH_CODE`，避免测试验证码入口继续存在。
 - 三个预约云函数必须使用相同的 `ATELIER_API_BASE_URL`、gateway token 和 backend 配置。Gateway token 不得写入 `utils/appointment-runtime.js`、其他前端源码或 Git。

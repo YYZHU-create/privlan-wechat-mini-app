@@ -2085,6 +2085,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .appointment-row small, .customer-row small { overflow: hidden; color: var(--ui-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .appointment-row > .status-chip, .customer-row > .status-chip { display: inline-flex; }
 .customer-row { grid-template-columns: 42px minmax(140px,1.2fr) minmax(180px,1fr) auto 20px; }
+.data-pagination { display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:14px 18px; border-top:1px solid var(--ui-line); color:var(--ui-muted); font-size:12px; }
+.customer-360-drawer { width:min(720px,100vw); }
+.customer-360-tabs { position:sticky; top:0; z-index:2; margin:0 -24px 20px; padding:0 24px; background:#fff; border-bottom:1px solid var(--ui-line); overflow-x:auto; }
+.customer-360-tabs button { flex:0 0 auto; }
+.tag-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.note-composer { display:grid; gap:10px; margin-bottom:18px; }
+.note-composer textarea { min-height:96px; resize:vertical; }
+.customer-admin-panel { padding:18px; }
+.customer-admin-panel > .tag-row { margin:4px 0; }
+.membership-program-row { display:grid; grid-template-columns:minmax(220px,1fr) auto auto auto; align-items:center; gap:14px; padding:16px; border:1px solid var(--ui-line); background:#f8f9f7; }
+.membership-program-row > div { display:grid; gap:4px; }
+.membership-program-row small { color:var(--ui-muted); font-size:12px; }
+@media (max-width: 900px) { .membership-program-row { grid-template-columns:1fr; align-items:start; } .data-pagination { justify-content:space-between; } }
 .customer-avatar { width: 38px; height: 38px; display: grid !important; place-items: center; border: 1px solid #d8d9d5; border-radius: 50%; background: #f0f1ee; font: 600 14px "Noto Serif SC", "Songti SC", serif; }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 160; display: flex; justify-content: flex-end; background: rgba(24,26,23,.38); }
 .appointment-detail-drawer, .booking-settings-drawer { width: min(520px,100vw); height: 100%; display: grid; grid-template-rows: auto minmax(0,1fr) auto; overflow: hidden; background: #f8f9f7; box-shadow: -20px 0 52px rgba(19,21,18,.18); }

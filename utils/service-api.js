@@ -50,5 +50,6 @@ module.exports = {
   loadAppointmentOptions: data => callFunction("appointmentOptions", data),
   createAppointment: data => callFunction("appointmentCreate", data),
   listAppointments: data => callFunction("appointmentList", data),
+  touchCustomer: data => callFunction("customerTouch", data),
   enableAppointmentReminder: data => callFunction("appointmentReminder", { action: "register", ...data })
 };

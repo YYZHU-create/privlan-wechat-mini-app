@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { DateTime, assertTimezone, businessWindow, isSlotAligned, overlaps, storeDay, storeWeekday, utcInstant } = require("./appointment-time");
+const { createCustomerService } = require("./customer-service");
 
 class AppointmentError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -19,8 +20,9 @@ function int(value, min, max, fallback) { const number = Number(value); return N
 function rowScope(scope) { return [scope.tenantId, scope.workspaceId, scope.storeId]; }
 function publicStatus(status) { return ({ pending: "待确认", confirmed: "已确认", completed: "已完成", cancelled: "已取消", no_show: "未到店" })[status] || status; }
 
-function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", now = () => DateTime.utc() }) {
+function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, now = () => DateTime.utc() }) {
   if (!db) throw new Error("database is required");
+  const identityService = customerService || createCustomerService({ db, openIdHashKey });
 
   function hashOpenId(openid) {
     if (Buffer.byteLength(openIdHashKey) < 32) throw new AppointmentError(503, "OPENID_HASH_KEY_MISSING", "预约身份服务尚未配置");
@@ -143,7 +145,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   async function createAppointment(input, context = {}) {
     const publicData = await publicScope(input.publicStoreId, { requireBooking: true });
     const name = String(input.customerName || "").trim().slice(0,64); const phone = String(input.customerPhone || "").trim(); const openid = String(input.openid || ""); const idempotencyKey = String(input.idempotencyKey || "").trim().slice(0,128);
-    if (!openid || !name || !/^1\d{10}$/.test(phone) || !idempotencyKey) throw new AppointmentError(400, "INVALID_INPUT", "请完整填写预约信息");
+    if (!openid || !idempotencyKey || (phone && !/^1\d{10}$/.test(phone))) throw new AppointmentError(400, "INVALID_INPUT", "预约身份或幂等信息无效");
     const scope = { ...publicData, actorType: "mini_program", actorId: "wechat_customer", requestId: context.requestId };
     return db.transaction(async tx => {
       let prior = (await tx.query("select * from appointments where workspace_id=$1 and idempotency_key=$2", [scope.workspaceId, idempotencyKey])).rows[0];
@@ -152,14 +154,14 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       await tx.query("select id from appointment_advisors where id=$1 for update", [validated.advisor.id]);
       prior = (await tx.query("select * from appointments where workspace_id=$1 and idempotency_key=$2", [scope.workspaceId, idempotencyKey])).rows[0];
       if (prior) return appointmentPublicView(prior, scope.storeName, true);
-      const openidHash = hashOpenId(openid); const customerId = uuid();
-      const customer = (await tx.query(`insert into customers(id,tenant_id,workspace_id,store_id,source,name,phone,wechat_openid_hash) values($1,$2,$3,$4,'mini_program',$5,$6,$7)
-        on conflict(workspace_id,wechat_openid_hash) do update set name=excluded.name,phone=excluded.phone,updated_at=now() returning *`, [customerId, ...rowScope(scope), name, phone, openidHash])).rows[0];
+      const customer = await identityService.findOrCreateCustomer(tx, scope, { openid, name, phone, source: "appointment" });
       const conflict = (await tx.query(`select id from appointments where tenant_id=$1 and workspace_id=$2 and store_id=$3 and advisor_id=$4 and status=any($5) and start_at<$7 and occupied_until>$6 limit 1`, [...rowScope(scope), validated.advisor.id, ACTIVE_STATUSES, validated.start.toJSDate(), validated.occupiedUntil.toJSDate()])).rows[0];
       if (conflict) throw new AppointmentError(409, "APPOINTMENT_CONFLICT", "该时间刚刚被预约，请选择其他时间");
       const appointmentId = uuid(); const appointmentNumber = `AT${validated.start.toFormat("yyLLdd")}${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
       const appointment = (await tx.query(`insert into appointments(id,tenant_id,workspace_id,store_id,customer_id,service_id,advisor_id,appointment_number,status,start_at,service_end_at,occupied_until,duration_minutes_snapshot,buffer_minutes_snapshot,timezone_snapshot,customer_name_snapshot,customer_phone_snapshot,service_name_snapshot,advisor_name_snapshot,notes,source,idempotency_key)
         values($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'mini_program',$20) returning *`, [appointmentId, ...rowScope(scope), customer.id, validated.service.id, validated.advisor.id, appointmentNumber, validated.start.toJSDate(), validated.serviceEnd.toJSDate(), validated.occupiedUntil.toJSDate(), validated.service.duration_minutes, validated.buffer, validated.settings.timezone, name, phone, validated.service.name, validated.advisor.name, String(input.notes || "").trim().slice(0,1000), idempotencyKey])).rows[0];
+      await tx.query("update customers set appointment_count=appointment_count+1,last_seen_at=now(),updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [customer.id, ...rowScope(scope)]);
+      await identityService.appendEvent(tx, scope, customer.id, "appointment_created", "appointment", "appointment", appointment.id);
       await audit(tx, scope, "appointment.create", "appointment", appointment.id, { source: "mini_program", status: "pending" });
       return appointmentPublicView(appointment, scope.storeName, false);
     });
@@ -209,6 +211,8 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       if (!row) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
       if (!TRANSITIONS[row.status]?.has(target)) throw new AppointmentError(409, "APPOINTMENT_STATUS_INVALID", "当前预约状态不能执行该操作");
       await tx.query("update appointments set status=$1,updated_at=now() where id=$2", [target, id]);
+      const eventType = target === "completed" ? "appointment_completed" : target === "cancelled" ? "appointment_cancelled" : null;
+      if (eventType) await identityService.appendEvent(tx, scope, row.customer_id, eventType, "merchant", "appointment", id);
       await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, `appointment.${target === "confirmed" ? "confirm" : target === "completed" ? "complete" : target}`, "appointment", id, { from: row.status, to: target });
     });
     return getAppointment(scope, id);
