@@ -27,7 +27,7 @@ CORE_API_500: 0
 PAGE_ERRORS: 0
 CONSOLE_ERRORS: 0 after excluding expected pre-login /auth/session 401
 QR_RUNTIME: BLOCKED (requires local WeChat DevTools runtime; no fake QR used)
-COMMIT: f158470e7aec43956fa916fb9cd022aa8a803987
+BROWSER_GATE_COMMIT: 1f3c5bb (test: add colleague browser UAT gate)
 GITHUB_SHA_MATCH: PASS (local HEAD, fetched tracking ref, git ls-remote)
 PRODUCTION_CONNECTED: NO
 PRODUCTION_MIGRATION: NOT_RUN
