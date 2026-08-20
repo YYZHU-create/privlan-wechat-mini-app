@@ -7,7 +7,8 @@
     "test": "node --test",
     "test:ai": "node --test test/ai-api.test.js",
     "qa:ai-drawer": "node qa/ai-drawer-layout.js",
-    "uat:seed": "node uat-seed.js"
+    "uat:seed": "node uat-seed.js",
+    "uat:browser": "playwright test -c playwright.config.js"
   },
   "dependencies": {
     "express": "^4.18.0",
@@ -15,6 +16,7 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.4"
+    "@electric-sql/pglite": "^0.5.4",
+    "@playwright/test": "^1.62.1"
   }
 }
