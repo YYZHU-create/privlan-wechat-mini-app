@@ -1,63 +1,61 @@
-ATELIER OS Customer Identity & Membership 1.0 Production Activation Preflight
+ATELIER OS Customer Identity & Membership 1.0 Staging Activation
 DATE=2026-08-20 Asia/Shanghai
-MODE=READ_ONLY_PREFLIGHT
+MODE=STAGING_CLONE_LOCAL_POSTGRES
 
-STATUS
-PRECHECK=FAIL
-PRODUCTION_DB_ACCESS=NO
-STAGING_AVAILABLE=UNKNOWN
-PRODUCTION_BACKUP_READY=UNKNOWN
-CUSTOMER_TOUCH_DEPLOY_ACCESS=NO
-REAL_WECHAT_E2E_READY=NO
-PRODUCTION_READY=NO
-CUSTOMER_MEMBERSHIP_PLATFORM_1_0=PRODUCTION_PENDING
-
-GIT
-BRANCH=codex/customer-production-activation-preflight (isolated clean worktree)
-BASELINE_BRANCH=codex/atelier-os-saas-mvp
-BASELINE_SHA=f1849397b0ba541af438756de42f3308f7f767ff
-REMOTE_SHA=f1849397b0ba541af438756de42f3308f7f767ff
-SOURCE_DIRTY_FILES=PROTECTED_IN_SOURCE_WORKTREE
-
-READ_ONLY_BOUNDARY
-No Production/Staging DATABASE_URL was available.
-No database migration was executed.
-No production database, Secret, Cloud Environment, customer data, or source worktree was modified.
-No customerTouch deployment was attempted.
-
-CODE_CHECKS
-005 migration reviewed: PASS
-customers nullable/profile/aggregate fields: PASS
-orders workspace_id/customer_id: PASS
-customer_events/tags/notes/membership/points tables: PASS
-customerTouch trusted OPENID source: PASS
-customerTouch HTTPS-only request implementation: PASS
-Gateway token absent from frontend/tracked runtime config: PASS
-Local npm test after preflight fixes: 71 tests / 70 pass / 0 fail / 1 skipped / exit 0 (18.215624s)
-Skipped test: real PostgreSQL integration because ATELIER_REAL_POSTGRES_URL is not configured.
-
-FIXES IMPLEMENTED IN THIS PREFLIGHT BRANCH
-1. Removed BEGIN/COMMIT from migration 005; migration runner owns the transaction.
-2. Added runner rejection for migration files containing transaction-control statements.
-3. Added NOT VALID orders_customer_workspace_required_check: customer_id IS NULL OR workspace_id IS NOT NULL.
-4. Expanded real PostgreSQL integration coverage and child-table cleanup order.
-
-PATCH_FILES
-admin/database.js
-admin/test/database-migration.test.js
-admin/test/appointment-postgres-integration.test.js
-admin/test/customer-identity.test.js
-platform/migrations/005_customer_identity_membership.sql
-platform/schema.sql
-
-PRODUCTION GATES
-MIGRATION_005_STAGING=PENDING
-REAL_POSTGRES=PENDING
-PRODUCTION_BACKUP=PENDING
-MIGRATION_005_PRODUCTION=PENDING
-CUSTOMER_TOUCH_CONFIG=PENDING
-CUSTOMER_TOUCH_DEPLOY=PENDING
+STAGING
+DATABASE_ENV=staging
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=5432
+DATABASE_NAME=atelier_os_staging
+DATABASE_USER=atelier_staging
+PRODUCTION_CONNECTED=NO
+CUSTOMER_TOUCH_DEPLOY=NOT_RUN
 REAL_WECHAT_E2E=PENDING
 
-NEXT ACTION
-Provide non-secret environment metadata and inject credentials through the approved secrets store. Do not paste DATABASE_URL, passwords, tokens, OpenID, or customer PII into chat.
+GATES
+STAGING_DB=PASS
+BACKUP=PASS
+MIGRATION_005_STAGING=PASS
+REAL_POSTGRES=PASS
+CUSTOMER_IDENTITY_PG=PASS
+APPOINTMENT_REGRESSION_PG=PASS
+MEMBERSHIP_PG=PASS
+POINTS_LEDGER_PG=PASS
+TENANT_ISOLATION_PG=PASS
+ORDER_LINK_REPORT=PASS
+FK_VALIDATE_READY=YES
+PRODUCTION_GATE_READY=NO
+
+MIGRATION
+001=PASS
+002=PASS
+003=PASS
+004=PASS
+005=PASS
+SCHEMA_MIGRATIONS=5 rows (001..005)
+TRANSACTION_CONTROL=PASS (runner-owned transaction; 005 has no BEGIN/COMMIT)
+
+COUNTS
+PRE_MIGRATION=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+POST_MIGRATION=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+POST_TEST_CLEANUP=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+
+CONSTRAINTS
+WORKSPACE_REQUIRED=VALIDATED
+CUSTOMER_SCOPE_FK=VALIDATED
+ORPHAN_COUNT=0
+CROSS_TENANT_MISMATCH=0
+WORKSPACE_MISMATCH=0
+STORE_MISMATCH=0
+
+BACKUP
+BACKUP_TYPE=pg_dump_custom
+BACKUP_PATH=C:\Users\Administrator\AppData\Local\AtelierOS\Backups\atelier-os-staging-final-20260820-131115.dump
+RESTORE_TEST=PASS (temporary atelier_os_staging_restore_test created, restored, checked, and dropped)
+
+TESTS
+COMMAND=Set ATELIER_REAL_POSTGRES_URL from protected staging secret; cd admin; npm test
+RESULT=71 tests, 71 pass, 0 fail, 0 skipped, exit 0
+
+PRIVACY
+No password, token, connection string, OpenID, hash, phone, notes, or customer PII recorded.

@@ -11,6 +11,8 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
   const db = await createPostgresDatabase(connectionString, { max: 8 });
   let account = null;
   const hashKey = "real-postgres-openid-test-key-32-bytes";
+  const previousHashKey = process.env.ATELIER_OPENID_HASH_KEY;
+  process.env.ATELIER_OPENID_HASH_KEY = hashKey;
   try {
     const saas = createSaasService({ db, licensePepper: "real-postgres-license-test-key-32-bytes" });
     account = await saas.register({ login: `postgres-appointment-${Date.now()}@example.com`, password: "postgres-test-password", storeName: "PostgreSQL 并发隔离店", template: "blank" });
@@ -62,7 +64,7 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
     if (account) {
       const tenantId = account.workspace.tenantId; const workspaceId = account.workspace.id; const userId = account.user.id;
       await db.transaction(async tx => {
-        for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
+        for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "membership_levels", "membership_programs", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
         await tx.query("delete from audit_events where workspace_id=$1", [workspaceId]);
         await tx.query("delete from merchant_sessions where workspace_id=$1", [workspaceId]);
         await tx.query("delete from subscriptions where workspace_id=$1", [workspaceId]);
@@ -74,6 +76,8 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
         await tx.query("delete from tenants where id=$1", [tenantId]);
       });
     }
+    if (previousHashKey === undefined) delete process.env.ATELIER_OPENID_HASH_KEY;
+    else process.env.ATELIER_OPENID_HASH_KEY = previousHashKey;
     await db.close();
   }
 });
