@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
 const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
-const { createWorkspaceConfig } = require("./workspace-templates");
+const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
 const { createAppointmentService } = require("./appointment-service");
 const { createCustomerService } = require("./customer-service");
 
@@ -13,7 +13,7 @@ function sha256(value) { return crypto.createHash("sha256").update(String(value)
 function normalizeLogin(value) { return String(value || "").trim().toLowerCase(); }
 function json(value) { return JSON.stringify(value ?? {}); }
 function addHours(value, hours) { return new Date(new Date(value).getTime() + hours * 3600000); }
-function publicUser(row) { return { id: row.user_id || row.id, login: row.login_identifier, displayName: row.display_name || "" }; }
+function publicUser(row) { return { id: row.user_id || row.id, login: row.login_identifier, displayName: row.display_name || "", avatarUrl: row.avatar_url || null, role: row.role || null }; }
 function publicAiConnection(row) { return { id: row.id, providerPreset: row.provider_preset, providerName: row.provider_name, baseUrl: row.base_url, model: row.model, timeoutMs: Number(row.timeout_ms), maxTokens: Number(row.max_tokens), status: row.status, hasSecret: Boolean(row.encrypted_secret), lastTestOk: row.last_test_ok, lastTestAt: row.last_test_at, lastError: row.last_error || "" }; }
 
 function makeLicenseCode() {
@@ -52,7 +52,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const login = normalizeLogin(input.login);
     const password = String(input.password || "");
     const storeName = String(input.storeName || "").trim();
-    const template = input.template === "blank" ? "blank" : "sample";
+    const template = ["retail", "service", "restaurant", "education", "studio", "blank", "sample"].includes(input.template) ? (input.template === "sample" ? "retail" : input.template) : "retail";
     if (!/^[\p{L}\p{N}_.@+-]{3,64}$/u.test(login)) throw new ServiceError(400, "INVALID_LOGIN", "登录账号格式不正确");
     if (password.length < 8 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 8 至 128 位");
     if (storeName.length < 2 || storeName.length > 64) throw new ServiceError(400, "INVALID_STORE_NAME", "店铺名称长度需为 2 至 64 位");
@@ -96,7 +96,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   async function resolveSession(token) {
     if (!token) return null;
     const result = await db.query(`select s.id session_id,s.user_id,s.workspace_id,s.csrf_token_hash,s.expires_at,
-      u.login_identifier,u.display_name,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
+      u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
       st.id store_id,st.name store_name,st.public_store_id,m.role,sub.id subscription_id,sub.status subscription_status,
       sub.plan_id subscription_plan_id,sub.started_at,sub.expires_at
       from merchant_sessions s join users u on u.id=s.user_id join memberships m on m.user_id=u.id and m.workspace_id=s.workspace_id
@@ -139,6 +139,40 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     });
   }
 
+  async function getProfile(scope) {
+    const row = (await db.query(`select u.id,u.login_identifier,u.display_name,u.avatar_url,u.status,m.role
+      from users u join memberships m on m.user_id=u.id and m.workspace_id=$2
+      where u.id=$1 and u.status='active' limit 1`, [scope.userId, scope.workspaceId])).rows[0];
+    if (!row) throw new ServiceError(404, "PROFILE_NOT_FOUND", "账户资料不存在");
+    return publicUser(row);
+  }
+
+  async function updateProfile(scope, input = {}, context = {}) {
+    assertWritable(scope);
+    const displayName = String(input.displayName ?? "").trim();
+    if (displayName.length > 80) throw new ServiceError(400, "PROFILE_NAME_INVALID", "姓名或昵称不能超过 80 个字符");
+    return db.transaction(async tx => {
+      const row = (await tx.query(`update users set display_name=$1,updated_at=now()
+        where id=$2 and exists(select 1 from memberships m where m.user_id=users.id and m.workspace_id=$3)
+        returning id,login_identifier,display_name,avatar_url,status`, [displayName || null, scope.userId, scope.workspaceId])).rows[0];
+      if (!row) throw new ServiceError(404, "PROFILE_NOT_FOUND", "账户资料不存在");
+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId, requestId: context.requestId }, "profile.update", "user", scope.userId, { fields: ["display_name"] });
+      return publicUser(row);
+    });
+  }
+
+  async function setProfileAvatar(scope, avatarUrl, context = {}) {
+    assertWritable(scope);
+    return db.transaction(async tx => {
+      const row = (await tx.query(`update users set avatar_url=$1,updated_at=now()
+        where id=$2 and exists(select 1 from memberships m where m.user_id=users.id and m.workspace_id=$3)
+        returning id,login_identifier,display_name,avatar_url,status`, [String(avatarUrl || ""), scope.userId, scope.workspaceId])).rows[0];
+      if (!row) throw new ServiceError(404, "PROFILE_NOT_FOUND", "账户资料不存在");
+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId, requestId: context.requestId }, "profile.avatar.update", "user", scope.userId, { fields: ["avatar_url"] });
+      return publicUser(row);
+    });
+  }
+
   function verifyCsrf(scope, token) { return Boolean(token && scope?.csrfTokenHash && crypto.timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(scope.csrfTokenHash))); }
 
   async function readConfig(scope) {
@@ -152,6 +186,19 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const row = (await db.query("update workspace_configs set document=$1::jsonb,version=version+1,updated_at=now() where workspace_id=$2 and tenant_id=$3 returning version,updated_at", [json(document), scope.workspaceId, scope.tenantId])).rows[0];
     if (!row) throw new ServiceError(404, "CONFIG_NOT_FOUND", "工作区配置不存在");
     return { document, version: row.version, updatedAt: row.updated_at };
+  }
+
+  async function applyBusinessTemplateToConfig(scope, templateId, expectedVersion) {
+    assertWritable(scope);
+    const current = (await db.query("select document,version,updated_at from workspace_configs where workspace_id=$1 and tenant_id=$2", [scope.workspaceId, scope.tenantId])).rows[0];
+    if (!current) throw new ServiceError(404, "CONFIG_NOT_FOUND", "工作区配置不存在");
+    if (expectedVersion !== undefined && Number(expectedVersion) !== Number(current.version)) throw new ServiceError(409, "CONFIG_VERSION_CONFLICT", "配置已被其他操作更新，请刷新后重试");
+    let document;
+    try { document = applyBusinessTemplate(current.document, templateId); } catch (error) { throw new ServiceError(404, "TEMPLATE_NOT_FOUND", error.message); }
+    // Template selection is intentionally non-persistent. The editor records
+    // the returned document in its normal undo history and Save remains the
+    // single write path for workspace configuration.
+    return { document, version: current.version, updatedAt: current.updated_at, persisted: false };
   }
 
   function assertWritable(scope) {
@@ -209,7 +256,10 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function setAiPolicy(scope, input) {
-    assertWritable(scope); const mode = input.mode === "byok" ? "byok" : "rules"; const connectionId = mode === "byok" ? String(input.connectionId || "") : null;
+    assertWritable(scope);
+    if (input.mode === "platform") throw new ServiceError(400, "AI_MODE_UNSUPPORTED", "平台托管 AI 尚未开放，请使用规则 FAQ 或自带模型");
+    if (input.mode && !["rules", "byok"].includes(input.mode)) throw new ServiceError(400, "AI_MODE_INVALID", "客服回答模式无效");
+    const mode = input.mode === "byok" ? "byok" : "rules"; const connectionId = mode === "byok" ? String(input.connectionId || "") : null;
     if (connectionId) await scopedAiConnection(scope, connectionId);
     await db.query(`insert into merchant_ai_policies(tenant_id,workspace_id,store_id,mode,connection_id,fallback_to_rules) values($1,$2,$3,$4,$5,$6)
       on conflict(workspace_id,store_id) do update set mode=excluded.mode,connection_id=excluded.connection_id,fallback_to_rules=excluded.fallback_to_rules,updated_at=now()`, [scope.tenantId, scope.workspaceId, scope.storeId, mode, connectionId, input.fallbackToRules !== false]);
@@ -344,7 +394,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, verifyCsrf, readConfig, writeConfig, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

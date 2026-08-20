@@ -786,7 +786,7 @@ createApp({
 
     async function loadProfile() {
       profile.loading = true; profile.error = "";
-      try { const data = await apiJson("/v1/profile"); Object.assign(profile, { displayName: data.displayName || "", login: data.login || "", role: data.role || auth.session?.role || "", avatarUrl: data.avatarUrl ? new URL(data.avatarUrl, location.origin).toString() : "" }); if (auth.session?.user) Object.assign(auth.session.user, data); }
+      try { const data = await apiJson("/v1/profile"); Object.assign(profile, { displayName: data.displayName || "", login: data.login || "", role: data.role || auth.session?.role || "", avatarUrl: data.avatarUrl || "" }); if (auth.session?.user) Object.assign(auth.session.user, data); }
       catch (error) { profile.error = error.message; }
       finally { profile.loading = false; }
     }
@@ -838,7 +838,7 @@ createApp({
     async function uploadProfileAvatar(file) {
       if (!file) return;
       if (!/^image\/(png|jpeg|webp)$/i.test(file.type) || file.size > 2 * 1024 * 1024) { profile.error = "头像仅支持 PNG、JPG、WebP，且不超过 2 MB"; return; }
-      const reader = new FileReader(); reader.onload = async () => { profile.saving = true; profile.error = ""; try { const data = await apiJson("/v1/profile/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl: reader.result }) }); Object.assign(profile, { ...data, avatarUrl: data.avatarUrl ? new URL(data.avatarUrl, location.origin).toString() : "" }); if (auth.session?.user) Object.assign(auth.session.user, data); toast("头像已更新", ""); } catch (error) { profile.error = error.message; } finally { profile.saving = false; } }; reader.readAsDataURL(file);
+      const reader = new FileReader(); reader.onload = async () => { profile.saving = true; profile.error = ""; try { const data = await apiJson("/v1/profile/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl: reader.result }) }); Object.assign(profile, data); if (auth.session?.user) Object.assign(auth.session.user, data); toast("头像已更新", ""); } catch (error) { profile.error = error.message; } finally { profile.saving = false; } }; reader.readAsDataURL(file);
     }
 
     async function redeemSubscription() {

@@ -32,6 +32,7 @@ const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
 const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
+const LEGACY_LOCAL_MODE = !SAAS_DATABASE_ENABLED;
 const TRASH_DIR = path.resolve(process.env.PRIVLAN_MEDIA_TRASH_DIR || path.join(__dirname, "media-trash"));
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
 const ATELIER_DATA_ROOT = path.resolve(process.env.ATELIER_DATA_ROOT || path.join(__dirname, "data"));
@@ -204,6 +205,7 @@ function parseCookies(req) {
 }
 
 function ensureLocalOperator() {
+  if (!LEGACY_LOCAL_MODE) return;
   const state = readSaasState();
   const email = String(process.env.ATELIER_OPS_EMAIL || "ops-admin@localhost").trim().toLowerCase();
   let password = String(process.env.ATELIER_OPS_PASSWORD || "");
@@ -1073,6 +1075,14 @@ app.use("/ops/v1", (req, res, next) => {
 app.use("/ops/v1", requireOperator);
 registerOpsSaasRoutes(app, getSaasService);
 
+// In SaaS mode PostgreSQL is the only operator data source. Anything not
+// explicitly registered above is intentionally unavailable instead of falling
+// through to the legacy JSON control plane below.
+app.use("/ops/v1", (req, res, next) => {
+  if (LEGACY_LOCAL_MODE) return next();
+  return res.status(404).json({ ok: false, code: "OPS_FEATURE_NOT_AVAILABLE", error: "该运营功能尚未开放" });
+});
+
 app.get("/ops/v1/session", (req, res) => {
   res.json({ ok: true, data: { id: req.operator.userId, email: req.operator.email, name: req.operator.name, role: req.operator.role } });
 });
@@ -1592,8 +1602,20 @@ app.get("/api/presets", (req, res) => {
 });
 
 // ---- Sync API ----
-app.post("/api/sync", (req, res) => {
+app.post("/api/sync", async (req, res) => {
   try {
+    if (SAAS_DATABASE_ENABLED && req.saasService) {
+      req.saasService.assertWritable(req.merchantScope);
+      const source = req.body && Object.keys(req.body).length > 0 ? req.body : null;
+      const cfg = source || null;
+      const document = cfg || (await req.saasService.readConfig(req.merchantScope)).document;
+      migrateCenterTabCrop(document);
+      const synced = { ...document, _lastSync: new Date().toISOString() };
+      const result = require("./sync")(synced, ROOT, { publicStoreId: req.merchantScope.workspace.publicStoreId || "" });
+      const warnings = packageAssetWarnings(synced);
+      const saved = await req.saasService.writeConfig(req.merchantScope, synced);
+      return res.json({ ok: true, ...result, warnings, lastSync: synced._lastSync, version: `v${synced._lastSync.replace(/[-:TZ.]/g, "").slice(0, 14)}`, configVersion: saved.version, publishJob: null, git: null });
+    }
     const sync = require("./sync");
     let cfg;
     if (req.body && Object.keys(req.body).length > 0) {
@@ -1627,6 +1649,7 @@ app.post("/api/sync", (req, res) => {
 // ---- Preview API ----
 app.post("/api/preview", (req, res) => {
   try {
+    if (SAAS_DATABASE_ENABLED && !req.saasService) return res.status(401).json({ ok: false, error: "请先登录" });
     const cliPath = findWechatDevtoolsCli();
     if (!cliPath) {
       return res.status(503).json({

@@ -1,4 +1,6 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { ServiceError } = require("./saas-service");
 const { createWorkspaceMedia } = require("./workspace-media");
 const { callOpenAiCompatible } = require("./ai-gateway");
@@ -59,6 +61,19 @@ function registerMerchantRoutes(app, getService, options = {}) {
     if (!mediaByService.has(service)) mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot }));
     return mediaByService.get(service);
   };
+  const avatarRoot = path.resolve(options.dataRoot || path.join(process.cwd(), "data"), "user-avatars");
+  fs.mkdirSync(avatarRoot, { recursive: true });
+  function parseAvatar(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i);
+    if (!match) throw new ServiceError(400, "AVATAR_FORMAT_INVALID", "头像仅支持 PNG、JPG 或 WebP 图片");
+    const mime = match[1].toLowerCase(); const buffer = Buffer.from(match[2].replace(/\s+/g, ""), "base64");
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024) throw new ServiceError(400, "AVATAR_SIZE_INVALID", "头像大小需小于 2 MB");
+    const valid = (mime === "image/png" && buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])))
+      || (mime === "image/jpeg" && buffer.subarray(0, 3).equals(Buffer.from([255,216,255])))
+      || (mime === "image/webp" && buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP");
+    if (!valid) throw new ServiceError(400, "AVATAR_CONTENT_INVALID", "头像文件内容无效");
+    return { mime, buffer, extension: mime === "image/jpeg" ? "jpg" : mime.slice(6) };
+  }
 
   async function serviceOrThrow() {
     const service = await getService();
@@ -130,6 +145,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
     } catch (error) { return failure(res, error, id); }
   });
 
+
   app.use(["/api", "/v1"], async (req, res, next) => {
     if (req.path === "/ai/query" && req.method === "POST" && req.baseUrl === "/v1") return next();
     const id = requestId("merchant");
@@ -153,15 +169,60 @@ function registerMerchantRoutes(app, getService, options = {}) {
     } catch (error) { return failure(res, error, id); }
   });
 
+  app.get("/v1/profile", async (req, res) => {
+    try { return success(res, await req.saasService.getProfile(req.merchantScope), "账户资料已获取", 200, req.requestId); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.get("/v1/business-templates", async (req, res) => {
+    try { return success(res, req.saasService.listBusinessTemplates(), "业务模板已获取", 200, req.requestId); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.post("/v1/business-templates/:id/apply", async (req, res) => {
+    try {
+      if (req.body?.confirm !== true) throw new ServiceError(400, "TEMPLATE_CONFIRM_REQUIRED", "应用模板前需要确认");
+      const result = await req.saasService.applyBusinessTemplateToConfig(req.merchantScope, req.params.id, req.body?.expectedVersion);
+      return success(res, result, "模板已载入编辑器，请检查后保存", 200, req.requestId);
+    } catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.patch("/v1/profile", async (req, res) => {
+    try {
+      for (const key of Object.keys(req.body || {})) if (key !== "displayName") throw new ServiceError(400, "PROFILE_FIELD_NOT_ALLOWED", "只允许修改姓名或昵称");
+      return success(res, await req.saasService.updateProfile(req.merchantScope, req.body || {}, { requestId: req.requestId }), "账户资料已更新", 200, req.requestId);
+    } catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.post("/v1/profile/avatar", async (req, res) => {
+    let filePath = null;
+    try {
+      const parsed = parseAvatar(req.body?.dataUrl);
+      const fileName = `${req.merchantScope.userId}-${crypto.randomBytes(8).toString("hex")}.${parsed.extension}`;
+      filePath = path.join(avatarRoot, fileName); fs.writeFileSync(filePath, parsed.buffer, { mode: 0o600 });
+      const profile = await req.saasService.setProfileAvatar(req.merchantScope, `/v1/profile/avatar/${encodeURIComponent(fileName)}`, { requestId: req.requestId });
+      return success(res, profile, "头像已更新", 200, req.requestId);
+    } catch (error) { if (filePath) fs.rmSync(filePath, { force: true }); return failure(res, error, req.requestId); }
+  });
+  app.get("/v1/profile/avatar/:file", async (req, res) => {
+    try {
+      const scope = req.merchantScope; const file = path.basename(String(req.params.file || ""));
+      const profile = await req.saasService.getProfile(scope);
+      if (!profile.avatarUrl || path.basename(profile.avatarUrl) !== file || !file.startsWith(`${scope.userId}-`)) throw new ServiceError(404, "AVATAR_NOT_FOUND", "头像不存在");
+      const filePath = path.join(avatarRoot, file); if (!fs.existsSync(filePath)) throw new ServiceError(404, "AVATAR_NOT_FOUND", "头像不存在");
+      return res.sendFile(filePath);
+    } catch (error) { return failure(res, error, req.requestId); }
+  });
+
   app.get("/api/config", async (req, res, next) => {
     if (!req.saasService) return next();
-    try { return res.json((await req.saasService.readConfig(req.merchantScope)).document); }
+    try {
+      const config = await req.saasService.readConfig(req.merchantScope);
+      res.set("X-Atelier-Config-Version", String(config.version));
+      return res.json(config.document);
+    }
     catch (error) { return failure(res, error, req.requestId); }
   });
 
   app.post("/api/config", async (req, res, next) => {
     if (!req.saasService) return next();
-    try { await req.saasService.writeConfig(req.merchantScope, req.body); return res.json({ ok: true }); }
+    try { const saved = await req.saasService.writeConfig(req.merchantScope, req.body); return res.json({ ok: true, version: saved.version, updatedAt: saved.updatedAt }); }
     catch (error) { return failure(res, error, req.requestId); }
   });
 
