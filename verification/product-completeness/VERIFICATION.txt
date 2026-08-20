@@ -17,11 +17,13 @@ SYNTAX: target JavaScript files => exit 0.
 DIFF: git diff --check => exit 0.
 UAT_SEED: PASS (staging UAT owner and neutral data)
 UAT_SEED_IDEMPOTENT: PASS (second run exit 0; same login/workspace)
-PLAYWRIGHT: NOT_AVAILABLE (no Playwright runner/spec present in this worktree)
+PLAYWRIGHT: NOT_RUN (no Playwright runner/spec present in this worktree)
 QR_RUNTIME: BLOCKED (requires local WeChat DevTools runtime; no fake QR used)
+COMMIT: f158470e7aec43956fa916fb9cd022aa8a803987
+GITHUB_SHA_MATCH: PASS (local HEAD, fetched tracking ref, git ls-remote)
 PRODUCTION_CONNECTED: NO
 PRODUCTION_MIGRATION: NOT_RUN
 CUSTOMER_TOUCH_DEPLOY: NOT_RUN
 WECHAT_PRODUCTION_MODIFIED: NO
 SECRETS_LEAKED: NO
-COLLEAGUE_UAT_READY: NO (browser gate, colleague manual UAT, commits and GitHub SHA remain)
+COLLEAGUE_UAT_READY: NO (browser gate and colleague manual UAT remain)
