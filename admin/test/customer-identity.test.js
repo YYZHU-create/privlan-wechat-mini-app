@@ -56,6 +56,7 @@ test("membership, tags and order migration use scoped stable identifiers", async
     const membership = await base.service.joinMembership(base.scope, customer.id);
     assert.equal(membership.status, "active");
     assert.equal((await base.service.get(base.scope, customer.id)).tags[0].name, "高意向");
+    await assert.rejects(() => base.db.query("insert into orders(tenant_id,store_id,order_no,status,payment_status,amount_fen,customer_id) values($1,$2,'ORDER-SCOPE-FAIL','created','unpaid',1000,$3)", [base.scope.tenantId, base.scope.storeId, customer.id]));
     await base.db.query("insert into orders(tenant_id,store_id,order_no,status,payment_status,amount_fen,customer_ref) values($1,$2,'ORDER-1','created','unpaid',1000,$3)", [base.scope.tenantId, base.scope.storeId, customer.id]);
     const dryRun = await inspectLegacyOrders(base.db);
     assert.equal(dryRun.linkableOrders, 1); assert.equal(dryRun.appliedOrders, 0);

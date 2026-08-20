@@ -1,0 +1,18 @@
+CUSTOMER_TOUCH_CODE=PASS
+IDENTITY_SOURCE=cloud.getWXContext().OPENID
+CLIENT_OPENID_ACCEPTED=NO
+API_BASE_URL=REQUIRES_OPERATOR_PROVIDED_PUBLIC_HTTPS
+GATEWAY_TOKEN=REQUIRES_OPERATOR_PROVIDED_SECRET_STORE_VALUE
+PRODUCTION_CLOUD_ENVIRONMENT=UNKNOWN
+CUSTOMER_TOUCH_DEPLOY=PENDING_USER_ACTION
+REAL_WECHAT_E2E=PENDING_USER_ACTION
+
+Required after configuration:
+1. Select the confirmed production Cloud Environment.
+2. Set ATELIER_API_BASE_URL to a public HTTPS API URL.
+3. Set matching ATELIER_APPOINTMENT_GATEWAY_TOKEN in Cloud Function and API server environments.
+4. Set ATELIER_APPOINTMENT_BACKEND=postgres and AUTH_MODE=wechat; remove TEST_AUTH_CODE.
+5. Deploy only customerTouch with cloud dependencies installed.
+6. First real touch creates one anonymous Customer; second touch reuses it.
+7. Same test user creates an appointment and customer_id remains identical.
+8. Merchant Customer 360 shows only masked phone and no raw OpenID/hash.

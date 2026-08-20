@@ -16,11 +16,22 @@ async function applyMigrations(client) {
     const existing = await client.query("select version from schema_migrations where version = $1", [version]);
     if (existing.rows.length) continue;
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
-    await client.transaction(async tx => {
-      await tx.exec(sql);
-      await tx.query("insert into schema_migrations(version) values($1)", [version]);
-    });
+    await applyMigration(client, version, sql);
   }
+}
+
+function assertNoTransactionControl(version, sql) {
+  if (/^\s*(?:begin|start\s+transaction|commit|rollback)\s*;/im.test(String(sql || ""))) {
+    throw new Error(`Migration ${version} must not contain transaction control statements`);
+  }
+}
+
+async function applyMigration(client, version, sql) {
+  assertNoTransactionControl(version, sql);
+  await client.transaction(async tx => {
+    await tx.exec(sql);
+    await tx.query("insert into schema_migrations(version) values($1)", [version]);
+  });
 }
 
 function wrapPgQueryClient(client) {
@@ -84,4 +95,4 @@ async function createDatabaseFromEnv() {
   return null;
 }
 
-module.exports = { applyMigrations, createPostgresDatabase, createPortableTestDatabase, createDatabaseFromEnv };
+module.exports = { applyMigration, applyMigrations, assertNoTransactionControl, createPostgresDatabase, createPortableTestDatabase, createDatabaseFromEnv };

@@ -46,11 +46,23 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
     ]);
     assert.equal(differentAdvisors.length, 2);
     assert.notEqual(differentAdvisors[0].number, differentAdvisors[1].number);
+
+    const firstAppointment = (await db.query("select customer_id from appointments where idempotency_key=$1", ["real-same-1"])).rows[0];
+    assert.ok(firstAppointment?.customer_id);
+    const touched = await saas.customerService.touchMiniProgramCustomer(scope, { openid: "openid-real-1" });
+    assert.equal(touched.id, firstAppointment.customer_id);
+    const membership = await saas.customerService.joinMembership(scope, touched.id);
+    assert.equal(membership.status, "active");
+    assert.equal((await saas.customerService.joinMembership(scope, touched.id)).id, membership.id);
+    assert.equal((await saas.customerService.adjustPoints(scope, touched.id, { points: 100, idempotencyKey: "real-points-1", reason: "integration" })).balance, 100);
+    assert.equal((await saas.customerService.adjustPoints(scope, touched.id, { points: -50, idempotencyKey: "real-points-2", reason: "integration" })).balance, 50);
+    await assert.rejects(() => saas.customerService.adjustPoints(scope, touched.id, { points: -100, idempotencyKey: "real-points-3", reason: "integration" }), error => error.code === "POINTS_INSUFFICIENT");
+    assert.equal((await saas.customerService.adjustPoints(scope, touched.id, { points: 100, idempotencyKey: "real-points-2", reason: "integration" })).duplicate, true);
   } finally {
     if (account) {
       const tenantId = account.workspace.tenantId; const workspaceId = account.workspace.id; const userId = account.user.id;
       await db.transaction(async tx => {
-        for (const table of ["appointment_import_runs", "appointments", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
+        for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
         await tx.query("delete from audit_events where workspace_id=$1", [workspaceId]);
         await tx.query("delete from merchant_sessions where workspace_id=$1", [workspaceId]);
         await tx.query("delete from subscriptions where workspace_id=$1", [workspaceId]);

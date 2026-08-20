@@ -5,6 +5,25 @@ const os = require("node:os");
 const path = require("node:path");
 const { createPortableTestDatabase } = require("../database");
 const { createLegacyBackup, importLegacyPrivlan } = require("../legacy-migration");
+const { assertNoTransactionControl, applyMigration } = require("../database");
+
+test("customer identity migration is runner-transaction compatible", async () => {
+  const sql = fs.readFileSync(path.resolve(__dirname, "../../platform/migrations/005_customer_identity_membership.sql"), "utf8");
+  assert.doesNotThrow(() => assertNoTransactionControl("005_customer_identity_membership", sql));
+  let committed = false; let rolledBack = false; let executed = "";
+  const client = {
+    async transaction(fn) {
+      const tx = { exec: async value => { executed = value; }, query: async () => ({ rows: [] }) };
+      try { const result = await fn(tx); committed = true; return result; } catch (error) { rolledBack = true; throw error; }
+    }
+  };
+  await applyMigration(client, "005_customer_identity_membership", sql);
+  assert.equal(committed, true); assert.equal(rolledBack, false); assert.equal(executed, sql);
+  assert.throws(() => assertNoTransactionControl("bad", "begin; select 1;"), /must not contain transaction control/);
+  let failedRollback = false;
+  await assert.rejects(() => applyMigration({ transaction: async fn => { try { await fn({ exec: async () => { throw new Error("migration failure"); }, query: async () => ({ rows: [] }) }); } catch (error) { failedRollback = true; throw error; } } }, "failing", "select 1;"), /migration failure/);
+  assert.equal(failedRollback, true);
+});
 
 process.env.NODE_ENV = "test";
 

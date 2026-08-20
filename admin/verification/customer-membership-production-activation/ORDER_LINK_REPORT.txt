@@ -1,0 +1,8 @@
+MODE=STATIC_AND_LOCAL_TEST_ONLY
+TOTAL_ORDERS=NOT_AVAILABLE_FOR_PRODUCTION
+LINKED=NOT_AVAILABLE_FOR_PRODUCTION
+UNRESOLVED=NOT_AVAILABLE_FOR_PRODUCTION
+AMBIGUOUS=NOT_AVAILABLE_FOR_PRODUCTION
+LOCAL_FIXTURE_REPORT=0 total / 0 linked / 0 unresolved / 0 ambiguous
+
+Historical orders must only be linked by deterministic UUID/stable references. Name-only and phone-only matching remain prohibited.

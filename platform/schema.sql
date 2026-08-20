@@ -101,6 +101,7 @@ create table orders (
   customer_id uuid,
   data jsonb not null default '{}',
   created_at timestamptz not null default now(),
+  constraint orders_customer_workspace_required_check check (customer_id is null or workspace_id is not null),
   unique (tenant_id, store_id, order_no)
 );
 

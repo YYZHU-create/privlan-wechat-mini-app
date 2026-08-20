@@ -1,5 +1,3 @@
-begin;
-
 create table if not exists orders (
  id uuid primary key default gen_random_uuid(), tenant_id uuid not null references tenants(id), workspace_id uuid,
  store_id uuid not null references stores(id), order_no text not null, status text not null, payment_status text not null,
@@ -39,6 +37,11 @@ alter table orders add column if not exists workspace_id uuid;
 alter table orders add column if not exists customer_id uuid;
 update orders o set workspace_id=s.workspace_id from stores s where o.store_id=s.id and o.tenant_id=s.tenant_id and o.workspace_id is null;
 create index if not exists orders_customer_idx on orders(tenant_id,workspace_id,store_id,customer_id) where customer_id is not null;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname='orders_customer_workspace_required_check') then
+    alter table orders add constraint orders_customer_workspace_required_check check (customer_id is null or workspace_id is not null) not valid;
+  end if;
+end $$;
 do $$ begin
   if not exists (select 1 from pg_constraint where conname='orders_customer_scope_fk') then
     alter table orders add constraint orders_customer_scope_fk foreign key (tenant_id,workspace_id,store_id,customer_id) references customers(tenant_id,workspace_id,store_id,id) not valid;
@@ -110,4 +113,3 @@ create unique index if not exists customer_points_ledger_source_idx on customer_
 
 insert into membership_programs(tenant_id,workspace_id,store_id) select tenant_id,workspace_id,id from stores on conflict(tenant_id,workspace_id,store_id) do nothing;
 insert into membership_levels(tenant_id,workspace_id,store_id,name,level_order,growth_threshold) select tenant_id,workspace_id,id,'普通会员',1,0 from stores on conflict(tenant_id,workspace_id,store_id,level_order) do nothing;
-commit;
