@@ -234,7 +234,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
       const workspace = { tenantId: req.merchantScope.tenantId, workspaceId: req.merchantScope.workspaceId, storeId: req.merchantScope.storeId, workspaceName: req.merchantScope.workspace.name, storeName: req.merchantScope.workspace.storeName, planId: subscription.planId.toLowerCase(), planName: subscription.planId, channelMode: "shared", roles: [req.merchantScope.role] };
       const aiConnections = await req.saasService.listAiConnections(req.merchantScope);
       const aiPolicy = await req.saasService.getAiPolicy(req.merchantScope);
-      return res.json({ ok: true, workspace, subscription, plans: [{ id: "trial", name: "24小时体验", monthlyPrice: 0 }, { id: "pro", name: "PRO", monthlyPrice: 299 }], publishJobs: [], ai: { status: aiPolicy.mode === "byok" ? "configured" : "fallback", provider: aiPolicy.mode }, aiConnections, platformAiConnections: [], aiPolicy, providerCatalog: [{ id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" }, { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" }, { id: "custom", name: "自定义兼容接口", baseUrl: "", model: "" }], usage: { aiPointsUsed: 0, aiPointsLimit: 0, storageGbUsed: 0, storageGbLimit: 0, skuUsed: (config.products || []).length, skuLimit: 0 } });
+      return res.json({ ok: true, workspace, subscription, ...(options.runtimeIdentity?.visible ? { runtimeIdentity: options.runtimeIdentity } : {}), plans: [{ id: "trial", name: "24小时体验", monthlyPrice: 0 }, { id: "pro", name: "PRO", monthlyPrice: 299 }], publishJobs: [], ai: { status: aiPolicy.mode === "byok" ? "configured" : "fallback", provider: aiPolicy.mode }, aiConnections, platformAiConnections: [], aiPolicy, providerCatalog: [{ id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" }, { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" }, { id: "custom", name: "自定义兼容接口", baseUrl: "", model: "" }], usage: { aiPointsUsed: 0, aiPointsLimit: 0, storageGbUsed: 0, storageGbLimit: 0, skuUsed: (config.products || []).length, skuLimit: 0 } });
     } catch (error) { return failure(res, error, req.requestId); }
   });
 
@@ -318,6 +318,15 @@ function registerMerchantRoutes(app, getService, options = {}) {
 }
 
 function registerOpsSaasRoutes(app, getService) {
+  app.get("/ops/v1/health", async (req, res) => {
+    const id = requestId("ops_health");
+    try { return success(res, await (await getService()).operatorHealth(), "运营服务状态已获取", 200, id); }
+    catch (error) {
+      error.status = 503;
+      error.code = "DATABASE_UNAVAILABLE";
+      return failure(res, error, id);
+    }
+  });
   app.get("/ops/v1/bootstrap", async (req, res) => {
     const id = requestId("ops");
     try { return success(res, await (await getService()).opsBootstrap(), "运营数据已获取", 200, id); }

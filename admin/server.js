@@ -14,10 +14,12 @@ const { createSaasService } = require("./saas-service");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { validateProductionEnvironment } = require("./runtime-config");
+const { resolveRuntimeIdentity } = require("./runtime-identity");
 
 validateProductionEnvironment(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
+const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
 const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
 const CONFIG_BACKUP_DIR = path.resolve(process.env.PRIVLAN_CONFIG_BACKUP_DIR || path.join(__dirname, "config-backups"));
 const IMAGES_DIR = path.resolve(process.env.PRIVLAN_IMAGES_DIR || path.join(ROOT, "images"));
@@ -120,7 +122,7 @@ app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
-registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT });
+registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY });
 registerOpsAuthRoutes(app, getSaasService);
 
 app.get("/health", async (req, res) => {
@@ -804,6 +806,7 @@ app.get("/api/platform/bootstrap", (req, res) => {
     res.json({
       ok: true,
       workspace: state.workspace,
+      ...(RUNTIME_IDENTITY.visible ? { runtimeIdentity: RUNTIME_IDENTITY } : {}),
       plans: state.plans,
       publishJobs: jobs.slice(0, 20),
       ai: publicAiStatus(),

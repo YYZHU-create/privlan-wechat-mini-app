@@ -65,9 +65,21 @@ test("HTTP authentication sets secure server sessions and isolates workspace hin
   assert.equal(crossRead.data.code, "WORKSPACE_ACCESS_DENIED");
   const crossWrite = await api("/api/config", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: b.data.data.workspace.id, products: [{ name: "intrusion" }] }) });
   assert.equal(crossWrite.status, 403);
+  const unauthenticatedOpsHealth = await api("/ops/v1/health");
+  assert.equal(unauthenticatedOpsHealth.status, 401);
   const opsLogin = await api("/ops/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "ops-admin@localhost", password: "operator-test-password" }) });
   assert.equal(opsLogin.status, 200);
   const opsCookie = cookieJar(cookieValues(opsLogin.response));
+  const opsHealth = await api("/ops/v1/health", { headers: { Cookie: opsCookie } });
+  assert.equal(opsHealth.status, 200);
+  assert.equal(opsHealth.data.data.database, "ok");
+  assert.equal(opsHealth.data.data.databaseKind, "pglite-test");
+  assert.doesNotMatch(JSON.stringify(opsHealth.data), /DATABASE_URL|password|token|postgresql:\/\//i);
+  const opsBootstrap = await api("/ops/v1/bootstrap", { headers: { Cookie: opsCookie } });
+  assert.equal(opsBootstrap.status, 200);
+  assert.ok(opsBootstrap.data.data.tenants.every(item => Object.hasOwn(item, "workspaceName")));
+  assert.ok(opsBootstrap.data.data.subscriptions.every(item => Object.hasOwn(item, "tenantName") && Object.hasOwn(item, "workspaceName")));
+  assert.equal((await api("/ops/v1/feature-flags/not-available", { method: "PATCH", headers: { Cookie: opsCookie, "Content-Type": "application/json" }, body: "{}" })).data.code, "OPS_FEATURE_NOT_AVAILABLE");
   async function activate(merchantCookie, merchantCsrf) {
     const generated = await api("/ops/v1/license-codes", { method: "POST", headers: { Cookie: opsCookie, "Content-Type": "application/json" }, body: JSON.stringify({ planId: "PRO", durationHours: 720, count: 1 }) });
     assert.equal(generated.status, 201);

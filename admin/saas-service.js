@@ -379,22 +379,26 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function operatorLogout(sessionId) { if (sessionId) await db.query("update operator_sessions set revoked_at=now() where id=$1", [sessionId]); }
 
+  async function operatorHealth() {
+    await db.health();
+    return { database: "ok", databaseKind: db.kind, checkedAt: new Date().toISOString() };
+  }
+
   async function opsBootstrap() {
     const tenantRows = (await db.query(`select t.id,t.name,t.status,w.id workspace_id,w.name workspace_name,w.plan_id,s.status subscription_status,s.expires_at
       from tenants t left join workspaces w on w.tenant_id=t.id left join subscriptions s on s.workspace_id=w.id order by t.created_at desc`)).rows;
     const plans = (await db.query("select * from plan_catalog order by public desc,price_fen")).rows.map(row => ({ id: row.id, name: row.display_name, monthlyPrice: Number(row.price_fen) / 100, durationHours: row.duration_hours, public: row.public, entitlements: row.entitlements }));
-    const subscriptions = tenantRows.filter(row => row.workspace_id).map(row => ({ tenantId: row.id, workspaceId: row.workspace_id, planId: row.plan_id, status: row.subscription_status, expiresAt: row.expires_at }));
+    const subscriptions = tenantRows.filter(row => row.workspace_id).map(row => ({ tenantId: row.id, tenantName: row.name, workspaceId: row.workspace_id, workspaceName: row.workspace_name, planId: row.plan_id, status: row.subscription_status, expiresAt: row.expires_at }));
     const auditEvents = (await db.query("select * from audit_events order by created_at desc limit 200")).rows.map(row => ({ id: row.id, tenantId: row.tenant_id, workspaceId: row.workspace_id, actorType: row.actor_type, actorId: row.actor_id, action: row.action, resourceType: row.resource_type, resourceId: row.resource_id, requestId: row.request_id, metadata: row.metadata, createdAt: row.created_at }));
     const licenses = await listLicenses();
     return {
-      metrics: { tenants: tenantRows.length, activeTenants: tenantRows.filter(row => row.status === "active").length, trials: tenantRows.filter(row => row.status === "trial").length, publishSuccessRate: 0, aiPoints: 0, aiErrors: 0, openTickets: 0, activeIncidents: 0 },
-      tenants: tenantRows.map(row => ({ id: row.id, name: row.name, status: row.status, planId: row.plan_id, workspaceId: row.workspace_id, subscriptionStatus: row.subscription_status, expiresAt: row.expires_at })),
-      plans, subscriptions, licenses, providerCatalog: [], platformConnections: [], tenantConnections: [], aiPolicies: [], aiUsage: [], publishJobs: [], featureFlags: [], supportTickets: [], incidents: [], impersonationSessions: [], auditEvents,
-      workspace: tenantRows[0] ? { tenantId: tenantRows[0].id, workspaceId: tenantRows[0].workspace_id, workspaceName: tenantRows[0].workspace_name, planId: tenantRows[0].plan_id, channelMode: "shared" } : null
+      metrics: { tenants: tenantRows.length, activeTenants: tenantRows.filter(row => row.status === "active").length, trials: tenantRows.filter(row => row.status === "trial").length },
+      tenants: tenantRows.map(row => ({ id: row.id, name: row.name, status: row.status, workspaceId: row.workspace_id, workspaceName: row.workspace_name, planId: row.plan_id, subscriptionStatus: row.subscription_status, expiresAt: row.expires_at })),
+      plans, subscriptions, licenses, auditEvents
     };
   }
 
-  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

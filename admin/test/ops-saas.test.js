@@ -13,6 +13,16 @@ test("operator sessions, license management and manual extension are database-ba
     const account = await service.register({ login: "managed@example.com", password: "managed-password", storeName: "Managed Store", template: "blank" });
     const operator = await service.operatorLogin("operator@example.com", "operator-secure-password", { requestId: "ops_login" });
     assert.equal((await service.resolveOperatorSession(operator.token)).role, "super_admin");
+    const health = await service.operatorHealth();
+    assert.equal(health.database, "ok");
+    assert.equal(health.databaseKind, "pglite-test");
+    assert.match(health.checkedAt, /^\d{4}-\d{2}-\d{2}T/);
+    const bootstrap = await service.opsBootstrap();
+    assert.equal(bootstrap.tenants[0].workspaceName, "Managed Store");
+    assert.equal(bootstrap.subscriptions[0].tenantName, "Managed Store");
+    assert.equal(bootstrap.subscriptions[0].workspaceName, "Managed Store");
+    assert.equal(Object.hasOwn(bootstrap, "publishJobs"), false);
+    assert.equal(Object.hasOwn(bootstrap, "featureFlags"), false);
     const [license] = await service.generateLicenses({ planId: "PRO", durationHours: 720, count: 1, channel: "test" }, { id: operator.user.userId, requestId: "generate" });
     assert.equal((await service.listLicenses())[0].codeMasked, license.codeMasked);
     await service.disableLicense(license.id, { id: operator.user.userId, requestId: "disable" });
