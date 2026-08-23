@@ -3,7 +3,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { ServiceError } = require("./saas-service");
 const { createWorkspaceMedia } = require("./workspace-media");
-const { callOpenAiCompatible } = require("./ai-gateway");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 
 const SESSION_COOKIE = "atelier_merchant_session";
@@ -232,9 +231,8 @@ function registerMerchantRoutes(app, getService, options = {}) {
       const config = (await req.saasService.readConfig(req.merchantScope)).document;
       const subscription = await req.saasService.getSubscription(req.merchantScope);
       const workspace = { tenantId: req.merchantScope.tenantId, workspaceId: req.merchantScope.workspaceId, storeId: req.merchantScope.storeId, workspaceName: req.merchantScope.workspace.name, storeName: req.merchantScope.workspace.storeName, planId: subscription.planId.toLowerCase(), planName: subscription.planId, channelMode: "shared", roles: [req.merchantScope.role] };
-      const aiConnections = await req.saasService.listAiConnections(req.merchantScope);
       const aiPolicy = await req.saasService.getAiPolicy(req.merchantScope);
-      return res.json({ ok: true, workspace, subscription, ...(options.runtimeIdentity?.visible ? { runtimeIdentity: options.runtimeIdentity } : {}), plans: [{ id: "trial", name: "24小时体验", monthlyPrice: 0 }, { id: "pro", name: "PRO", monthlyPrice: 299 }], publishJobs: [], ai: { status: aiPolicy.mode === "byok" ? "configured" : "fallback", provider: aiPolicy.mode }, aiConnections, platformAiConnections: [], aiPolicy, providerCatalog: [{ id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" }, { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" }, { id: "custom", name: "自定义兼容接口", baseUrl: "", model: "" }], usage: { aiPointsUsed: 0, aiPointsLimit: 0, storageGbUsed: 0, storageGbLimit: 0, skuUsed: (config.products || []).length, skuLimit: 0 } });
+      return res.json({ ok: true, workspace, subscription, ...(options.runtimeIdentity?.visible ? { runtimeIdentity: options.runtimeIdentity } : {}), plans: [{ id: "trial", name: "24小时体验", monthlyPrice: 0 }, { id: "pro", name: "PRO", monthlyPrice: 299 }], publishJobs: [], ai: { status: "rules", provider: "rules" }, aiPolicy: { ...aiPolicy, mode: "rules", connectionId: null }, usage: { aiPointsUsed: 0, aiPointsLimit: 0, storageGbUsed: 0, storageGbLimit: 0, skuUsed: (config.products || []).length, skuLimit: 0 } });
     } catch (error) { return failure(res, error, req.requestId); }
   });
 
@@ -278,35 +276,12 @@ function registerMerchantRoutes(app, getService, options = {}) {
   app.delete("/api/media/folders/:id", async (req, res, next) => { if (!req.saasService) return next(); try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await workspaceMedia(req.saasService).deleteFolder(req.merchantScope, req.params.id) }); } catch (error) { return failure(res, error, req.requestId); } });
   app.post("/api/media/move", async (req, res, next) => { if (!req.saasService) return next(); try { req.saasService.assertWritable(req.merchantScope); const media = workspaceMedia(req.saasService); const ids = await media.resolveIds(req.merchantScope, req.body?.ids || req.body?.names || []); return res.json({ ok: true, moved: await media.move(req.merchantScope, ids, req.body?.folderId || "") }); } catch (error) { return failure(res, error, req.requestId); } });
 
-  app.get("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.listAiConnections(req.merchantScope), "模型连接已获取", 200, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-  app.post("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.createAiConnection(req.merchantScope, req.body || {}), "模型连接已加密保存", 201, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-  app.post("/v1/ai/connections/:id/test", async (req, res, next) => {
-    if (!req.saasService) return next();
-    try {
-      const row = await req.saasService.scopedAiConnection(req.merchantScope, req.params.id);
-      const result = await callOpenAiCompatible({ baseUrl: row.base_url, apiKey: req.saasService.decryptSecret(row.encrypted_secret), model: row.model, text: "请只回答：连接成功", context: "这是连接测试。", timeoutMs: row.timeout_ms, maxTokens: 50 });
-      const connection = await req.saasService.recordAiTest(req.merchantScope, req.params.id, true);
-      return success(res, { connection, sample: result.content.slice(0, 80) }, "模型连接测试成功", 200, req.requestId);
-    } catch (error) { try { await req.saasService.recordAiTest(req.merchantScope, req.params.id, false, error.code || error.message); } catch (ignored) {} return failure(res, error, req.requestId); }
-  });
-  app.post("/v1/ai/connections/:id/rotate-secret", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.rotateAiSecret(req.merchantScope, req.params.id, req.body?.apiKey), "API Key 已轮换", 200, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-  app.delete("/v1/ai/connections/:id", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.deleteAiConnection(req.merchantScope, req.params.id), "模型连接已删除", 200, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-  app.get("/v1/ai/policy", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.getAiPolicy(req.merchantScope), "模型策略已获取", 200, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-  app.put("/v1/ai/policy", async (req, res, next) => { if (!req.saasService) return next(); try { return success(res, await req.saasService.setAiPolicy(req.merchantScope, req.body || {}), "模型策略已更新", 200, req.requestId); } catch (error) { return failure(res, error, req.requestId); } });
-
-  app.post("/api/ai/query", async (req, res, next) => {
-    if (!req.saasService) return next();
-    try {
-      const config = (await req.saasService.readConfig(req.merchantScope)).document; const question = String(req.body?.text || "").trim();
-      if (!question) throw new ServiceError(400, "QUESTION_REQUIRED", "请输入问题");
-      const policy = await req.saasService.getAiPolicy(req.merchantScope);
-      if (policy.mode === "byok" && policy.connectionId) {
-        try { const row = await req.saasService.scopedAiConnection(req.merchantScope, policy.connectionId); const result = await callOpenAiCompatible({ baseUrl: row.base_url, apiKey: req.saasService.decryptSecret(row.encrypted_secret), model: row.model, text: question, context: (config.serviceBot?.knowledgeNotes || []).map(item => item.content || item).join("\n"), timeoutMs: row.timeout_ms, maxTokens: row.max_tokens }); return res.json({ ok: true, requestId: req.requestId, provider: row.provider_name, model: row.model, type: "answer", content: result.content, confidence: 0.75, citations: [], usage: result.usage, fallback: false }); } catch (error) { if (!policy.fallbackToRules) throw error; }
-      }
-      const faqs = config.serviceBot?.faqs || []; const faq = faqs.find(item => item.enabled !== false && [item.question, ...(item.keywords || [])].some(value => question.includes(value)));
-      return res.json({ ok: true, requestId: req.requestId, provider: "rules", model: null, type: faq ? "faq" : "answer", content: faq?.answer || "暂时没有找到匹配答案，请换一种说法或联系人工客服。", confidence: faq ? 0.9 : 0.2, citations: [], fallback: true });
-    } catch (error) { return failure(res, error, req.requestId); }
-  });
+  const merchantAiConnectionsDisabled = (req, res) => failure(res, new ServiceError(410, "AI_MODE_UNSUPPORTED", "当前客服仅支持规则 FAQ"), req.requestId);
+  app.get("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
+  app.post("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
+  app.post("/v1/ai/connections/:id/test", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
+  app.post("/v1/ai/connections/:id/rotate-secret", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
+  app.delete("/v1/ai/connections/:id", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
 
   app.use(["/api", "/v1"], async (req, res, next) => {
     if (!req.saasService) return next();

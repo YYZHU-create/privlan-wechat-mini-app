@@ -10,12 +10,13 @@ const connectionString = process.env.ATELIER_REAL_POSTGRES_URL || "";
 test("real PostgreSQL serializes same-advisor booking while allowing different advisors", { skip: !connectionString }, async () => {
   const db = await createPostgresDatabase(connectionString, { max: 8 });
   let account = null;
+  let foreignAccount = null;
   const hashKey = "real-postgres-openid-test-key-32-bytes";
   const previousHashKey = process.env.ATELIER_OPENID_HASH_KEY;
   process.env.ATELIER_OPENID_HASH_KEY = hashKey;
   try {
     const saas = createSaasService({ db, licensePepper: "real-postgres-license-test-key-32-bytes" });
-    account = await saas.register({ login: `postgres-appointment-${Date.now()}@example.com`, password: "postgres-test-password", storeName: "PostgreSQL 并发隔离店", template: "blank" });
+    account = await saas.register({ login: `postgres-appointment-${Date.now()}@example.com`, password: `test-${require("node:crypto").randomUUID()}`, storeName: "PostgreSQL 并发隔离店", template: "blank" });
     await db.query("update subscriptions set status='active',expires_at=now()+interval '1 day' where workspace_id=$1", [account.workspace.id]);
     const scope = { tenantId: account.workspace.tenantId, workspaceId: account.workspace.id, storeId: account.workspace.storeId, userId: account.user.id, subscription: { status: "active" } };
     const service = createAppointmentService({ db, openIdHashKey: hashKey });
@@ -49,7 +50,7 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
     assert.equal(differentAdvisors.length, 2);
     assert.notEqual(differentAdvisors[0].number, differentAdvisors[1].number);
 
-    const firstAppointment = (await db.query("select customer_id from appointments where idempotency_key=$1", ["real-same-1"])).rows[0];
+    const firstAppointment = (await db.query("select id,customer_id from appointments where idempotency_key=$1", ["real-same-1"])).rows[0];
     assert.ok(firstAppointment?.customer_id);
     const touched = await saas.customerService.touchMiniProgramCustomer(scope, { openid: "openid-real-1" });
     assert.equal(touched.id, firstAppointment.customer_id);
@@ -60,9 +61,35 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
     assert.equal((await saas.customerService.adjustPoints(scope, touched.id, { points: -50, idempotencyKey: "real-points-2", reason: "integration" })).balance, 50);
     await assert.rejects(() => saas.customerService.adjustPoints(scope, touched.id, { points: -100, idempotencyKey: "real-points-3", reason: "integration" }), error => error.code === "POINTS_INSUFFICIENT");
     assert.equal((await saas.customerService.adjustPoints(scope, touched.id, { points: 100, idempotencyKey: "real-points-2", reason: "integration" })).duplicate, true);
+
+    const date = DateTime.fromISO(start).setZone("Asia/Shanghai").toISODate();
+    const availability = await service.merchantAvailability(scope, { storeId: scope.storeId, serviceId: services[0].id, advisorId: advisors[0].id, date });
+    const occupiedSlot = availability.slots.find(item => item.startAt === start);
+    assert.ok(occupiedSlot);
+    assert.equal(occupiedSlot.available, false);
+
+    const timelineBefore = await service.timeline(scope, firstAppointment.id);
+    assert.ok(timelineBefore.some(item => item.resourceId === firstAppointment.id));
+    const followUp = await service.createFollowUp(scope, firstAppointment.id, { note: "真实 PostgreSQL 跟进验证", idempotencyKey: "real-follow-up-1" });
+    assert.equal(followUp.duplicate, false);
+    assert.equal((await service.createFollowUp(scope, firstAppointment.id, { note: "真实 PostgreSQL 跟进验证", idempotencyKey: "real-follow-up-1" })).duplicate, true);
+    const timelineAfter = await service.timeline(scope, firstAppointment.id);
+    assert.equal(timelineAfter.filter(item => item.type === "follow_up_created").length, 1);
+    const customer360 = await saas.customerService.get360(scope, touched.id);
+    assert.equal(customer360.customer.id, touched.id);
+    assert.equal(customer360.summary.appointmentCount >= 1, true);
+    assert.equal(customer360.timeline.some(item => item.type === "follow_up_created"), true);
+
+    foreignAccount = await saas.register({ login: `postgres-foreign-${Date.now()}@example.com`, password: `test-${require("node:crypto").randomUUID()}`, storeName: "PostgreSQL 隔离店", template: "blank" });
+    await db.query("update subscriptions set status='active',expires_at=now()+interval '1 day' where workspace_id=$1", [foreignAccount.workspace.id]);
+    const foreignScope = { tenantId: foreignAccount.workspace.tenantId, workspaceId: foreignAccount.workspace.id, storeId: foreignAccount.workspace.storeId, userId: foreignAccount.user.id, subscription: { status: "active" } };
+    await assert.rejects(() => service.getAppointment(foreignScope, firstAppointment.id), error => error.code === "APPOINTMENT_NOT_FOUND");
+    await assert.rejects(() => service.timeline(foreignScope, firstAppointment.id), error => error.code === "APPOINTMENT_NOT_FOUND");
+    await assert.rejects(() => service.createFollowUp(foreignScope, firstAppointment.id, { note: "越权", idempotencyKey: "foreign-follow-up" }), error => error.code === "APPOINTMENT_NOT_FOUND");
+    await assert.rejects(() => service.merchantAvailability(foreignScope, { storeId: scope.storeId, date }), error => error.code === "APPOINTMENT_SCOPE_INVALID");
   } finally {
-    if (account) {
-      const tenantId = account.workspace.tenantId; const workspaceId = account.workspace.id; const userId = account.user.id;
+    for (const cleanupAccount of [foreignAccount, account].filter(Boolean)) {
+      const tenantId = cleanupAccount.workspace.tenantId; const workspaceId = cleanupAccount.workspace.id; const userId = cleanupAccount.user.id;
       await db.transaction(async tx => {
         for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "membership_levels", "membership_programs", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
         await tx.query("delete from audit_events where workspace_id=$1", [workspaceId]);

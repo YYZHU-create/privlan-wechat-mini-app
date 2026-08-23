@@ -257,9 +257,9 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function setAiPolicy(scope, input) {
     assertWritable(scope);
-    if (input.mode === "platform") throw new ServiceError(400, "AI_MODE_UNSUPPORTED", "平台托管 AI 尚未开放，请使用规则 FAQ 或自带模型");
-    if (input.mode && !["rules", "byok"].includes(input.mode)) throw new ServiceError(400, "AI_MODE_INVALID", "客服回答模式无效");
-    const mode = input.mode === "byok" ? "byok" : "rules"; const connectionId = mode === "byok" ? String(input.connectionId || "") : null;
+    if (input.mode === "platform" || input.mode === "byok") throw new ServiceError(400, "AI_MODE_UNSUPPORTED", "当前客服仅支持规则 FAQ");
+    if (input.mode && input.mode !== "rules") throw new ServiceError(400, "AI_MODE_INVALID", "客服回答模式无效");
+    const mode = "rules"; const connectionId = null;
     if (connectionId) await scopedAiConnection(scope, connectionId);
     await db.query(`insert into merchant_ai_policies(tenant_id,workspace_id,store_id,mode,connection_id,fallback_to_rules) values($1,$2,$3,$4,$5,$6)
       on conflict(workspace_id,store_id) do update set mode=excluded.mode,connection_id=excluded.connection_id,fallback_to_rules=excluded.fallback_to_rules,updated_at=now()`, [scope.tenantId, scope.workspaceId, scope.storeId, mode, connectionId, input.fallbackToRules !== false]);

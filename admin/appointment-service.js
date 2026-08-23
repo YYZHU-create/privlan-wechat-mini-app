@@ -199,9 +199,42 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function getAppointment(scope, id) {
-    const row = (await db.query("select * from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id, ...rowScope(scope)])).rows[0];
+    const row = (await db.query("select a.*,st.name store_name from appointments a join stores st on st.id=a.store_id and st.tenant_id=a.tenant_id and st.workspace_id=a.workspace_id where a.id=$1 and a.tenant_id=$2 and a.workspace_id=$3 and a.store_id=$4", [id, ...rowScope(scope)])).rows[0];
     if (!row) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
-    return { id: row.id, number: row.appointment_number, customerId: row.customer_id, customerName: row.customer_name_snapshot, customerPhone: row.customer_phone_snapshot, serviceName: row.service_name_snapshot, advisorName: row.advisor_name_snapshot, startAt: row.start_at, serviceEndAt: row.service_end_at, occupiedUntil: row.occupied_until, durationMinutes: Number(row.duration_minutes_snapshot), bufferMinutes: Number(row.buffer_minutes_snapshot), timezone: row.timezone_snapshot, notes: row.notes, source: row.source, status: row.status, statusLabel: publicStatus(row.status), createdAt: row.created_at };
+    return { id: row.id, number: row.appointment_number, customerId: row.customer_id, customerName: row.customer_name_snapshot, customerPhone: maskPhone(row.customer_phone_snapshot), storeName: row.store_name, storeId: row.store_id, serviceName: row.service_name_snapshot, advisorName: row.advisor_name_snapshot, startAt: row.start_at, serviceEndAt: row.service_end_at, occupiedUntil: row.occupied_until, durationMinutes: Number(row.duration_minutes_snapshot), bufferMinutes: Number(row.buffer_minutes_snapshot), timezone: row.timezone_snapshot, notes: row.notes, source: row.source, status: row.status, statusLabel: publicStatus(row.status), createdAt: row.created_at };
+  }
+
+  async function merchantAvailability(scope, input = {}) {
+    if (input.storeId && String(input.storeId) !== String(scope.storeId)) throw new AppointmentError(403, "APPOINTMENT_SCOPE_INVALID", "不能读取其他门店的预约时间");
+    const publicStoreId = scope.workspace?.publicStoreId || (await db.query("select public_store_id from stores where id=$1 and tenant_id=$2 and workspace_id=$3", [scope.storeId, scope.tenantId, scope.workspaceId])).rows[0]?.public_store_id;
+    if (!publicStoreId) throw new AppointmentError(404, "STORE_NOT_FOUND", "预约门店不存在");
+    return availableOptions({ ...input, publicStoreId });
+  }
+
+  async function timeline(scope, id) {
+    const appointment = (await db.query("select id,customer_id from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id, ...rowScope(scope)])).rows[0];
+    if (!appointment) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
+    const [events, auditEvents] = await Promise.all([
+      db.query("select event_type,source,resource_type,resource_id,metadata,occurred_at from customer_events where tenant_id=$1 and workspace_id=$2 and store_id=$3 and customer_id=$4 and (resource_id=$5 or (resource_type='appointment_follow_up' and resource_id like $6)) order by occurred_at desc limit 200", [...rowScope(scope), appointment.customer_id, id, `${id}:%`]),
+      db.query("select action,resource_type,resource_id,metadata,created_at occurred_at,actor_type from audit_events where tenant_id=$1 and workspace_id=$2 and resource_type='appointment' and resource_id=$3 order by created_at desc limit 200", [scope.tenantId, scope.workspaceId, id])
+    ]);
+    return [...events.rows.map(row => ({ type: row.event_type, source: row.source, resourceType: row.resource_type, resourceId: row.resource_id, metadata: row.metadata || {}, occurredAt: row.occurred_at })), ...auditEvents.rows.map(row => ({ type: row.action, source: row.actor_type, resourceType: row.resource_type, resourceId: row.resource_id, metadata: row.metadata || {}, occurredAt: row.occurred_at }))].sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
+  }
+
+  async function createFollowUp(scope, id, input = {}) {
+    assertWritable(scope);
+    const note = String(input.note || input.content || "").trim().slice(0, 1000);
+    const key = String(input.idempotencyKey || `follow-up-${id}-${note}`).trim().slice(0, 180);
+    if (!key) throw new AppointmentError(400, "FOLLOW_UP_INVALID", "跟进记录缺少幂等键");
+    return db.transaction(async tx => {
+      const appointment = (await tx.query("select id,customer_id from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 for update", [id, ...rowScope(scope)])).rows[0];
+      if (!appointment) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
+      const resourceId = `${id}:${key}`;
+      const inserted = await tx.query("insert into customer_events(id,tenant_id,workspace_id,store_id,customer_id,event_type,source,resource_type,resource_id,metadata) values($1,$2,$3,$4,$5,'follow_up_created','merchant','appointment_follow_up',$6,$7::jsonb) on conflict do nothing returning id,occurred_at", [uuid(), ...rowScope(scope), appointment.customer_id, resourceId, json({ note })]);
+      if (!inserted.rows[0]) return { duplicate: true, appointmentId: id, idempotencyKey: key };
+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "appointment.follow_up.create", "appointment", id, { idempotencyKey: key });
+      return { duplicate: false, appointmentId: id, customerId: appointment.customer_id, idempotencyKey: key, occurredAt: inserted.rows[0].occurred_at };
+    });
   }
 
   async function updateStatus(scope, id, status) {
@@ -295,7 +328,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     await db.transaction(async tx=>{await tx.query("delete from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3",rowScope(scope));for(const item of hours)await tx.query("insert into appointment_business_hours(id,tenant_id,workspace_id,store_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8)",[uuid(),...rowScope(scope),Number(item.weekday),item.startTime,item.endTime,item.enabled!==false]);await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.business_hours.update","appointment_business_hours",scope.storeId,{windowCount:hours.length});});return listHours(scope);
   }
 
-  return { ensureDefaults, availableOptions, createAppointment, listPublicAppointments, stats, listAppointments, getAppointment, updateStatus, listCustomers, getCustomer, getSettings, updateSettings, listServices, saveService, removeService, listAdvisors, saveAdvisor, removeAdvisor, listHours, replaceHours, hashOpenId, assertWritable, AppointmentError };
+  return { ensureDefaults, availableOptions, merchantAvailability, createAppointment, listPublicAppointments, stats, listAppointments, getAppointment, timeline, createFollowUp, updateStatus, listCustomers, getCustomer, getSettings, updateSettings, listServices, saveService, removeService, listAdvisors, saveAdvisor, removeAdvisor, listHours, replaceHours, hashOpenId, assertWritable, AppointmentError };
 }
 
 module.exports = { createAppointmentService, AppointmentError, maskPhone, publicStatus, ACTIVE_STATUSES };

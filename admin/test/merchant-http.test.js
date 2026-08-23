@@ -93,9 +93,11 @@ test("HTTP authentication sets secure server sessions and isolates workspace hin
   assert.equal((await api(`/api/media/content/${uploadA.data.id}`, { headers: { Cookie: bCookie } })).status, 404);
   assert.equal((await api("/api/media", { headers: { Cookie: bCookie } })).data.length, 0);
   const aiA = await api("/v1/ai/connections", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ providerName: "A Provider", baseUrl: "https://example.com/v1", model: "a-model", apiKey: "secret-a" }) });
-  assert.equal(aiA.status, 201);
-  assert.equal((await api("/v1/ai/connections", { headers: { Cookie: bCookie } })).data.data.length, 0);
-  assert.equal((await api(`/v1/ai/connections/${aiA.data.data.id}/rotate-secret`, { method: "POST", headers: { Cookie: bCookie, "x-atelier-csrf": bCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ apiKey: "intrusion" }) })).status, 404);
+  assert.equal(aiA.status, 410);
+  assert.equal(aiA.data.code, "AI_MODE_UNSUPPORTED");
+  const aiList = await api("/v1/ai/connections", { headers: { Cookie: bCookie } });
+  assert.equal(aiList.status, 410);
+  assert.equal(aiList.data.code, "AI_MODE_UNSUPPORTED");
   assert.equal((await api("/ops/v1/bootstrap", { headers: { Cookie: aCookie } })).status, 401);
   assert.equal((await api("/auth/logout", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf } })).status, 200);
   assert.equal((await api("/auth/session", { headers: { Cookie: aCookie } })).status, 401);

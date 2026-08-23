@@ -1,0 +1,21 @@
+# Sprint 1 Merchant OS path-level diff
+
+Base: `6829eccf1395d8a4b0139e2808e3edfed36db061`
+
+| Path | Change |
+|---|---|
+| `admin/appointment-routes.js` | 4 added / 0 removed |
+| `admin/appointment-service.js` | 36 added / 3 removed |
+| `admin/customer-service.js` | 25 added / 3 removed |
+| `admin/merchant-routes.js` | 7 added / 32 removed |
+| `admin/public/app.js` | 64 added / 196 removed |
+| `admin/public/styles.css` | 55 added / 0 removed |
+| `admin/saas-service.js` | 3 added / 3 removed |
+| `admin/test/appointment-postgres-integration.test.js` | 31 added / 4 removed |
+| `admin/test/merchant-http.test.js` | 5 added / 3 removed |
+| `admin/e2e/sprint1-final-gate.spec.js` | new test file |
+| `admin/test/merchant-os-sprint1.test.js` | new test file |
+
+Verified implementation areas: Merchant navigation and dashboard metrics; Customer 360 aggregation; appointment availability, timeline, and follow-up; regression and browser UAT coverage.
+
+This evidence records changed paths and counts only.

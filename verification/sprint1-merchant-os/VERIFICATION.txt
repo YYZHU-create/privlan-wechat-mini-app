@@ -1,0 +1,79 @@
+# Sprint 1 Merchant OS Final Gate Verification
+
+## Runtime
+
+- Target worktree: `C:\Users\Administrator\WorkBuddy\2026-08-20-product-completeness-uat-1`
+- Branch / base HEAD: `codex/product-completeness-uat-1` / `6829eccf1395d8a4b0139e2808e3edfed36db061`
+- Running server: `http://127.0.0.1:40003`
+- Runtime identity: staging; server `40003`; database label `atelier_os_staging`; branch and commit identity matched the target worktree.
+- The protected staging environment was injected only into test processes. No connection string, credential, token, or password is recorded here.
+
+## Changed branch and fields
+
+- Customer 360 reads existing Customer, Appointment, Order, Membership, Points, and Customer Event records with masked phone data.
+- Appointment availability, appointment timeline, and auditable follow-up use the existing tenant-scoped data model.
+- Merchant navigation is grouped by operating task; the mobile navigation drawer is exercised in Browser UAT.
+- Browser UAT now selects the Customer 360 membership tab explicitly and opens the responsive mobile navigation before choosing a view.
+
+## Artifacts
+
+- `MODIFIED_FILE`: current selected Sprint 1 source inventory and SHA256 hashes.
+- `DIFF_FILE`: path-level diff summary with changed paths and counts.
+- `ROLLBACK.sh`: executable rollback helper for a disposable copy with caller-supplied pre-Sprint backups.
+- `browser-uat/`: real-browser screenshots from five viewports.
+
+## Commands and observed results
+
+| Stage | Command | Literal result | Exit |
+|---|---|---|---:|
+| Health | `GET http://127.0.0.1:40003/health` | `database=ok` | 0 |
+| Runtime identity | authenticated `GET /api/platform/bootstrap` | `environment=staging; server=40003; database=atelier_os_staging; visible=true` | 0 |
+| Real PostgreSQL concurrency | `cd admin; node --test test/appointment-postgres-integration.test.js` | `tests 1; pass 1; fail 0; skipped 0` | 0 |
+| Sprint 1 focused suite | `cd admin; node --test test/merchant-os-sprint1.test.js` | `tests 3; pass 3; fail 0; skipped 0` | 0 |
+| Full real PostgreSQL suite | `cd admin; npm test` with protected staging variables | `tests 89; pass 89; fail 0; skipped 0` | 0 |
+| Browser UAT | `cd admin; UAT_BASE_URL=http://127.0.0.1:40003; npx playwright test e2e/sprint1-final-gate.spec.js --reporter=line` with protected UAT credentials | `5 passed` | 0 |
+| Syntax and diff | `node --check` for the Sprint 1 browser, UI, route, and service files; `git diff --check` | `STATIC_CHECKS=PASS` | 0 |
+| Dead UI scan | static scan of Sprint 1 UI/service paths | `TODO=CLEAR; Coming Soon=CLEAR; empty fetch=CLEAR; console.log=CLEAR; local-control-plane copy=CLEAR` | 0 |
+
+## Browser UAT coverage
+
+- `2560`: Dashboard and navigation passed.
+- `1920`: Dashboard and navigation passed.
+- `1366`: Dashboard, customer list, Customer 360, appointment list, availability, appointment detail, timeline, follow-up, and membership passed.
+- `1024`: Dashboard and navigation passed.
+- `430`: Dashboard, responsive navigation drawer, customer list, Customer 360, appointment list, availability, appointment detail, timeline, and membership passed.
+- Browser gate recorded no JavaScript console errors, page errors, 4xx/5xx API failures, horizontal overflow, or non-dismissible Customer/Appointment drawers.
+
+## Baseline, modified, and rollback evidence
+
+| Stage | Command / input | Literal result | Exit |
+|---|---|---|---:|
+| Baseline browser assertion | initial Browser UAT using the pre-correction Customer 360 assertion | `5 failed`: default tab is `概览`, so `会员与积分` was not present until the user selected `会员` | 1 |
+| Modified browser gate | Browser UAT after selecting `会员` and opening mobile navigation at 430px | `5 passed` | 0 |
+| Rollback disposable copy | `C:\Program Files\Git\bin\bash.exe verification/sprint1-merchant-os/ROLLBACK.sh <disposable-copy>` with `.sprint1-backup` files | `ROLLBACK_APPLIED=YES`; `ROLLBACK_HASH_MATCH=True`; `ROLLBACK_NEW_TESTS_REMOVED=True` | 0 |
+
+## Database, production, and rollback
+
+- Existing Tenant, Workspace, Store, User, Membership, Subscription, Customer, and Appointment models remain the source of truth.
+- No schema file was changed and no migration was run.
+- Only neutral staging/UAT customer, appointment, follow-up, timeline, and audit activity were used.
+- No Production connection, Production migration, customerTouch deployment, or WeChat Production change was performed.
+- `ROLLBACK.sh` restores tracked Sprint 1 paths from caller-prepared `.sprint1-backup` files inside a disposable copy and removes the two added Sprint 1 test files. It does not touch the active worktree or database. The disposable-copy execution completed with `ROLLBACK_APPLIED=YES`, restored all tracked test files from their prepared backups, and removed the two Sprint 1 test files.
+
+## Gate result
+
+```text
+REAL_POSTGRES=PASS
+TEST_TOTAL=89
+TEST_PASS=89
+TEST_FAIL=0
+TEST_SKIP=0
+CONCURRENT_APPOINTMENT=PASS
+TENANT_ISOLATION=PASS
+BROWSER_UAT=PASS
+DEAD_UI_SCAN=PASS
+SPRINT_1_CODE_GATE=PASS
+SPRINT_1_REAL_PG_GATE=PASS
+SPRINT_1_BROWSER_GATE=PASS
+SPRINT_1_READY_TO_COMMIT=YES
+```
