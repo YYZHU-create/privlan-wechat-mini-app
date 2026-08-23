@@ -1,0 +1,62 @@
+ATELIER OS Merchant OS Sprint 2 — Operation Engine Foundation
+
+Changed capability
+- PostgreSQL operation model: Staff, store assignments, recurring schedules, leave windows, optional resources, and scoped appointment references.
+- Appointment availability and booking: Staff schedule, leave, compatible advisor capability, optional resource occupancy, and existing conflict protection.
+- Merchant Appointment Center: 员工与排班 view for employee profile, service capability, current-store scheduling, and leave records.
+
+Artifacts
+MODIFIED_FILE=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\sprint2-operation-engine\MODIFIED_FILE
+DIFF_FILE=C:\\Users\\Administrator\\WorkBuddy\\2026-08-23-merchant-os-sprint-2\\verification\\sprint2-operation-engine\\DIFF_FILE (reversible source patch record)
+VERIFICATION=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\sprint2-operation-engine\VERIFICATION.txt
+ROLLBACK=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\sprint2-operation-engine\ROLLBACK.sh
+
+BASELINE
+COMMAND=Push-Location admin; node --test test/appointment-saas.test.js test/merchant-os-sprint1.test.js
+INPUT=baseline worktree before dependency installation
+OUTPUT=Error: Cannot find module 'luxon'
+EXIT_STATUS=1
+RESULT=environment dependency gap recorded before implementation.
+
+MODIFIED
+COMMAND=Push-Location admin; npm test with protected staging PostgreSQL environment injected only for this process
+INPUT=real staging PostgreSQL test target after backup and migration verification
+OUTPUT=tests 87; pass 87; fail 0; skipped 0
+EXIT_STATUS=0
+RESULT=PASS
+
+MODIFIED_BROWSER
+COMMAND=Push-Location admin; node qa/sprint2-browser-smoke.js
+INPUT=isolated portable PostgreSQL browser fixture; 1366x768 and 430x932
+OUTPUT=browser-smoke=PASS
+EXIT_STATUS=0
+RESULT=PASS
+SCREENSHOTS=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\sprint2-operation-engine\browser-uat\1366-staff-schedule.png; C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\sprint2-operation-engine\browser-uat\430-staff-schedule.png
+
+STAGING_MIGRATION
+COMMAND=node migration runner with protected staging environment injected only for this process
+INPUT=loopback staging database label verified; recoverable pre-migration backup verified externally
+OUTPUT=STAGING_MIGRATION_007=PASS; OPERATION_TABLES=6
+EXIT_STATUS=0
+RESULT=PASS
+DATABASE_STATUS=staging migration 007 applied; no production connection or modification.
+
+ROLLBACK
+COMMAND=bash verification/sprint2-operation-engine/ROLLBACK.sh <temporary rollback copy>
+INPUT=clean temporary clone with Sprint 2 DIFF_FILE applied forward
+OUTPUT=Sprint 2 source rollback applied; ROLLBACK_SOURCE_BASELINE=PASS
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR=the temporary copy returned to its committed source baseline. For the applied staging migration, use a reviewed forward-fix migration; no database action is performed by ROLLBACK.sh.
+
+CHECKS
+NODE_CHECK=PASS (appointment-service.js, appointment-routes.js, public/app.js, QA browser smoke script)
+GIT_DIFF_CHECK=PASS
+SECRET_SCAN=PASS (credential-like literal findings: 0)
+REAL_POSTGRES=PASS
+CONCURRENT_APPOINTMENT=PASS
+TENANT_ISOLATION=PASS
+BROWSER_1366=PASS
+BROWSER_430=PASS
+GIT_COMMIT=NOT_RUN
+GIT_PUSH=NOT_RUN

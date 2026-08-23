@@ -1,0 +1,9 @@
+Sprint 2 source files (absolute path and SHA256):
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\appointment-service.js	DAE241512BF1AE9AA9A540DBF0EFED121E345D52F8AE750FEBF80F2436A83457
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\appointment-routes.js	731F3670A10D6D427A0CB4636288C9EF964CBD051ECC1E0DF3D3375E429E0E44
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\public\app.js	6E4AEEA4BE2FFFAE48764661A6FBD4FCE62907430A89315911602A367B4475E7
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\public\styles.css	E0736244BE70A18FEE655A8BDC21FD1EE6BCF7735CF5D04A092E0A34D4571C83
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\test\appointment-postgres-integration.test.js	65C89EECF3F34B2CBEED3DDA4F09AC84E7F171C74BD42D670569C481611AB8F1
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\test\operation-engine-sprint2.test.js	F0AA0363539A2DA9CD9378D859A63F14E3D1DDA9B9C25A95C8E2964DE8D86879
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\qa\sprint2-browser-smoke.js	FB7AC32C6F617AD77DFB62BBD39B084D04AC9041C18EF6CD31130ED43BAAB946
+C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\platform\migrations\007_operation_engine_foundation.sql	5AFC37414D103FF66555CDDEA7D907C9811E8A10171B6752D4C20BAFFD9E5D29
