@@ -12,7 +12,6 @@ const TRANSITIONS = {
   confirmed: new Set(["completed", "cancelled", "no_show"]),
   completed: new Set(), cancelled: new Set(), no_show: new Set()
 };
-const DEFAULT_SETTINGS = { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true };
 
 function uuid() { return crypto.randomUUID(); }
 function json(value) { return JSON.stringify(value ?? {}); }
@@ -327,17 +326,14 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
 
   async function getSettings(scope) {
     const row = (await db.query("select * from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows[0];
-    if (!row) return { ...DEFAULT_SETTINGS };
+    if (!row) throw new AppointmentError(404, "APPOINTMENT_SETTINGS_NOT_FOUND", "预约设置不存在");
     return { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled };
   }
 
   async function updateSettings(scope, input) {
     assertWritable(scope); const timezone = String(input.timezone || ""); const slot = int(input.slotIntervalMinutes,5,300,-1); const buffer = int(input.defaultBufferMinutes,1,30,-1); const days = int(input.maxAdvanceDays,1,365,-1);
     if (!assertTimezone(timezone) || slot < 0 || slot % 5 || buffer < 0 || days < 0) throw new AppointmentError(400, "APPOINTMENT_SETTINGS_INVALID", "预约规则设置无效");
-    await db.transaction(async tx => { await tx.query(`insert into appointment_settings(tenant_id,workspace_id,store_id,timezone,slot_interval_minutes,default_buffer_minutes,min_advance_minutes,max_advance_days,booking_enabled)
-      values($1,$2,$3,$4,$5,$6,0,$7,$8)
-      on conflict(workspace_id,store_id) do update set timezone=excluded.timezone,slot_interval_minutes=excluded.slot_interval_minutes,default_buffer_minutes=excluded.default_buffer_minutes,min_advance_minutes=0,max_advance_days=excluded.max_advance_days,booking_enabled=excluded.booking_enabled,updated_at=now()
-      where appointment_settings.tenant_id=excluded.tenant_id`, [...rowScope(scope),timezone,slot,buffer,days,input.bookingEnabled !== false]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
+    await db.transaction(async tx => { await tx.query("update appointment_settings set timezone=$1,slot_interval_minutes=$2,default_buffer_minutes=$3,min_advance_minutes=0,max_advance_days=$4,booking_enabled=$5,updated_at=now() where tenant_id=$6 and workspace_id=$7 and store_id=$8", [timezone,slot,buffer,days,input.bookingEnabled !== false,...rowScope(scope)]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
     return getSettings(scope);
   }
 

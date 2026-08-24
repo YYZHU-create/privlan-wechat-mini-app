@@ -1,0 +1,242 @@
+diff --git a/admin/public/app.js b/admin/public/app.js
+index 2caaf6a..8ed2add 100644
+--- a/admin/public/app.js
++++ b/admin/public/app.js
+@@ -1455,7 +1455,7 @@ createApp({
+
+     function removeHomeChannel(index) {
+       if (cfg.value.homeChannels.length <= 1) {
+-        toast("至少保留一个频道", "首页导航需要至少一个入口", "error");
++        toast("至少保留一个频道", "顶部导航需要至少一个入口", "error");
+         return;
+       }
+       cfg.value.homeChannels.splice(index, 1);
+@@ -2831,26 +2831,31 @@ createApp({
+           <div v-else-if="currentView === 'editor'" class="editor-layout" :class="{'left-closed':!leftPanelOpen,'right-closed':!rightPanelOpen,'has-responsive-drawer':leftPanelOpen||rightPanelOpen}">
+             <button v-if="leftPanelOpen || rightPanelOpen" type="button" class="panel-scrim" aria-label="关闭侧栏" @click="closeResponsivePanels"></button>
+             <aside class="side-panel left-panel" :class="{open:leftPanelOpen}">
+-              <div class="panel-header"><div><div class="panel-title">页面区块</div><div class="panel-subtitle">点击添加到当前页面</div></div><button class="icon-btn panel-close" title="收起页面区块" @click="togglePanel('left')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button></div>
+-              <div class="panel-scroll">
+-                <div class="section-label"><span>页面</span><span>{{ pageDefinitions.length }} 个</span></div>
+-                <div class="page-navigator">
+-                  <div v-for="page in pageDefinitions" :key="page.id" class="page-nav-entry" :class="{active:currentPage===page.id}"><button class="page-nav-main" :aria-current="currentPage===page.id ? 'page' : null" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span>{{ page.name }}</span></button><button v-if="page.custom" class="page-nav-more" type="button" :aria-label="page.name + ' 页面设置'" title="页面设置" @click.stop="openPageEditor(page)"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></button></div>
+-                  <button v-if="currentPage==='home'" class="page-create page-nav-settings" @click="openHomeNavigation"><iconify-icon class="icon" icon="ph:rows"></iconify-icon><span>首页导航 · {{ cfg.homeChannels.length }} 项</span></button>
+-                  <button class="page-create" @click="openNewPage"><iconify-icon class="icon" icon="ph:plus-circle"></iconify-icon><span>新建空白页</span></button>
+-                </div>
+-                <section class="design-tabbar-card" aria-labelledby="design-tabbar-title">
+-                  <div class="section-label"><span id="design-tabbar-title">底部导航</span><span>{{ cfg.tabBar.items.filter(item => item.visible !== false).length }}/5</span></div>
+-                  <p class="design-tabbar-help">导航属于设计结构；文字字号由系统统一控制。</p>
+-                  <button type="button" class="design-tabbar-add" :disabled="cfg.tabBar.items.length>=5" @click="addTabItem"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加导航项</button>
+-                  <div class="design-tabbar-list">
+-                    <article v-for="(item,index) in cfg.tabBar.items" :key="item.id" class="design-tabbar-row" :class="{disabled:item.visible===false,featured:cfg.tabBar.featuredItemId===item.id}">
+-                      <div class="design-tabbar-row-head"><span class="tabbar-setting-index">{{ index + 1 }}</span><strong>{{ item.text || '未命名导航' }}</strong><span class="design-tabbar-fixed">固定字号</span><div class="row-actions"><button type="button" title="上移" :disabled="index===0" @click="moveTabItem(index,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button type="button" title="下移" :disabled="index===cfg.tabBar.items.length-1" @click="moveTabItem(index,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button><button type="button" :title="item.visible===false?'显示':'隐藏'" @click="toggleTabVisibility(item)"><iconify-icon class="icon" :icon="item.visible===false?'ph:eye-slash':'ph:eye'"></iconify-icon></button><button type="button" title="设为突出项" @click="toggleFeaturedTab(item)"><iconify-icon class="icon" icon="ph:star"></iconify-icon></button><button type="button" title="删除" class="danger" @click="removeTabItem(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
+-                      <div class="design-tabbar-fields"><input v-model.trim="item.text" type="text" maxlength="12" :aria-label="'导航项 ' + (index + 1) + ' 名称'"><select v-model="item.page" :aria-label="'导航项 ' + (index + 1) + ' 页面'"><option v-for="page in pageDefinitions.filter(page=>page.tab)" :key="page.id" :value="page.id">{{ page.name }}</option></select></div>
+-                    </article>
+-                  </div>
+-                </section>
+-                <div class="section-label block-library-label"><span>基础区块</span><button class="section-add-btn" type="button" title="添加区块" :aria-expanded="blockQuickAddOpen" @click="blockQuickAddOpen = !blockQuickAddOpen"><iconify-icon class="icon" icon="ph:plus"></iconify-icon></button></div>
++               <div class="panel-header"><div><div class="panel-title">页面与导航</div><div class="panel-subtitle">管理页面结构与顾客端导航</div></div><button class="icon-btn panel-close" title="收起页面与导航" aria-label="收起页面与导航" @click="togglePanel('left')"><iconify-icon class="icon" icon="ph:sidebar-simple"></iconify-icon></button></div>
++               <div class="panel-scroll">
++                 <details class="editor-panel-group editor-panel-pages" aria-labelledby="editor-pages-title" open>
++                   <summary class="editor-panel-group-head"><div><h3 id="editor-pages-title">页面</h3><p>选择页面并编辑页面内容</p></div><span class="editor-panel-summary-meta"><span class="editor-panel-count">{{ pageDefinitions.length }} 个</span><iconify-icon class="icon" icon="ph:caret-down" aria-hidden="true"></iconify-icon></span></summary>
++                   <button class="page-primary-action" type="button" @click="openNewPage"><iconify-icon class="icon" icon="ph:plus-circle"></iconify-icon><span>新建页面</span></button>
++                 <div class="page-navigator">
++                   <div v-for="page in pageDefinitions" :key="page.id" class="page-nav-entry" :class="{active:currentPage===page.id,'has-actions':page.custom}"><button class="page-nav-main" :aria-current="currentPage===page.id ? 'page' : null" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span>{{ page.name }}</span></button><button v-if="page.custom" class="page-nav-more" type="button" :aria-label="page.name + ' 页面设置'" title="页面设置" @click.stop="openPageEditor(page)"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></button></div>
++                 </div>
++                 </details>
++                 <details class="editor-panel-group editor-panel-navigation" aria-labelledby="editor-home-nav-title" open>
++                   <summary class="editor-panel-group-head"><div><h3 id="editor-home-nav-title">顶部导航</h3><p>管理首页顶部的频道名称和顺序</p></div><span class="editor-panel-summary-meta"><span class="editor-panel-count">{{ cfg.homeChannels.length }} 项</span><iconify-icon class="icon" icon="ph:caret-down" aria-hidden="true"></iconify-icon></span></summary>
++                   <button v-if="currentPage==='home'" class="editor-panel-action" type="button" @click="openHomeNavigation"><iconify-icon class="icon" icon="ph:rows"></iconify-icon><span>管理顶部导航</span><iconify-icon class="icon trailing-icon" icon="ph:arrow-up-right"></iconify-icon></button>
++                   <p v-else class="editor-panel-help">切换到首页后可管理顶部导航。</p>
++                 </details>
++                 <details class="editor-panel-group design-tabbar-card" aria-labelledby="design-tabbar-title" open>
++                   <summary class="editor-panel-group-head"><div><h3 id="design-tabbar-title">底部导航</h3><p>导航属于设计结构；文字字号由系统统一控制</p></div><span class="editor-panel-summary-meta"><span class="editor-panel-count">{{ cfg.tabBar.items.filter(item => item.visible !== false).length }}/5</span><iconify-icon class="icon" icon="ph:caret-down"></iconify-icon></span></summary>
++                   <button type="button" class="design-tabbar-add" :disabled="cfg.tabBar.items.length>=5" @click="addTabItem"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加导航项</button>
++                   <div class="design-tabbar-list">
++                     <article v-for="(item,index) in cfg.tabBar.items" :key="item.id" class="design-tabbar-row" :class="{disabled:item.visible===false,featured:cfg.tabBar.featuredItemId===item.id}">
++                       <div class="design-tabbar-row-head"><span class="tabbar-setting-index">{{ index + 1 }}</span><strong>{{ item.text || '未命名导航' }}</strong><span class="design-tabbar-fixed">固定字号</span><details class="tabbar-row-menu"><summary class="icon-btn small" aria-label="打开导航项操作" title="更多操作"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></summary><div class="tabbar-row-menu-popover"><button type="button" :disabled="index===0" @click="moveTabItem(index,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon>上移</button><button type="button" :disabled="index===cfg.tabBar.items.length-1" @click="moveTabItem(index,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon>下移</button><button type="button" @click="toggleTabVisibility(item)"><iconify-icon class="icon" :icon="item.visible===false?'ph:eye-slash':'ph:eye'"></iconify-icon>{{ item.visible===false?'显示':'隐藏' }}</button><button type="button" @click="toggleFeaturedTab(item)"><iconify-icon class="icon" icon="ph:star"></iconify-icon>设为突出项</button><button type="button" class="danger" @click="removeTabItem(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>删除</button></div></details></div>
++                       <div class="design-tabbar-fields"><input v-model.trim="item.text" type="text" maxlength="12" :aria-label="'导航项 ' + (index + 1) + ' 名称'"><select v-model="item.page" :aria-label="'导航项 ' + (index + 1) + ' 页面'"><option v-for="page in pageDefinitions.filter(page=>page.tab)" :key="page.id" :value="page.id">{{ page.name }}</option></select></div>
++                     </article>
++                   </div>
++                 </details>
++                <div class="section-label block-library-label"><span>基础区块</span><button class="section-add-btn" type="button" title="添加区块" aria-label="添加区块" :aria-expanded="blockQuickAddOpen" @click="blockQuickAddOpen = !blockQuickAddOpen"><iconify-icon class="icon" icon="ph:plus" aria-hidden="true"></iconify-icon></button></div>
+                 <div v-if="blockQuickAddOpen" class="quick-add-menu" role="menu">
+                   <button v-for="block in blockLibrary" :key="'quick-' + block.type" type="button" role="menuitem" class="quick-add-item" @click="addBlock(block.type)">
+                     <iconify-icon class="icon" :icon="block.icon"></iconify-icon><span>{{ block.name }}</span>
+@@ -2867,7 +2872,7 @@ createApp({
+                   <div v-for="section in sections" :key="section.id" class="layer-item" :class="{active: selectedId === section.id, 'layer-hidden': !section.enabled}" @click="selectedId = section.id">
+                     <iconify-icon class="icon layer-drag" icon="ph:dots-six-vertical"></iconify-icon>
+                     <span class="layer-name">{{ blockLabel(section) }}</span>
+-                    <button class="layer-visibility" :title="section.enabled ? '隐藏' : '显示'" @click.stop="toggleSection(section)"><iconify-icon class="icon" :icon="section.enabled ? 'ph:eye' : 'ph:eye-slash'"></iconify-icon></button>
++                    <button class="layer-visibility" type="button" :title="section.enabled ? '隐藏' : '显示'" :aria-label="(section.enabled ? '隐藏' : '显示') + blockLabel(section)" @click.stop="toggleSection(section)"><iconify-icon class="icon" :icon="section.enabled ? 'ph:eye' : 'ph:eye-slash'" aria-hidden="true"></iconify-icon></button>
+                   </div>
+                 </div>
+               </div>
+@@ -3290,7 +3295,7 @@ createApp({
+       <template v-if="homeNavOpen">
+         <div class="drawer-backdrop" @click="finishHomeNavigation"></div>
+         <aside class="drawer home-nav-drawer">
+-          <div class="drawer-header"><div><h2>首页导航</h2><p>管理首页顶部的频道名称和顺序。</p></div><button type="button" class="icon-btn" aria-label="关闭首页导航设置" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
++          <div class="drawer-header"><div><h2>顶部导航</h2><p>管理首页顶部的频道名称和顺序。</p></div><button type="button" class="icon-btn" aria-label="关闭顶部导航设置" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
+           <div class="drawer-body"><div class="home-nav-preview"><span v-for="(channel,index) in cfg.homeChannels" :key="channel+index" :class="{active:index===0}">{{ channel || '未命名' }}</span></div><div class="home-nav-list"><div v-for="(channel,index) in cfg.homeChannels" :key="index" class="home-nav-row"><span class="home-nav-index">{{ index + 1 }}</span><input v-model="cfg.homeChannels[index]" type="text" maxlength="18" placeholder="频道名称"><div class="row-actions"><button title="前移" :aria-label="'前移频道 ' + (channel || index + 1)" :disabled="index===0" @click="moveHomeChannel(index,-1)"><iconify-icon class="icon" icon="ph:arrow-up"></iconify-icon></button><button title="后移" :aria-label="'后移频道 ' + (channel || index + 1)" :disabled="index===cfg.homeChannels.length-1" @click="moveHomeChannel(index,1)"><iconify-icon class="icon" icon="ph:arrow-down"></iconify-icon></button><button title="删除频道" :aria-label="'删除频道 ' + (channel || index + 1)" @click="removeHomeChannel(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div></div><button class="btn add-channel" :disabled="cfg.homeChannels.length>=5" @click="addHomeChannel"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加频道</button><p class="home-nav-note">第一个频道会作为默认选中项。最多 5 个频道，保存并生成预览后会更新小程序首页。</p></div>
+           <div class="drawer-footer"><button class="btn subtle" @click="finishHomeNavigation">完成</button><button class="btn primary" @click="finishHomeNavigation"><iconify-icon class="icon" icon="ph:check"></iconify-icon>应用导航设置</button></div>
+         </aside>
+diff --git a/admin/public/styles.css b/admin/public/styles.css
+index c3aa050..2e7296b 100644
+--- a/admin/public/styles.css
++++ b/admin/public/styles.css
+@@ -2269,3 +2269,87 @@ body, button, input, select, textarea { font-family: var(--ui-font-body); }
+ .design-tabbar-fields input, .design-tabbar-fields select { min-width: 0; min-height: 30px; padding: 0 8px; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); font-size: 11px; }
+ @media (max-width: 1023px) { .design-tabbar-card { margin-inline: 0; } }
+ @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
++
++/* Editor panel hierarchy: pages and navigation are separate management groups. */
++.editor-panel-group { margin: 0 0 18px; padding: 14px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); }
++.editor-panel-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
++.editor-panel-group > summary.editor-panel-group-head { list-style: none; cursor: pointer; }
++.editor-panel-group > summary.editor-panel-group-head::-webkit-details-marker { display: none; }
++.editor-panel-group:not([open]) > summary.editor-panel-group-head { margin-bottom: 0; }
++.editor-panel-group-head h3 { margin: 0; color: var(--ui-text); font-size: 14px; line-height: 1.3; }
++.editor-panel-group-head p { margin: 4px 0 0; color: var(--ui-text-secondary); font-size: 12px; line-height: 1.45; }
++.editor-panel-count { flex: 0 0 auto; color: var(--ui-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; }
++.editor-panel-help { margin: 0; color: var(--ui-text-secondary); font-size: 12px; line-height: 1.5; }
++.page-primary-action, .editor-panel-action { width: 100%; height: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 12px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 8px; background: var(--ui-bronze-soft); color: var(--ui-text); font-size: 13px; font-weight: 600; cursor: pointer; }
++.page-primary-action:hover, .editor-panel-action:hover { border-color: var(--ui-bronze); background: #f4eadc; }
++.editor-panel-action .trailing-icon { margin-left: auto; color: var(--ui-text-tertiary); }
++.page-navigator { position: static; display: grid; grid-template-columns: 1fr; gap: 6px; margin: 0; padding: 0; border: 0; background: transparent; }
++.page-navigator button.page-nav-main { width: 100%; height: 44px; min-height: 44px; flex-direction: row; justify-content: flex-start; gap: 10px; padding: 0 12px; font-size: 13px; text-align: left; }
++.page-navigator button.page-nav-main .icon { flex: 0 0 auto; width: 18px; height: 18px; }
++.page-nav-entry { position: relative; display: block; width: 100%; }
++.page-nav-entry.has-actions .page-nav-main { padding-right: 52px; }
++.page-nav-entry .page-nav-more { position: absolute; top: 2px; right: 2px; z-index: 1; min-width: 40px; min-height: 40px; opacity: 1; border: 1px solid transparent; border-radius: 8px; color: var(--ui-text-secondary); }
++.page-nav-entry .page-nav-more:hover, .page-nav-entry .page-nav-more:focus-visible { border-color: var(--ui-border); background: var(--ui-surface-subtle); }
++.design-tabbar-card { padding: 14px; }
++.editor-panel-summary-meta { display: inline-flex; align-items: center; gap: 8px; }
++.editor-panel-summary-meta > .icon { width: 16px; height: 16px; color: var(--ui-text-tertiary); transition: transform 160ms ease; }
++.editor-panel-group[open] > summary .editor-panel-summary-meta > .icon { transform: rotate(180deg); }
++.design-tabbar-card > .design-tabbar-add { margin-bottom: 2px; min-height: 44px; font-size: 13px; }
++.design-tabbar-help { display: none; }
++.design-tabbar-row-head { min-height: 40px; }
++.design-tabbar-fixed { font-size: 11px; }
++.tabbar-row-menu { position: relative; flex: 0 0 40px; }
++.tabbar-row-menu > summary { display: grid; place-items: center; width: 40px; height: 40px; list-style: none; cursor: pointer; }
++.tabbar-row-menu > summary::-webkit-details-marker { display: none; }
++.tabbar-row-menu-popover { position: absolute; top: 42px; right: 0; z-index: 8; display: grid; min-width: 150px; gap: 2px; padding: 6px; border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-surface); box-shadow: var(--ui-shadow-lg); }
++.tabbar-row-menu-popover button { min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text); font-size: 12px; text-align: left; cursor: pointer; }
++.tabbar-row-menu-popover button:hover { background: var(--ui-bronze-soft); }
++.tabbar-row-menu-popover button.danger { color: var(--danger); }
++.tabbar-row-menu-popover button:disabled { opacity: .45; cursor: default; }
++.design-tabbar-fields input, .design-tabbar-fields select { min-height: 40px; font-size: 12px; }
++
++/* Keep every icon-only Editor control optically centered and equally tappable. */
++.editor-layout .icon-btn,
++.editor-layout .section-add-btn,
++.editor-layout .page-nav-more,
++.editor-layout .layer-visibility,
++.editor-layout .tabbar-row-menu > summary {
++  width: 40px;
++  min-width: 40px;
++  height: 40px;
++  min-height: 40px;
++  display: grid;
++  place-items: center;
++  padding: 0;
++  line-height: 0;
++}
++.editor-layout .icon-btn > .icon,
++.editor-layout .section-add-btn > .icon,
++.editor-layout .page-nav-more > .icon,
++.editor-layout .layer-visibility > .icon,
++.editor-layout .tabbar-row-menu > summary > .icon {
++  display: block;
++  flex: 0 0 auto;
++  width: 18px;
++  height: 18px;
++  margin: 0;
++}
++.new-page-dialog .drawer-header {
++  align-items: center;
++  padding: 0 24px;
++}
++.new-page-dialog .drawer-header > div {
++  display: flex;
++  flex-direction: column;
++  justify-content: center;
++}
++.new-page-dialog .drawer-header > .icon-btn {
++  align-self: center;
++  margin-top: 0;
++}
++@media (max-width: 680px) {
++  .editor-panel-group { margin-bottom: 14px; padding: 12px; }
++  .editor-panel-group-head p { font-size: 11px; }
++  .design-tabbar-fields { grid-template-columns: 1fr; }
++  .tabbar-row-menu-popover { position: fixed; right: 16px; top: auto; margin-top: 4px; }
++}
+
+--- /dev/null
++++ admin/test/editor-panel-redesign.test.js
+@@ NEW FILE @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const publicDir = path.resolve(__dirname, "../public");
+const appSource = fs.readFileSync(path.join(publicDir, "app.js"), "utf8");
+const styleSource = fs.readFileSync(path.join(publicDir, "styles.css"), "utf8");
+
+test("editor panel groups pages and navigation with a primary page action", () => {
+  assert.match(appSource, /页面与导航/);
+  assert.match(appSource, /editor-pages-title/);
+  assert.match(appSource, /editor-home-nav-title/);
+  assert.match(appSource, /page-primary-action/);
+  assert.match(appSource, /管理顶部导航/);
+  assert.doesNotMatch(appSource, /首页导航/);
+  assert.match(appSource, /design-tabbar-card[^>]*open/);
+  const panelSource = appSource.match(/<aside class="side-panel left-panel"[\s\S]*?<div class="section-label block-library-label>/)?.[0] || "";
+  assert.doesNotMatch(panelSource, /新建空白页/);
+});
+
+test("page and navigation groups are collapsible with aligned controls", () => {
+  assert.match(appSource, /<details class="editor-panel-group editor-panel-pages"[^>]*open>/);
+  assert.match(appSource, /<details class="editor-panel-group editor-panel-navigation"[^>]*open>/);
+  assert.match(appSource, /editor-panel-pages[\s\S]*?<summary class="editor-panel-group-head"/);
+  assert.match(styleSource, /\.page-primary-action, \.editor-panel-action\s*\{[^}]*height: 44px/s);
+  assert.match(styleSource, /\.page-navigator button\.page-nav-main\s*\{[^}]*width: 100%[^}]*height: 44px/s);
+  assert.match(appSource, /'has-actions':page\.custom/);
+  assert.match(styleSource, /\.page-nav-entry\s*\{[^}]*width: 100%/s);
+  assert.match(styleSource, /\.page-nav-entry \.page-nav-more\s*\{[^}]*position: absolute[^}]*right: 2px/s);
+  assert.match(styleSource, /\.editor-panel-group\[open\][^\{]*\{[^}]*rotate\(180deg\)/s);
+});
+
+test("bottom navigation keeps the five-item limit and exposes row actions accessibly", () => {
+  assert.match(appSource, /cfg\.tabBar\.items\.length>=5/);
+  assert.match(appSource, /tabbar-row-menu/);
+  assert.match(appSource, /打开导航项操作/);
+  assert.match(appSource, /固定字号/);
+  assert.match(styleSource, /\.tabbar-row-menu-popover/);
+  assert.match(styleSource, /\.tabbar-row-menu-popover button[^\{]*\{[^}]*min-height: 40px/s);
+});
+
+test("editor panel layout uses a single-column page list and responsive drawer rules", () => {
+  assert.match(styleSource, /\.page-navigator\s*\{[^}]*grid-template-columns: 1fr/s);
+  assert.match(styleSource, /\.page-primary-action[^\{]*\{[^}]*min-height: 44px/s);
+  assert.match(styleSource, /@media \(max-width: 680px\)/);
+  assert.match(styleSource, /\.editor-panel-group-head/);
+  assert.match(styleSource, /\.page-nav-entry \.page-nav-more[^\{]*\{[^}]*min-width: 40px/s);
+});
+
+test("editor icon-only controls stay centered, tappable and accessibly named", () => {
+  assert.match(appSource, /class="section-add-btn"[^>]*aria-label="添加区块"/);
+  assert.match(appSource, /class="layer-visibility"[^>]*:aria-label=/);
+  assert.match(styleSource, /\.editor-layout \.section-add-btn,[\s\S]*?place-items: center;[\s\S]*?line-height: 0;/);
+  assert.match(styleSource, /\.editor-layout \.layer-visibility[^\{]*\{[\s\S]*?width: 40px;[\s\S]*?height: 40px;/);
+  assert.match(styleSource, /\.editor-layout \.section-add-btn > \.icon,[\s\S]*?display: block;[\s\S]*?width: 18px;[\s\S]*?height: 18px;/);
+});
+
+test("new-page dialog header centers its title, description and close control", () => {
+  assert.match(styleSource, /\.new-page-dialog \.drawer-header\s*\{[^}]*align-items: center;[^}]*padding: 0 24px;/s);
+  assert.match(styleSource, /\.new-page-dialog \.drawer-header > div\s*\{[^}]*justify-content: center;/s);
+  assert.match(styleSource, /\.new-page-dialog \.drawer-header > \.icon-btn\s*\{[^}]*align-self: center;[^}]*margin-top: 0;/s);
+});

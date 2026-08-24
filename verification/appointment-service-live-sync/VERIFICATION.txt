@@ -1,0 +1,62 @@
+ATELIER OS Editor Appointment Service Live Sync
+
+CHANGED_BRANCH=codex/merchant-os-sprint-2
+CHANGED_FIELD=Editor 预约服务实时 API 同步
+HEAD=c8d1835a1766f8e86aa2bbc0e4d0aacfb43c0b9c
+
+ARTIFACT_1=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-service-live-sync\MODIFIED_FILE
+ARTIFACT_2=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-service-live-sync\DIFF_FILE
+ARTIFACT_3=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-service-live-sync\VERIFICATION.txt
+ARTIFACT_4=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-service-live-sync\ROLLBACK.sh
+
+BASELINE
+COMMAND=GET /v1/appointment-services with protected Merchant session; inspect selected Editor appointment-service block
+INPUT=40003 staging current Merchant scope
+LITERAL_OUTPUT=SERVICE_COUNT=2; API names=量体|美发; selected Editor preview names=量体与定制咨询|成衣选购咨询
+EXIT_STATUS=0
+RESULT=SERVICE_PREVIEW_MISMATCH_REPRODUCED
+
+MODIFIED
+COMMAND=node --check admin/public/app.js; node --check admin/test/editor-panel-redesign.test.js; node --test admin/test/editor-panel-redesign.test.js; npm --prefix admin test; git diff --check
+INPUT=Editor 独立预约服务状态、并发请求去重、登录/页面切换/焦点恢复同步
+LITERAL_OUTPUT=focused tests 9; pass 9; fail 0; skipped 0 | full tests 97; pass 96; fail 0; skipped 1 | syntax exit 0 | git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+RUNTIME_READBACK
+COMMAND=fetch http://127.0.0.1:40003/app.js and compare SHA256 with admin/public/app.js
+INPUT=40003 当前静态资源与本地修改文件
+LITERAL_OUTPUT=SERVED_APP_MATCH=true | SERVED_LIVE_SYNC=true
+EXIT_STATUS=0
+RESULT=PASS
+
+BROWSER_UAT
+COMMAND=node verification/appointment-service-live-sync/browser-uat.js
+INPUT=受保护 Merchant 登录输入；GET /v1/appointment-services；打开系统预约页并显示预约服务字段
+LITERAL_OUTPUT=API_SERVICES=2 | PREVIEW_SERVICES=2 | NAMES_MATCH=true | CONSOLE_ERRORS=0 | PAGE_ERRORS=0 | NETWORK_ERRORS=0 | BROWSER_UAT_EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+SCREENSHOT=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-service-live-sync\browser-uat\modified.png
+
+ROLLBACK
+COMMAND="C:\Program Files\Git\bin\bash.exe" verification/appointment-service-live-sync/ROLLBACK.sh <temporary-copy> <secure-baseline>
+INPUT=包含修改后 app.js 与 editor-panel-redesign.test.js 的独立临时副本
+LITERAL_OUTPUT=Appointment service live-sync source rollback applied. | ROLLBACK_APP_MATCH=True | ROLLBACK_TEST_MATCH=True | ROLLBACK_EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR_STATUS=Editor 预约服务状态与测试恢复为本任务实施前哈希
+
+SECRET_SCAN
+COMMAND=scan task diff, delivery artifacts and Browser UAT source for credential assignments, connection strings and private keys
+INPUT=DIFF_FILE; MODIFIED_FILE; VERIFICATION.txt; ROLLBACK.sh; browser-uat.js
+LITERAL_OUTPUT=SECRET_SCAN_MATCHES=0
+EXIT_STATUS=0
+RESULT=PASS
+
+WORKSPACE_CONFIG_MODIFIED=NO
+APPOINTMENT_SERVICE_DATA_MODIFIED=NO
+DATABASE_SCHEMA_MODIFIED=NO
+MIGRATION_RUN=NO
+PRODUCTION_CONNECTED=NO
+GIT_COMMIT=NO
+GIT_PUSH=NO

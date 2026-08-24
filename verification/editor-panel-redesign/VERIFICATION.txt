@@ -1,0 +1,39 @@
+ATELIER OS Editor 页面与导航交互优化
+
+CHANGED_BRANCH=codex/merchant-os-sprint-2
+CHANGED_FIELD=Editor 页面与导航交互及新建页面弹窗标题垂直对齐
+HEAD=c8d1835a1766f8e86aa2bbc0e4d0aacfb43c0b9c
+
+BASELINE
+COMMAND=node --test test/editor-panel-redesign.test.js
+INPUT=页面与导航重构基线测试
+LITERAL_OUTPUT=tests 3; pass 3; fail 0; skipped 0
+EXIT_STATUS=0
+RESULT=PASS
+
+MODIFIED
+COMMAND=node --check admin/public/app.js; node --check admin/test/editor-panel-redesign.test.js; node --test admin/test/editor-panel-redesign.test.js; git diff --check
+INPUT=新建页面弹窗标题、说明和关闭按钮在 78px 标题区内垂直居中
+LITERAL_OUTPUT=focused tests 6; pass 6; fail 0; skipped 0 | git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+RUNTIME_READBACK
+COMMAND=Invoke-WebRequest http://127.0.0.1:40003/styles.css
+INPUT=40003 当前静态资源
+LITERAL_OUTPUT=SERVED_MODAL_CENTER=True; Health 200
+EXIT_STATUS=0
+RESULT=PASS
+
+ROLLBACK
+COMMAND=ROLLBACK.sh <temporary-copy>
+INPUT=包含修改后 app.js、styles.css、editor-panel-redesign.test.js 的独立临时副本
+LITERAL_OUTPUT=Editor panel source rollback applied. | ROLLBACK_APP_MATCH=True | ROLLBACK_CSS_MATCH=True | ROLLBACK_TEST_REMOVED=True | ROLLBACK_EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR_STATUS=原始 Editor 面板源码哈希恢复；新增测试文件移除
+
+DATABASE_MODIFIED=NO
+MIGRATION_RUN=NO
+SAAS_CORE_MODIFIED=NO
+PRODUCTION_CONNECTED=NO

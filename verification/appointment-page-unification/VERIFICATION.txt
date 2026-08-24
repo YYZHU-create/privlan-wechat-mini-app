@@ -1,0 +1,69 @@
+ATELIER OS 预约页面统一
+
+CHANGED_BRANCH=codex/merchant-os-sprint-2
+CHANGED_FIELD=Editor 页面来源标识、预约页重名保护与 Workspace 预约入口统一
+HEAD=c8d1835a1766f8e86aa2bbc0e4d0aacfb43c0b9c
+
+ARTIFACT_1=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-page-unification\MODIFIED_FILE
+ARTIFACT_2=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-page-unification\DIFF_FILE
+ARTIFACT_3=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-page-unification\VERIFICATION.txt
+ARTIFACT_4=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\verification\appointment-page-unification\ROLLBACK.sh
+
+BASELINE
+COMMAND=node --check admin/public/app.js; node --test admin/test/editor-panel-redesign.test.js; git diff --check
+INPUT=实施前 Editor 页面与导航源码及既有测试
+LITERAL_OUTPUT=syntax exit 0 | tests 7; pass 7; fail 0; skipped 0 | git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+MODIFIED
+COMMAND=node --check admin/public/app.js; node --check admin/test/editor-panel-redesign.test.js; node --test admin/test/editor-panel-redesign.test.js; npm --prefix admin test; git diff --check
+INPUT=系统页/自定义页来源标签、预约保留名称、普通页面重名校验及响应式布局
+LITERAL_OUTPUT=focused tests 9; pass 9; fail 0; skipped 0 | full tests 97; pass 96; fail 0; skipped 1 | syntax exit 0 | git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+RUNTIME_READBACK
+COMMAND=fetch http://127.0.0.1:40003/app.js and compare SHA256 with admin/public/app.js
+INPUT=40003 当前静态资源与本地修改文件
+LITERAL_OUTPUT=SERVED_APP_MATCH=true | SERVED_PAGE_KIND=true
+EXIT_STATUS=0
+RESULT=PASS
+
+BROWSER_UAT
+COMMAND=node verification/appointment-page-unification/browser-uat.js
+INPUT=受保护 Merchant 会话；1366x768 与 430x932；页面来源、预约重名、普通重名、合法名称及横向溢出
+LITERAL_OUTPUT=1366x768 pages 7; systemBadges 7; consoleErrors 0; pageErrors 0; networkErrors 0; overflow false | 430x932 pages 7; systemBadges 7; consoleErrors 0; pageErrors 0; networkErrors 0; overflow false
+EXIT_STATUS=0
+RESULT=PASS
+
+WORKSPACE_READBACK
+COMMAND=GET /api/config with protected Merchant session; SELECT current_database()
+INPUT=40003 staging Workspace 配置与只读数据库身份
+LITERAL_OUTPUT=CURRENT_DATABASE=atelier_os_staging | CONFIG_CUSTOM_PAGES=0 | CONFIG_RESERVED_CUSTOM_PAGES=0 | CANONICAL_LAYOUT_BLOCKS=4 | WORKSPACE_CONFIG_UNCHANGED=True
+EXIT_STATUS=0
+RESULT=PASS
+BACKUP_PATH=C:\Users\Administrator\AppData\Local\AtelierOS\Backups\appointment-page-unification\workspace-config-before-20260824-151624.json
+BACKUP_SHA256=F3A78CD3DA42FF57CCE9D3D3DED2020C45A95CD979C85FCD64F116A4259316D3
+
+ROLLBACK
+COMMAND="C:\Program Files\Git\bin\bash.exe" verification/appointment-page-unification/ROLLBACK.sh <temporary-copy> <secure-baseline>
+INPUT=包含修改后 app.js、styles.css、editor-panel-redesign.test.js 的独立临时副本
+LITERAL_OUTPUT=Appointment page unification source rollback applied. | ROLLBACK_APP_MATCH=True | ROLLBACK_CSS_MATCH=True | ROLLBACK_TEST_MATCH=True | ROLLBACK_EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR_STATUS=Editor 页面列表恢复实施前源码与测试哈希；Workspace 配置始终保持原值
+
+SECRET_SCAN
+COMMAND=scan task diff and four delivery artifacts for credential assignments, connection strings and private keys
+INPUT=DIFF_FILE; MODIFIED_FILE; VERIFICATION.txt; ROLLBACK.sh
+LITERAL_OUTPUT=SECRET_SCAN_MATCHES=0
+EXIT_STATUS=0
+RESULT=PASS
+
+DATABASE_SCHEMA_MODIFIED=NO
+WORKSPACE_CONFIG_MODIFIED=NO
+MIGRATION_RUN=NO
+PRODUCTION_CONNECTED=NO
+GIT_COMMIT=NO
+GIT_PUSH=NO

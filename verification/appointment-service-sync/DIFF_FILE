@@ -1,0 +1,134 @@
+diff --git a/admin/appointment-service.js b/admin/appointment-service.js
+index 7255e09..b952ac6 100644
+--- a/admin/appointment-service.js
++++ b/admin/appointment-service.js
+@@ -12,6 +12,7 @@ const TRANSITIONS = {
+   confirmed: new Set(["completed", "cancelled", "no_show"]),
+   completed: new Set(), cancelled: new Set(), no_show: new Set()
+ };
++const DEFAULT_SETTINGS = { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true };
+
+ function uuid() { return crypto.randomUUID(); }
+ function json(value) { return JSON.stringify(value ?? {}); }
+@@ -326,14 +327,17 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+
+   async function getSettings(scope) {
+     const row = (await db.query("select * from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows[0];
+-    if (!row) throw new AppointmentError(404, "APPOINTMENT_SETTINGS_NOT_FOUND", "预约设置不存在");
++    if (!row) return { ...DEFAULT_SETTINGS };
+     return { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled };
+   }
+
+   async function updateSettings(scope, input) {
+     assertWritable(scope); const timezone = String(input.timezone || ""); const slot = int(input.slotIntervalMinutes,5,300,-1); const buffer = int(input.defaultBufferMinutes,1,30,-1); const days = int(input.maxAdvanceDays,1,365,-1);
+     if (!assertTimezone(timezone) || slot < 0 || slot % 5 || buffer < 0 || days < 0) throw new AppointmentError(400, "APPOINTMENT_SETTINGS_INVALID", "预约规则设置无效");
+-    await db.transaction(async tx => { await tx.query("update appointment_settings set timezone=$1,slot_interval_minutes=$2,default_buffer_minutes=$3,min_advance_minutes=0,max_advance_days=$4,booking_enabled=$5,updated_at=now() where tenant_id=$6 and workspace_id=$7 and store_id=$8", [timezone,slot,buffer,days,input.bookingEnabled !== false,...rowScope(scope)]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
++    await db.transaction(async tx => { await tx.query(`insert into appointment_settings(tenant_id,workspace_id,store_id,timezone,slot_interval_minutes,default_buffer_minutes,min_advance_minutes,max_advance_days,booking_enabled)
++      values($1,$2,$3,$4,$5,$6,0,$7,$8)
++      on conflict(workspace_id,store_id) do update set timezone=excluded.timezone,slot_interval_minutes=excluded.slot_interval_minutes,default_buffer_minutes=excluded.default_buffer_minutes,min_advance_minutes=0,max_advance_days=excluded.max_advance_days,booking_enabled=excluded.booking_enabled,updated_at=now()
++      where appointment_settings.tenant_id=excluded.tenant_id`, [...rowScope(scope),timezone,slot,buffer,days,input.bookingEnabled !== false]); await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.settings.update","appointment_settings",scope.storeId,{ bookingEnabled: input.bookingEnabled !== false }); });
+     return getSettings(scope);
+   }
+
+diff --git a/admin/test/appointment-saas.test.js b/admin/test/appointment-saas.test.js
+index f69a2ac..c23d85e 100644
+--- a/admin/test/appointment-saas.test.js
++++ b/admin/test/appointment-saas.test.js
+@@ -63,6 +63,18 @@ test("booking rules accept interval and default buffer boundaries without lead t
+   } finally { await base.db.close(); }
+ });
+
++test("missing appointment settings return editable defaults and save with an upsert", async () => {
++  const base = await fixture("缺省预约设置店");
++  try {
++    await base.db.query("delete from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", [base.scope.tenantId, base.scope.workspaceId, base.scope.storeId]);
++    assert.deepEqual(await base.service.getSettings(base.scope), { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true });
++    assert.equal(Number((await base.db.query("select count(*) count from appointment_settings where store_id=$1", [base.scope.storeId])).rows[0].count), 0);
++    const saved = await base.service.updateSettings(base.scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 45, defaultBufferMinutes: 10, maxAdvanceDays: 60, bookingEnabled: true });
++    assert.deepEqual(saved, { timezone: "Asia/Shanghai", slotIntervalMinutes: 45, defaultBufferMinutes: 10, maxAdvanceDays: 60, bookingEnabled: true });
++    assert.equal(Number((await base.db.query("select count(*) count from appointment_settings where store_id=$1", [base.scope.storeId])).rows[0].count), 1);
++  } finally { await base.db.close(); }
++});
++
+ test("buffer uses half-open overlap boundaries and cancellation releases the slot", async () => {
+   const base = await fixture();
+   try {
+diff --git a/admin/public/app.js b/admin/public/app.js
+index 671cee0..3bf023e 100644
+--- a/admin/public/app.js
++++ b/admin/public/app.js
+@@ -121,7 +121,7 @@ createApp({
+     const aiConsole = reactive({ question: "", sending: false, answer: null, error: "" });
+     const faqEditor = reactive({ open: false, index: -1, question: "", keywordsText: "", answer: "", enabled: true, showAsPrompt: true, error: "" });
+     const knowledgeSourceEditor = reactive({ open: false, type: "faq", title: "", content: "", error: "" });
+-    const appointmentWorkspace = reactive({ loading: false, error: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
++    const appointmentWorkspace = reactive({ loading: false, error: "", servicesLoading: false, servicesError: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
+     if (requestedView === "membership") appointmentWorkspace.customerSection = "membership";
+     const appointmentDrawer = reactive({ open: false, loading: false, item: null, timeline: [], followUpDraft: "", followUpSaving: false, error: "" });
+     const customerDrawer = reactive({ open: false, loading: false, item: null, error: "", tab: "overview", noteDraft: "", pointsDelta: 0, pointsReason: "" });
+@@ -762,6 +762,14 @@ createApp({
+       finally { appointmentWorkspace.loading = false; }
+     }
+
++    async function loadAppointmentServices() {
++      appointmentWorkspace.servicesLoading = true;
++      appointmentWorkspace.servicesError = "";
++      try { appointmentWorkspace.services = await apiJson("/v1/appointment-services") || []; }
++      catch (error) { appointmentWorkspace.servicesError = error.message || "服务读取失败"; }
++      finally { appointmentWorkspace.servicesLoading = false; }
++    }
++    const previewAppointmentServices = computed(() => appointmentWorkspace.services.filter(item => item.enabled !== false));
+
+     async function openAppointment(item) { appointmentDrawer.open = true; appointmentDrawer.loading = true; appointmentDrawer.error = ""; appointmentDrawer.item = null; appointmentDrawer.timeline = []; appointmentDrawer.followUpDraft = ""; try { const id = encodeURIComponent(item.id); const [appointment, timeline] = await Promise.all([apiJson(`/v1/appointments/${id}`), apiJson(`/v1/appointments/${id}/timeline`)]); appointmentDrawer.item = appointment; appointmentDrawer.timeline = timeline || []; } catch(error){ appointmentDrawer.error=error.message; } finally { appointmentDrawer.loading=false; } }
+     async function updateAppointmentStatus(status) { if(!appointmentDrawer.item)return; appointmentDrawer.loading=true;try{appointmentDrawer.item=await apiJson(`/v1/appointments/${encodeURIComponent(appointmentDrawer.item.id)}/status`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await loadAppointmentWorkspace();toast("预约状态已更新",appointmentDrawer.item.statusLabel);}catch(error){appointmentDrawer.error=error.message;}finally{appointmentDrawer.loading=false;} }
+@@ -893,7 +901,7 @@ createApp({
+         const response = await fetch("/auth/session"); const result = await response.json().catch(() => ({}));
+         if (!response.ok || !result.ok) { auth.session = null; return; }
+         auth.session = result.data;
+-        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="appointments")await loadAppointmentWorkspace(); loadCart(); }
++        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
+       } catch (error) { auth.session = null; }
+       finally { auth.loading = false; }
+     }
+@@ -1376,6 +1384,7 @@ createApp({
+       if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
+       if (id === "media" && !media.value.length) loadMedia();
+       if (id === "customers" || id === "appointments" || id === "overview") { if (id !== "overview") appointmentWorkspace.tab = id === "appointments" ? "appointments" : "customers"; loadAppointmentWorkspace(); }
++      if (id === "editor") loadAppointmentServices();
+       const url = new URL(window.location.href);
+       url.searchParams.set("view", id);
+       window.history.replaceState({}, "", url);
+@@ -2706,7 +2715,7 @@ createApp({
+       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
+       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
+       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
++      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+       statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
+       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
+@@ -2927,7 +2936,7 @@ createApp({
+                         <div v-else-if="section.type === 'member-banner'" class="member-section"><img v-if="section.props.useBrandLogo !== false" class="member-brand-logo" src="/mp-images/privlan-ai-logo-white.png" alt="我的店铺"><h3 v-else>{{ section.props.title || cfg.brand.name }}</h3><p>{{ section.props.subtitle || cfg.brand.slogan }}</p><div class="benefits"><button v-for="benefit in cfg.memberBenefits.slice(0,4)" :key="benefit.text" type="button" class="benefit" @click.stop="navigatePreview(benefit)"><img :src="mpUrl(benefit.icon)" :alt="benefit.text"><span>{{ benefit.text }}</span></button></div></div>
+                         <div v-else-if="section.type === 'product-detail'" class="detail-section"><div class="detail-gallery"><div class="detail-image"><img :src="mpUrl(productImages(detailProduct(section))[0])" :alt="detailProduct(section).name"></div><div v-if="productImages(detailProduct(section)).length > 1" class="detail-thumbs"><button v-for="(image,index) in productImages(detailProduct(section))" :key="image" :class="{active:index===0}" @click.stop><img :src="mpUrl(image)" :alt="detailProduct(section).name + ' 主图 ' + (index + 1)"></button></div></div><div class="detail-info"><div class="detail-kicker">我的店铺 COLLECTION</div><h2>{{ detailProduct(section).name }}</h2><div v-if="section.props.showPrice" class="detail-price">{{ money(detailProduct(section).price) }}</div><p>{{ detailProduct(section).description || '精选材质与精确剪裁，呈现舒适、克制而持久的高级质感。' }}</p><div v-if="detailProduct(section).colors?.length" class="detail-options"><span>颜色</span><button v-for="color in detailProduct(section).colors" :key="color.name" class="detail-color"><i :style="{backgroundColor:color.value}"></i>{{ color.name }}</button></div><div v-if="detailProduct(section).sizes?.length" class="detail-options"><span>尺码</span><button v-for="size in detailProduct(section).sizes" :key="size" class="detail-size">{{ size }}</button></div><div v-if="detailProduct(section).detail" class="detail-long-copy">{{ detailProduct(section).detail }}</div><div v-if="detailProduct(section).detailImages?.length" class="detail-story-images"><img v-for="image in detailProduct(section).detailImages" :key="image" :src="mpUrl(image)" :alt="detailProduct(section).name + ' 商品详情'"></div><div v-if="section.props.showActions" class="detail-actions"><button @click.stop="addToCart(detailProduct(section))">加入购物车</button><button class="primary" @click.stop="addToCart(detailProduct(section),true)">立即购买</button></div></div></div>
+                         <div v-else-if="section.type === 'appointment-hero'" class="appointment-editor-hero"><span>{{ section.props.kicker }}</span><h2>{{ section.props.title }}</h2><p>{{ section.props.description }}</p></div>
+-                         <div v-else-if="section.type === 'appointment-form'" class="appointment-editor-form"><div v-if="section.props.showName || section.props.showPhone" class="appointment-editor-card"><b>01</b><h3>预约人信息</h3><label v-if="section.props.showName">姓名<input placeholder="请输入预约人姓名" disabled></label><label v-if="section.props.showPhone">联系电话<input placeholder="请输入手机号" disabled></label></div><div v-if="section.props.showService || section.props.showStore" class="appointment-editor-card"><b>02</b><h3>服务选择</h3><div v-if="section.props.showService" class="appointment-editor-options"><button type="button">量体与定制咨询</button><button type="button">成衣选购咨询</button></div><label v-if="section.props.showStore">到店门店<select disabled><option>由实时数据提供</option></select></label></div><div v-if="section.props.showDate || section.props.showTime" class="appointment-editor-card"><b>03</b><h3>日期与时间</h3><div class="appointment-editor-date"><button type="button">周六<br><strong>16</strong></button><button type="button">周日<br><strong>17</strong></button></div><div v-if="section.props.showTime" class="appointment-editor-slots"><button type="button">14:00</button><button type="button">16:30</button></div></div><div v-if="section.props.showAdvisor" class="appointment-editor-card"><b>04</b><h3>服务顾问</h3><p class="appointment-editor-live">顾问选项由实时数据提供</p></div></div>
++                         <div v-else-if="section.type === 'appointment-form'" class="appointment-editor-form"><div v-if="section.props.showName || section.props.showPhone" class="appointment-editor-card"><b>01</b><h3>预约人信息</h3><label v-if="section.props.showName">姓名<input placeholder="请输入预约人姓名" disabled></label><label v-if="section.props.showPhone">联系电话<input placeholder="请输入手机号" disabled></label></div><div v-if="section.props.showService || section.props.showStore" class="appointment-editor-card"><b>02</b><h3>服务选择</h3><div v-if="section.props.showService && previewAppointmentServices.length" class="appointment-editor-options"><button v-for="service in previewAppointmentServices" :key="service.id" type="button">{{ service.name }}</button></div><p v-else-if="section.props.showService" class="appointment-editor-live">{{ appointmentWorkspace.servicesLoading ? '正在读取服务…' : appointmentWorkspace.servicesError ? '服务暂时无法读取' : '暂无可预约服务' }}</p><label v-if="section.props.showStore">到店门店<select disabled><option>由实时数据提供</option></select></label></div><div v-if="section.props.showDate || section.props.showTime" class="appointment-editor-card"><b>03</b><h3>日期与时间</h3><div class="appointment-editor-date"><button type="button">周六<br><strong>16</strong></button><button type="button">周日<br><strong>17</strong></button></div><div v-if="section.props.showTime" class="appointment-editor-slots"><button type="button">14:00</button><button type="button">16:30</button></div></div><div v-if="section.props.showAdvisor" class="appointment-editor-card"><b>04</b><h3>服务顾问</h3><p class="appointment-editor-live">顾问选项由实时数据提供</p></div></div>
+                         <div v-else-if="section.type === 'appointment-notes'" class="appointment-editor-card appointment-editor-notes"><b>05</b><h3>{{ section.props.label }}</h3><textarea :placeholder="section.props.placeholder" disabled></textarea></div>
+                         <div v-else-if="section.type === 'appointment-submit'" class="appointment-editor-submit"><button type="button">{{ section.props.buttonText }}</button></div>
+                         <div v-else-if="section.type === 'text'" class="text-section"><h3 class="serif">{{ section.props.title }}</h3><p>{{ section.props.text }}</p></div>
+diff --git a/admin/test/editor-panel-redesign.test.js b/admin/test/editor-panel-redesign.test.js
+index 9bee9b4..54a69e5 100644
+--- a/admin/test/editor-panel-redesign.test.js
++++ b/admin/test/editor-panel-redesign.test.js
+@@ -62,3 +62,11 @@ test("new-page dialog header centers its title, description and close control",
+   assert.match(styleSource, /\.new-page-dialog \.drawer-header > \.icon-btn\s*\{[^}]*align-self: center;[^}]*margin-top: 0;/s);
+ });
+
++test("appointment preview reads enabled services from the merchant API", () => {
++  assert.match(appSource, /async function loadAppointmentServices\(\)/);
++  assert.match(appSource, /apiJson\("\/v1\/appointment-services"\)/);
++  assert.match(appSource, /v-for="service in previewAppointmentServices"/);
++  assert.match(appSource, /\{\{ service\.name \}\}/);
++  const preview = appSource.match(/section\.type === 'appointment-form'[\s\S]*?section\.type === 'appointment-note'/)?.[0] || "";
++  assert.doesNotMatch(preview, /量体与定制咨询|成衣选购咨询/);
++});

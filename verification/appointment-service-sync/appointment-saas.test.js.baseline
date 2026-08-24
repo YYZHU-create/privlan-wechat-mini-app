@@ -63,18 +63,6 @@ test("booking rules accept interval and default buffer boundaries without lead t
   } finally { await base.db.close(); }
 });
 
-test("missing appointment settings return editable defaults and save with an upsert", async () => {
-  const base = await fixture("缺省预约设置店");
-  try {
-    await base.db.query("delete from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", [base.scope.tenantId, base.scope.workspaceId, base.scope.storeId]);
-    assert.deepEqual(await base.service.getSettings(base.scope), { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true });
-    assert.equal(Number((await base.db.query("select count(*) count from appointment_settings where store_id=$1", [base.scope.storeId])).rows[0].count), 0);
-    const saved = await base.service.updateSettings(base.scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 45, defaultBufferMinutes: 10, maxAdvanceDays: 60, bookingEnabled: true });
-    assert.deepEqual(saved, { timezone: "Asia/Shanghai", slotIntervalMinutes: 45, defaultBufferMinutes: 10, maxAdvanceDays: 60, bookingEnabled: true });
-    assert.equal(Number((await base.db.query("select count(*) count from appointment_settings where store_id=$1", [base.scope.storeId])).rows[0].count), 1);
-  } finally { await base.db.close(); }
-});
-
 test("buffer uses half-open overlap boundaries and cancellation releases the slot", async () => {
   const base = await fixture();
   try {

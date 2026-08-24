@@ -121,8 +121,7 @@ createApp({
     const aiConsole = reactive({ question: "", sending: false, answer: null, error: "" });
     const faqEditor = reactive({ open: false, index: -1, question: "", keywordsText: "", answer: "", enabled: true, showAsPrompt: true, error: "" });
     const knowledgeSourceEditor = reactive({ open: false, type: "faq", title: "", content: "", error: "" });
-    const appointmentWorkspace = reactive({ loading: false, error: "", servicesLoading: false, servicesError: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
-    const editorAppointmentServices = ref([]);
+    const appointmentWorkspace = reactive({ loading: false, error: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
     if (requestedView === "membership") appointmentWorkspace.customerSection = "membership";
     const appointmentDrawer = reactive({ open: false, loading: false, item: null, timeline: [], followUpDraft: "", followUpSaving: false, error: "" });
     const customerDrawer = reactive({ open: false, loading: false, item: null, error: "", tab: "overview", noteDraft: "", pointsDelta: 0, pointsReason: "" });
@@ -758,32 +757,11 @@ createApp({
         const [stats, customerStats, appointments, customerResult, services, advisors, tags, program, levels] = await Promise.all([
           apiJson("/v1/appointments/stats"), apiJson("/v1/customers/stats"), apiJson(`/v1/appointments${appointmentQuery ? `?${appointmentQuery}` : ""}`), apiJson(`/v1/customers?${customerQuery}`), apiJson("/v1/appointment-services"), apiJson("/v1/appointment-advisors"), apiJson("/v1/customer-tags"), apiJson("/v1/membership-program"), apiJson("/v1/membership-levels")
         ]);
-        Object.assign(appointmentWorkspace.stats, stats || {}); Object.assign(appointmentWorkspace.customerStats, customerStats || {}); appointmentWorkspace.appointments = appointments || []; appointmentWorkspace.customers = customerResult?.items || []; appointmentWorkspace.customerTotal = Number(customerResult?.total || 0); appointmentWorkspace.services = services || []; editorAppointmentServices.value = services || []; appointmentWorkspace.advisors = advisors || []; customerAdmin.tags=tags||[]; customerAdmin.program=program||{enabled:false,points_enabled:false}; customerAdmin.levels=levels||[];
+        Object.assign(appointmentWorkspace.stats, stats || {}); Object.assign(appointmentWorkspace.customerStats, customerStats || {}); appointmentWorkspace.appointments = appointments || []; appointmentWorkspace.customers = customerResult?.items || []; appointmentWorkspace.customerTotal = Number(customerResult?.total || 0); appointmentWorkspace.services = services || []; appointmentWorkspace.advisors = advisors || []; customerAdmin.tags=tags||[]; customerAdmin.program=program||{enabled:false,points_enabled:false}; customerAdmin.levels=levels||[];
       } catch (error) { appointmentWorkspace.error = error.message; }
       finally { appointmentWorkspace.loading = false; }
     }
 
-    let appointmentServicesRequest = null;
-    async function loadAppointmentServices() {
-      if (appointmentServicesRequest) return appointmentServicesRequest;
-      appointmentWorkspace.servicesLoading = true;
-      appointmentWorkspace.servicesError = "";
-      appointmentServicesRequest = (async () => {
-        try {
-          const services = await apiJson("/v1/appointment-services");
-          editorAppointmentServices.value = Array.isArray(services) ? services : [];
-          return editorAppointmentServices.value;
-        } catch (error) {
-          appointmentWorkspace.servicesError = error.message || "服务读取失败";
-          return editorAppointmentServices.value;
-        } finally {
-          appointmentWorkspace.servicesLoading = false;
-          appointmentServicesRequest = null;
-        }
-      })();
-      return appointmentServicesRequest;
-    }
-    const previewAppointmentServices = computed(() => editorAppointmentServices.value.filter(item => item.enabled !== false));
 
     async function openAppointment(item) { appointmentDrawer.open = true; appointmentDrawer.loading = true; appointmentDrawer.error = ""; appointmentDrawer.item = null; appointmentDrawer.timeline = []; appointmentDrawer.followUpDraft = ""; try { const id = encodeURIComponent(item.id); const [appointment, timeline] = await Promise.all([apiJson(`/v1/appointments/${id}`), apiJson(`/v1/appointments/${id}/timeline`)]); appointmentDrawer.item = appointment; appointmentDrawer.timeline = timeline || []; } catch(error){ appointmentDrawer.error=error.message; } finally { appointmentDrawer.loading=false; } }
     async function updateAppointmentStatus(status) { if(!appointmentDrawer.item)return; appointmentDrawer.loading=true;try{appointmentDrawer.item=await apiJson(`/v1/appointments/${encodeURIComponent(appointmentDrawer.item.id)}/status`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await loadAppointmentWorkspace();toast("预约状态已更新",appointmentDrawer.item.statusLabel);}catch(error){appointmentDrawer.error=error.message;}finally{appointmentDrawer.loading=false;} }
@@ -904,9 +882,7 @@ createApp({
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.message || result.error || "登录失败");
         auth.password = ""; auth.session = result.data; auth.loading = false;
-        await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]);
-        if (currentView.value === "editor") await loadAppointmentServices();
-        loadCart();
+        await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); loadCart();
       } catch (error) { auth.error = error.message; }
       finally { auth.sending = false; }
     }
@@ -917,7 +893,7 @@ createApp({
         const response = await fetch("/auth/session"); const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) { auth.session = null; return; }
         auth.session = result.data;
-        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
+        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="appointments")await loadAppointmentWorkspace(); loadCart(); }
       } catch (error) { auth.session = null; }
       finally { auth.loading = false; }
     }
@@ -1400,7 +1376,6 @@ createApp({
       if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
       if (id === "media" && !media.value.length) loadMedia();
       if (id === "customers" || id === "appointments" || id === "overview") { if (id !== "overview") appointmentWorkspace.tab = id === "appointments" ? "appointments" : "customers"; loadAppointmentWorkspace(); }
-      if (id === "editor") loadAppointmentServices();
       const url = new URL(window.location.href);
       url.searchParams.set("view", id);
       window.history.replaceState({}, "", url);
@@ -1503,26 +1478,10 @@ createApp({
         .replace(/-+/g, "-");
     }
 
-    function normalizePageName(value) {
-      return String(value || "").trim().replace(/\s+/g, "").toLocaleLowerCase("zh-CN");
-    }
-
-    function validatePageName(value, currentPageId = "") {
-      const name = String(value || "").trim();
-      if (!name) return "请填写页面名称";
-      const normalized = normalizePageName(name);
-      if (currentPageId !== "appointment" && (normalized === "预约" || normalized === "预约到店")) {
-        return "系统已提供“预约到店”页面，请直接编辑该页面";
-      }
-      const duplicate = pageDefinitions.value.find(page => page.id !== currentPageId && normalizePageName(page.name) === normalized);
-      return duplicate ? `已存在同名页面“${duplicate.name}”` : "";
-    }
-
     function createBlankPage() {
       const name = newPage.name.trim();
-      const nameError = validatePageName(name);
-      if (nameError) {
-        newPage.error = nameError;
+      if (!name) {
+        newPage.error = "请填写页面名称";
         return;
       }
       let slug = normalizePageSlug(newPage.slug) || `page-${Date.now().toString(36)}`;
@@ -1561,8 +1520,7 @@ createApp({
       const page = cfg.value.customPages.find(item => item.id === pageEditor.id);
       if (!page) return;
       const name = pageEditor.name.trim();
-      const nameError = validatePageName(name, page.id);
-      if (nameError) { pageEditor.error = nameError; return; }
+      if (!name) { pageEditor.error = "请输入页面名称"; return; }
       const slug = normalizePageSlug(pageEditor.slug).replace(/^custom-/, "");
       if (!slug) { pageEditor.error = "请输入有效的英文页面地址"; return; }
       const nextId = `custom-${slug}`;
@@ -1625,7 +1583,6 @@ createApp({
       selectedId.value = sections.value[0]?.id || null;
       selectedSlideIndex.value = 0;
       inspectorTab.value = "content";
-      if (id === "appointment") loadAppointmentServices();
     }
 
     function navigatePreview(target) {
@@ -2701,12 +2658,6 @@ createApp({
       if (accountMenu.open && !event.target.closest?.(".merchant-account")) closeAccountMenu({ restoreFocus: false });
     });
 
-    function refreshEditorAppointmentServices() {
-      if (currentView.value === "editor" && document.visibilityState !== "hidden") loadAppointmentServices();
-    }
-    window.addEventListener("focus", refreshEditorAppointmentServices);
-    document.addEventListener("visibilitychange", refreshEditorAppointmentServices);
-
     window.addEventListener("keydown", event => {
       if (changePassword.open && event.key === "Escape") {
         event.preventDefault();
@@ -2755,8 +2706,8 @@ createApp({
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
-      statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, validatePageName, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
@@ -2887,7 +2838,7 @@ createApp({
                    <summary class="editor-panel-group-head"><div><h3 id="editor-pages-title">页面</h3><p>选择页面并编辑页面内容</p></div><span class="editor-panel-summary-meta"><span class="editor-panel-count">{{ pageDefinitions.length }} 个</span><iconify-icon class="icon" icon="ph:caret-down" aria-hidden="true"></iconify-icon></span></summary>
                    <button class="page-primary-action" type="button" @click="openNewPage"><iconify-icon class="icon" icon="ph:plus-circle"></iconify-icon><span>新建页面</span></button>
                  <div class="page-navigator">
-                    <div v-for="page in pageDefinitions" :key="page.id" class="page-nav-entry" :class="{active:currentPage===page.id,'has-actions':page.custom}"><button class="page-nav-main" :aria-current="currentPage===page.id ? 'page' : null" :aria-label="page.name + '，' + (page.custom ? '自定义页' : '系统页')" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span class="page-nav-name">{{ page.name }}</span><small class="page-nav-kind">{{ page.custom ? '自定义页' : '系统页' }}</small></button><button v-if="page.custom" class="page-nav-more" type="button" :aria-label="page.name + ' 页面设置'" title="页面设置" @click.stop="openPageEditor(page)"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></button></div>
+                   <div v-for="page in pageDefinitions" :key="page.id" class="page-nav-entry" :class="{active:currentPage===page.id,'has-actions':page.custom}"><button class="page-nav-main" :aria-current="currentPage===page.id ? 'page' : null" @click="switchPage(page.id)"><iconify-icon class="icon" :icon="page.icon"></iconify-icon><span>{{ page.name }}</span></button><button v-if="page.custom" class="page-nav-more" type="button" :aria-label="page.name + ' 页面设置'" title="页面设置" @click.stop="openPageEditor(page)"><iconify-icon class="icon" icon="ph:dots-three"></iconify-icon></button></div>
                  </div>
                  </details>
                  <details class="editor-panel-group editor-panel-navigation" aria-labelledby="editor-home-nav-title" open>
@@ -2976,7 +2927,7 @@ createApp({
                         <div v-else-if="section.type === 'member-banner'" class="member-section"><img v-if="section.props.useBrandLogo !== false" class="member-brand-logo" src="/mp-images/privlan-ai-logo-white.png" alt="我的店铺"><h3 v-else>{{ section.props.title || cfg.brand.name }}</h3><p>{{ section.props.subtitle || cfg.brand.slogan }}</p><div class="benefits"><button v-for="benefit in cfg.memberBenefits.slice(0,4)" :key="benefit.text" type="button" class="benefit" @click.stop="navigatePreview(benefit)"><img :src="mpUrl(benefit.icon)" :alt="benefit.text"><span>{{ benefit.text }}</span></button></div></div>
                         <div v-else-if="section.type === 'product-detail'" class="detail-section"><div class="detail-gallery"><div class="detail-image"><img :src="mpUrl(productImages(detailProduct(section))[0])" :alt="detailProduct(section).name"></div><div v-if="productImages(detailProduct(section)).length > 1" class="detail-thumbs"><button v-for="(image,index) in productImages(detailProduct(section))" :key="image" :class="{active:index===0}" @click.stop><img :src="mpUrl(image)" :alt="detailProduct(section).name + ' 主图 ' + (index + 1)"></button></div></div><div class="detail-info"><div class="detail-kicker">我的店铺 COLLECTION</div><h2>{{ detailProduct(section).name }}</h2><div v-if="section.props.showPrice" class="detail-price">{{ money(detailProduct(section).price) }}</div><p>{{ detailProduct(section).description || '精选材质与精确剪裁，呈现舒适、克制而持久的高级质感。' }}</p><div v-if="detailProduct(section).colors?.length" class="detail-options"><span>颜色</span><button v-for="color in detailProduct(section).colors" :key="color.name" class="detail-color"><i :style="{backgroundColor:color.value}"></i>{{ color.name }}</button></div><div v-if="detailProduct(section).sizes?.length" class="detail-options"><span>尺码</span><button v-for="size in detailProduct(section).sizes" :key="size" class="detail-size">{{ size }}</button></div><div v-if="detailProduct(section).detail" class="detail-long-copy">{{ detailProduct(section).detail }}</div><div v-if="detailProduct(section).detailImages?.length" class="detail-story-images"><img v-for="image in detailProduct(section).detailImages" :key="image" :src="mpUrl(image)" :alt="detailProduct(section).name + ' 商品详情'"></div><div v-if="section.props.showActions" class="detail-actions"><button @click.stop="addToCart(detailProduct(section))">加入购物车</button><button class="primary" @click.stop="addToCart(detailProduct(section),true)">立即购买</button></div></div></div>
                         <div v-else-if="section.type === 'appointment-hero'" class="appointment-editor-hero"><span>{{ section.props.kicker }}</span><h2>{{ section.props.title }}</h2><p>{{ section.props.description }}</p></div>
-                         <div v-else-if="section.type === 'appointment-form'" class="appointment-editor-form"><div v-if="section.props.showName || section.props.showPhone" class="appointment-editor-card"><b>01</b><h3>预约人信息</h3><label v-if="section.props.showName">姓名<input placeholder="请输入预约人姓名" disabled></label><label v-if="section.props.showPhone">联系电话<input placeholder="请输入手机号" disabled></label></div><div v-if="section.props.showService || section.props.showStore" class="appointment-editor-card"><b>02</b><h3>服务选择</h3><div v-if="section.props.showService && previewAppointmentServices.length" class="appointment-editor-options"><button v-for="service in previewAppointmentServices" :key="service.id" type="button">{{ service.name }}</button></div><p v-else-if="section.props.showService" class="appointment-editor-live">{{ appointmentWorkspace.servicesLoading ? '正在读取服务…' : appointmentWorkspace.servicesError ? '服务暂时无法读取' : '暂无可预约服务' }}</p><label v-if="section.props.showStore">到店门店<select disabled><option>由实时数据提供</option></select></label></div><div v-if="section.props.showDate || section.props.showTime" class="appointment-editor-card"><b>03</b><h3>日期与时间</h3><div class="appointment-editor-date"><button type="button">周六<br><strong>16</strong></button><button type="button">周日<br><strong>17</strong></button></div><div v-if="section.props.showTime" class="appointment-editor-slots"><button type="button">14:00</button><button type="button">16:30</button></div></div><div v-if="section.props.showAdvisor" class="appointment-editor-card"><b>04</b><h3>服务顾问</h3><p class="appointment-editor-live">顾问选项由实时数据提供</p></div></div>
+                         <div v-else-if="section.type === 'appointment-form'" class="appointment-editor-form"><div v-if="section.props.showName || section.props.showPhone" class="appointment-editor-card"><b>01</b><h3>预约人信息</h3><label v-if="section.props.showName">姓名<input placeholder="请输入预约人姓名" disabled></label><label v-if="section.props.showPhone">联系电话<input placeholder="请输入手机号" disabled></label></div><div v-if="section.props.showService || section.props.showStore" class="appointment-editor-card"><b>02</b><h3>服务选择</h3><div v-if="section.props.showService" class="appointment-editor-options"><button type="button">量体与定制咨询</button><button type="button">成衣选购咨询</button></div><label v-if="section.props.showStore">到店门店<select disabled><option>由实时数据提供</option></select></label></div><div v-if="section.props.showDate || section.props.showTime" class="appointment-editor-card"><b>03</b><h3>日期与时间</h3><div class="appointment-editor-date"><button type="button">周六<br><strong>16</strong></button><button type="button">周日<br><strong>17</strong></button></div><div v-if="section.props.showTime" class="appointment-editor-slots"><button type="button">14:00</button><button type="button">16:30</button></div></div><div v-if="section.props.showAdvisor" class="appointment-editor-card"><b>04</b><h3>服务顾问</h3><p class="appointment-editor-live">顾问选项由实时数据提供</p></div></div>
                         <div v-else-if="section.type === 'appointment-notes'" class="appointment-editor-card appointment-editor-notes"><b>05</b><h3>{{ section.props.label }}</h3><textarea :placeholder="section.props.placeholder" disabled></textarea></div>
                         <div v-else-if="section.type === 'appointment-submit'" class="appointment-editor-submit"><button type="button">{{ section.props.buttonText }}</button></div>
                         <div v-else-if="section.type === 'text'" class="text-section"><h3 class="serif">{{ section.props.title }}</h3><p>{{ section.props.text }}</p></div>
@@ -3323,7 +3274,7 @@ createApp({
           <div class="drawer-header"><div><h2>新建空白页面</h2><p>从一张空画布开始，再自由添加轮播、文字、商品等区块。</p></div><button type="button" class="icon-btn" aria-label="关闭新建页面" @click="newPage.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
           <div class="new-page-body">
             <div class="new-page-symbol"><iconify-icon class="icon" icon="ph:file-plus"></iconify-icon></div>
-            <div class="field"><label for="new-page-name">页面名称</label><input id="new-page-name" v-model="newPage.name" type="text" maxlength="24" placeholder="例如：品牌故事" :aria-invalid="!!newPage.error" @input="newPage.error=''" @blur="newPage.error=validatePageName(newPage.name)" /></div>
+            <div class="field"><label for="new-page-name">页面名称</label><input id="new-page-name" v-model="newPage.name" type="text" maxlength="24" placeholder="例如：品牌故事" @input="newPage.error=''" /></div>
             <div class="field"><label for="new-page-slug">页面地址（可选）</label><div class="page-path-input"><span>/pages/custom-</span><input id="new-page-slug" v-model="newPage.slug" type="text" placeholder="brand-story" /></div><small>只使用英文、数字和短横线；留空时会自动生成。</small></div>
             <div v-if="newPage.error" class="form-error"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon>{{ newPage.error }}</div>
             <div class="new-page-note"><iconify-icon class="icon" icon="ph:info"></iconify-icon><span>创建后页面会立即出现在编辑器和所有“跳转目标”选项中。保存并生成预览后，才会写入小程序开发文件。</span></div>
@@ -3336,7 +3287,7 @@ createApp({
         <div class="drawer-backdrop" @click="pageEditor.open=false"></div>
         <form class="new-page-dialog page-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="page-editor-title" @submit.prevent="savePageEditor">
           <div class="drawer-header"><div><h2 id="page-editor-title">页面设置</h2><p>维护页面名称、地址和微信分享信息。</p></div><button type="button" class="icon-btn" title="关闭页面设置" aria-label="关闭页面设置" @click="pageEditor.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div>
-          <div class="new-page-body"><div class="field"><label for="page-editor-name">页面名称</label><input id="page-editor-name" v-model.trim="pageEditor.name" type="text" maxlength="24" :aria-invalid="!!pageEditor.error" @input="pageEditor.error=''" @blur="pageEditor.error=validatePageName(pageEditor.name,pageEditor.id)" /></div><div class="field"><label for="page-editor-slug">页面地址</label><div class="page-path-input"><span>/pages/custom-</span><input id="page-editor-slug" v-model.trim="pageEditor.slug" type="text" /></div><small>修改地址时会同步更新当前配置里的页面跳转。</small></div><div class="field"><label>分享标题</label><input v-model.trim="pageEditor.shareTitle" type="text" maxlength="40"></div><div class="field"><label>分享图片路径</label><input v-model.trim="pageEditor.shareImage" type="text" placeholder="/images/share-cover.jpg"></div><div class="field"><label>页面说明</label><textarea v-model.trim="pageEditor.description" maxlength="120"></textarea></div><div v-if="pageEditor.error" class="form-error" role="alert">{{ pageEditor.error }}</div></div>
+          <div class="new-page-body"><div class="field"><label for="page-editor-name">页面名称</label><input id="page-editor-name" v-model.trim="pageEditor.name" type="text" maxlength="24" @input="pageEditor.error=''" /></div><div class="field"><label for="page-editor-slug">页面地址</label><div class="page-path-input"><span>/pages/custom-</span><input id="page-editor-slug" v-model.trim="pageEditor.slug" type="text" /></div><small>修改地址时会同步更新当前配置里的页面跳转。</small></div><div class="field"><label>分享标题</label><input v-model.trim="pageEditor.shareTitle" type="text" maxlength="40"></div><div class="field"><label>分享图片路径</label><input v-model.trim="pageEditor.shareImage" type="text" placeholder="/images/share-cover.jpg"></div><div class="field"><label>页面说明</label><textarea v-model.trim="pageEditor.description" maxlength="120"></textarea></div><div v-if="pageEditor.error" class="form-error" role="alert">{{ pageEditor.error }}</div></div>
           <div class="page-editor-actions"><button type="button" class="btn" @click="duplicateCustomPage(pageDefinitions.find(page=>page.id===pageEditor.id));pageEditor.open=false"><iconify-icon class="icon" icon="ph:copy"></iconify-icon>复制页面</button><button type="button" class="btn danger" @click="deleteCustomPage(pageDefinitions.find(page=>page.id===pageEditor.id));pageEditor.open=false"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>删除页面</button></div>
           <div class="drawer-footer"><button type="button" class="btn subtle" @click="pageEditor.open=false">取消</button><button type="submit" class="btn primary">保存页面设置</button></div>
         </form>
