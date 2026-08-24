@@ -493,9 +493,18 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
   async function removeStaffLeave(scope, staffId, id) {
     assertWritable(scope); await requireStaff(scope, staffId);
-    const row = (await db.query("delete from staff_leaves where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and staff_id=$5 returning id", [id, ...rowScope(scope), staffId])).rows[0];
-    if (!row) throw new AppointmentError(404, "STAFF_LEAVE_NOT_FOUND", "请假记录不存在");
-    return { id, deleted: true };
+    return db.transaction(async tx => {
+      const existing = (await tx.query("select id,start_at,end_at,reason from staff_leaves where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and staff_id=$5 for update", [id, ...rowScope(scope), staffId])).rows[0];
+      if (!existing) throw new AppointmentError(404, "STAFF_LEAVE_NOT_FOUND", "请假记录不存在");
+      const row = (await tx.query("delete from staff_leaves where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and staff_id=$5 returning id", [id, ...rowScope(scope), staffId])).rows[0];
+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "leave.delete", "staff_leave", row.id, {
+        staffId,
+        startAt: existing.start_at,
+        endAt: existing.end_at,
+        reason: existing.reason || ""
+      });
+      return { id: row.id, deleted: true };
+    });
   }
   async function listResources(scope) { return (await db.query(`select r.*,rsa.status assignment_status from resources r join resource_store_assignments rsa on rsa.resource_id=r.id and rsa.tenant_id=r.tenant_id and rsa.workspace_id=r.workspace_id where r.tenant_id=$1 and r.workspace_id=$2 and rsa.store_id=$3 order by r.status,r.name`, rowScope(scope))).rows.map(resourceView); }
   async function saveResource(scope, input = {}, resourceId = null) {

@@ -50,6 +50,14 @@ test("Operation Engine maps legacy advisors, applies schedule, leave, capability
     assert.equal(leaveAvailability.slots.find(slot => slot.startAt === "2030-01-02T02:00:00.000Z").available, false);
     await base.service.removeStaffLeave(base.scope, staff.id, leave.id);
     assert.equal((await base.service.listStaffLeaves(base.scope, staff.id)).length, 0);
+    const leaveAudit = (await base.db.query("select action,tenant_id,workspace_id,resource_id,metadata from audit_events where action='leave.delete' and resource_id=$1", [leave.id])).rows[0];
+    assert.equal(leaveAudit.action, "leave.delete");
+    assert.equal(leaveAudit.tenant_id, base.scope.tenantId);
+    assert.equal(leaveAudit.workspace_id, base.scope.workspaceId);
+    assert.equal(leaveAudit.resource_id, leave.id);
+    assert.equal(leaveAudit.metadata.staffId, staff.id);
+    await assert.rejects(() => base.service.removeStaffLeave({ ...base.scope, tenantId: crypto.randomUUID() }, staff.id, leave.id), error => error.code === "STAFF_NOT_FOUND");
+    await assert.rejects(() => base.service.removeStaffLeave(base.scope, staff.id, leave.id), error => error.code === "STAFF_LEAVE_NOT_FOUND");
     await assert.rejects(() => base.service.getStaff({ ...base.scope, tenantId: crypto.randomUUID() }, staff.id), error => error.code === "STAFF_NOT_FOUND");
   } finally { await base.db.close(); }
 });
