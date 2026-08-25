@@ -3,6 +3,7 @@ const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("
 const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
 const { createAppointmentService } = require("./appointment-service");
 const { createCustomerService } = require("./customer-service");
+const { createWorkflowService } = require("./workflow-service");
 
 class ServiceError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -398,7 +399,8 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  return { db, appointmentService, customerService, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  const workflowService = createWorkflowService({ db, audit });
+  return { db, appointmentService, customerService, workflowService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

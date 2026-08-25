@@ -1,0 +1,41 @@
+MODIFIED_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\docs\prompts\sprint-3a-workflow-runtime.md
+DIFF_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-preparation\DIFF_FILE.patch
+VERIFICATION_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-preparation\VERIFICATION.txt
+ROLLBACK_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-preparation\ROLLBACK.sh
+
+Changed branch/field: codex/merchant-os-sprint-3a / Sprint 3A prompt foundation
+Original state: both docs/prompts files absent
+Original SHA256: E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 (empty baseline)
+Registry SHA256: D51C5063B68BA248BF581DF1759F045E7EEA8E0398281A71CA404C3EABD9CB5B
+Sprint Prompt SHA256: D37F57A654E959E530CBFA0DD136A2C36CFC46CC46575839A90C3C8A9E81DA56
+
+BASELINE
+Command: Test-Path for both requested Prompt files
+Input: clean Sprint 3A worktree at c57a9b3178c63da8fabca212dde5638ed95e6710
+Literal output/result: REGISTRY=ABSENT; SPRINT_PROMPT=ABSENT
+Exit status: 0
+
+MODIFIED
+Command: exact heading and scope marker checks in both Prompt files
+Input: created Prompt foundation documents
+Literal output/result: PROMPT_FOUNDATION=PASS
+Exit status: 0
+
+ROLLBACK
+Command: C:\Program Files\Git\bin\bash.exe verification/sprint3a-preparation/ROLLBACK.sh against an isolated TEMP copy
+Input: isolated copy containing the two created Prompt files
+Literal output/result: ROLLBACK=PASS; Prompt files restored to absent state
+Exit status: 0
+Restored behavior/status: isolated Prompt files absent; Sprint 3A worktree Prompt files remain changed
+
+BASELINE TESTS
+Command: node --test test/merchant-auth.test.js test/tenant-isolation.test.js test/merchant-http.test.js
+Input: committed Sprint 2 code at c57a9b3178c63da8fabca212dde5638ed95e6710 with isolated PGlite databases
+Literal output/result: tests 9; pass 9; fail 0; skipped 0
+Exit status: 0
+
+Command: npm test
+Input: committed Sprint 2 code at c57a9b3178c63da8fabca212dde5638ed95e6710
+Literal output/result: tests 97; pass 96; fail 0; skipped 1
+Exit status: 0
+Skipped status: real PostgreSQL integration test had no explicit test connection

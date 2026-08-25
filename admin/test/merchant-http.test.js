@@ -27,14 +27,14 @@ async function api(pathname, options = {}) {
 
 test.before(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-http-"));
-  for (const name of ["images", "fonts", "trash", "backups"]) fs.mkdirSync(path.join(temp, name));
+  for (const name of ["images", "fonts", "trash", "backups", "data"]) fs.mkdirSync(path.join(temp, name));
   fs.copyFileSync(path.join(ADMIN_DIR, "config.json"), path.join(temp, "config.json"));
   fs.writeFileSync(path.join(temp, "media-folders.json"), JSON.stringify({ folders: [], assignments: {} }));
   const serverPort = await port();
   baseUrl = `http://127.0.0.1:${serverPort}`;
   processHandle = spawn(process.execPath, ["server.js"], {
     cwd: ADMIN_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NODE_ENV: "test", PORT: String(serverPort), PRIVLAN_ADMIN_HOST: "127.0.0.1", ATELIER_TEST_DATABASE: "portable", ATELIER_LICENSE_PEPPER: "http-test-pepper", ATELIER_MASTER_KEY: Buffer.alloc(32, 5).toString("base64"), ATELIER_APPOINTMENT_GATEWAY_TOKEN: APPOINTMENT_TOKEN, ATELIER_OPENID_HASH_KEY: OPENID_HASH_KEY, PRIVLAN_ROOT: temp, PRIVLAN_CONFIG_PATH: path.join(temp, "config.json"), PRIVLAN_CONFIG_BACKUP_DIR: path.join(temp, "backups"), PRIVLAN_IMAGES_DIR: path.join(temp, "images"), PRIVLAN_FONTS_DIR: path.join(temp, "fonts"), PRIVLAN_MEDIA_FOLDERS_PATH: path.join(temp, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(temp, "trash"), PRIVLAN_DISABLE_GIT_SYNC: "1", ATELIER_OPS_PASSWORD: "operator-test-password" }
+    env: { ...process.env, NODE_ENV: "test", PORT: String(serverPort), PRIVLAN_ADMIN_HOST: "127.0.0.1", ATELIER_TEST_DATABASE: "portable", ATELIER_LICENSE_PEPPER: "http-test-pepper", ATELIER_MASTER_KEY: Buffer.alloc(32, 5).toString("base64"), ATELIER_APPOINTMENT_GATEWAY_TOKEN: APPOINTMENT_TOKEN, ATELIER_OPENID_HASH_KEY: OPENID_HASH_KEY, PRIVLAN_ROOT: temp, ATELIER_DATA_ROOT: path.join(temp, "data"), PRIVLAN_CONFIG_PATH: path.join(temp, "config.json"), PRIVLAN_CONFIG_BACKUP_DIR: path.join(temp, "backups"), PRIVLAN_IMAGES_DIR: path.join(temp, "images"), PRIVLAN_FONTS_DIR: path.join(temp, "fonts"), PRIVLAN_MEDIA_FOLDERS_PATH: path.join(temp, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(temp, "trash"), PRIVLAN_DISABLE_GIT_SYNC: "1", ATELIER_OPS_PASSWORD: "operator-test-password" }
   });
   for (let index = 0; index < 80; index += 1) {
     try { if ((await fetch(`${baseUrl}/health`)).status === 200) return; } catch (error) {}

@@ -1,0 +1,6 @@
+diff --git a/docs/prompts/ATELIER_OS_AI_Development_Prompt_Registry.md b/docs/prompts/ATELIER_OS_AI_Development_Prompt_Registry.md
+new file mode 100644
+diff --git a/docs/prompts/sprint-3a-workflow-runtime.md b/docs/prompts/sprint-3a-workflow-runtime.md
+new file mode 100644
+
+Summary: add the Prompt Registry foundation and Sprint 3A planning contract; no product code or migration changes.
