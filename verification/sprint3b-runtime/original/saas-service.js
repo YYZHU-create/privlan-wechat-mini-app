@@ -4,8 +4,6 @@ const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = 
 const { createAppointmentService } = require("./appointment-service");
 const { createCustomerService } = require("./customer-service");
 const { createWorkflowService } = require("./workflow-service");
-const { createWorkflowIntegrationService } = require("./workflow-integration-service");
-const { DEFAULT_WORKFLOW_MAPPINGS } = require("./workflow-integration-mappings");
 
 class ServiceError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -28,7 +26,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "" }) {
   if (!db) throw new Error("database is required");
   const customerService = createCustomerService({ db });
   const appointmentService = createAppointmentService({ db, customerService });
@@ -402,8 +400,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   const workflowService = createWorkflowService({ db, audit });
-  const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
-  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, workflowService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

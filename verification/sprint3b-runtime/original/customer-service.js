@@ -12,8 +12,8 @@ function createCustomerService({ db, openIdHashKey = process.env.ATELIER_OPENID_
     if (!String(openid || "")) throw Object.assign(new Error("缺少可信微信身份"), { status: 401, code: "AUTH_REQUIRED" });
     return crypto.createHmac("sha256", openIdHashKey).update(String(openid || "")).digest("hex");
   }
-  async function appendEvent(tx, scope, customerId, type, source, resourceType = null, resourceId = null, metadata = {}) {
-    await tx.query("insert into customer_events(id,tenant_id,workspace_id,store_id,customer_id,event_type,source,resource_type,resource_id,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) on conflict do nothing", [uuid(), ...scopeValues(scope), customerId, type, source, resourceType, resourceId, JSON.stringify(metadata || {})]);
+  async function appendEvent(tx, scope, customerId, type, source, resourceType = null, resourceId = null) {
+    await tx.query("insert into customer_events(id,tenant_id,workspace_id,store_id,customer_id,event_type,source,resource_type,resource_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict do nothing", [uuid(), ...scopeValues(scope), customerId, type, source, resourceType, resourceId]);
   }
   async function audit(tx,scope,action,resourceType,resourceId,metadata={}){await tx.query("insert into audit_events(id,tenant_id,workspace_id,actor_type,actor_id,action,resource_type,resource_id,request_id,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)",[uuid(),scope.tenantId,scope.workspaceId,scope.actorType||"merchant",scope.userId||scope.actorId||"system",action,resourceType,resourceId||null,scope.requestId||uuid(),JSON.stringify(metadata)]);}
   async function ensureDefaults(tx,scope){await tx.query("insert into membership_programs(id,tenant_id,workspace_id,store_id,enabled,points_enabled) values($1,$2,$3,$4,false,false) on conflict(tenant_id,workspace_id,store_id) do nothing",[uuid(),...scopeValues(scope)]);await tx.query("insert into membership_levels(id,tenant_id,workspace_id,store_id,name,level_order,growth_threshold,enabled) values($1,$2,$3,$4,'普通会员',1,0,true) on conflict(tenant_id,workspace_id,store_id,level_order) do nothing",[uuid(),...scopeValues(scope)]);}

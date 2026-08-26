@@ -538,44 +538,6 @@ create table if not exists workflow_events (
   foreign key (tenant_id, workspace_id, instance_id, task_id) references workflow_tasks(tenant_id, workspace_id, instance_id, id)
 );
 create index if not exists workflow_events_scope_idx on workflow_events(tenant_id, workspace_id, instance_id, sequence);
-create table if not exists workflow_event_consumptions (
-  id uuid primary key, tenant_id uuid not null, workspace_id uuid not null, event_id uuid not null,
-  consumer_key text not null, status text not null default 'pending' check (status in ('pending','processing','succeeded','failed')),
-  attempt_count integer not null default 0 check (attempt_count >= 0), last_error text, workflow_instance_id uuid,
-  result jsonb not null default '{}', processed_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (tenant_id, workspace_id, event_id, consumer_key),
-  foreign key (tenant_id, workspace_id) references workspaces(tenant_id, id),
-  foreign key (tenant_id, workspace_id, workflow_instance_id) references workflow_instances(tenant_id, workspace_id, id)
-);
-create index if not exists workflow_event_consumptions_pending_idx on workflow_event_consumptions(tenant_id, workspace_id, status, updated_at);
-create index if not exists workflow_event_consumptions_event_idx on workflow_event_consumptions(tenant_id, workspace_id, event_id);
-create or replace function customer_events_reject_integration_contract_mutation() returns trigger language plpgsql as $$
-begin
-  if old.metadata ? 'integration' then
-    if new.id is distinct from old.id
-      or new.tenant_id is distinct from old.tenant_id
-      or new.workspace_id is distinct from old.workspace_id
-      or new.store_id is distinct from old.store_id
-      or new.customer_id is distinct from old.customer_id
-      or new.event_type is distinct from old.event_type
-      or new.resource_type is distinct from old.resource_type
-      or new.resource_id is distinct from old.resource_id
-      or not (new.metadata ? 'integration')
-      or (old.metadata #>> '{integration,eventType}') is distinct from (new.metadata #>> '{integration,eventType}')
-      or (old.metadata #>> '{integration,schemaVersion}') is distinct from (new.metadata #>> '{integration,schemaVersion}')
-      or (old.metadata #>> '{integration,aggregate,type}') is distinct from (new.metadata #>> '{integration,aggregate,type}')
-      or (old.metadata #>> '{integration,aggregate,id}') is distinct from (new.metadata #>> '{integration,aggregate,id}')
-      or (old.metadata #>> '{integration,references,appointmentId}') is distinct from (new.metadata #>> '{integration,references,appointmentId}')
-      or (old.metadata #>> '{integration,references,customerId}') is distinct from (new.metadata #>> '{integration,references,customerId}')
-      or (old.metadata #>> '{integration,references,storeId}') is distinct from (new.metadata #>> '{integration,references,storeId}')
-      or (old.metadata #>> '{integration,idempotencyKey}') is distinct from (new.metadata #>> '{integration,idempotencyKey}') then
-      raise exception 'WORKFLOW_EVENT_CONTRACT_IMMUTABLE' using errcode = '55000';
-    end if;
-  end if;
-  return new;
-end;
-$$;
-create trigger customer_events_integration_contract_immutable_trigger before update on customer_events for each row execute function customer_events_reject_integration_contract_mutation();
 create or replace function workflow_versions_reject_published_mutation() returns trigger language plpgsql as $$
 begin
   if tg_op = 'DELETE' or old.status = 'published' or new.status = 'published' then raise exception 'WORKFLOW_PUBLISHED_VERSION_IMMUTABLE' using errcode = '55000'; end if;

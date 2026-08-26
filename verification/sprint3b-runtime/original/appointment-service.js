@@ -1,7 +1,6 @@
 const crypto = require("node:crypto");
 const { DateTime, assertTimezone, businessWindow, isSlotAligned, overlaps, storeDay, storeWeekday, utcInstant } = require("./appointment-time");
 const { createCustomerService } = require("./customer-service");
-const { createDomainEventMetadata } = require("./domain-event");
 
 class AppointmentError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -221,16 +220,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       const appointment = (await tx.query(`insert into appointments(id,tenant_id,workspace_id,store_id,customer_id,service_id,advisor_id,resource_id,appointment_number,status,start_at,service_end_at,occupied_until,duration_minutes_snapshot,buffer_minutes_snapshot,timezone_snapshot,customer_name_snapshot,customer_phone_snapshot,service_name_snapshot,advisor_name_snapshot,notes,source,idempotency_key)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'mini_program',$21) returning *`, [appointmentId, ...rowScope(scope), customer.id, validated.service.id, validated.advisor.id, validated.resource?.id || null, appointmentNumber, validated.start.toJSDate(), validated.serviceEnd.toJSDate(), validated.occupiedUntil.toJSDate(), validated.service.duration_minutes, validated.buffer, validated.settings.timezone, name, phone, validated.service.name, validated.advisor.name, String(input.notes || "").trim().slice(0,1000), idempotencyKey])).rows[0];
       await tx.query("update customers set appointment_count=appointment_count+1,last_seen_at=now(),updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [customer.id, ...rowScope(scope)]);
-      await identityService.appendEvent(tx, scope, customer.id, "appointment_created", "appointment", "appointment", appointment.id, createDomainEventMetadata({
-        eventType: "appointment.created",
-        aggregateType: "appointment",
-        aggregateId: appointment.id,
-        references: { appointmentId: appointment.id, customerId: customer.id, storeId: scope.storeId },
-        data: { status: "pending", source: "mini_program" },
-        idempotencyKey: `appointment.created:${appointment.id}`,
-        actorType: scope.actorType,
-        actorId: scope.actorId
-      }));
+      await identityService.appendEvent(tx, scope, customer.id, "appointment_created", "appointment", "appointment", appointment.id);
       await audit(tx, scope, "appointment.create", "appointment", appointment.id, { source: "mini_program", status: "pending" });
       return appointmentPublicView(appointment, scope.storeName, false);
     });
@@ -299,16 +289,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       const appointment = (await tx.query("select id,customer_id from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 for update", [id, ...rowScope(scope)])).rows[0];
       if (!appointment) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
       const resourceId = `${id}:${key}`;
-      const inserted = await tx.query("insert into customer_events(id,tenant_id,workspace_id,store_id,customer_id,event_type,source,resource_type,resource_id,metadata) values($1,$2,$3,$4,$5,'follow_up_created','merchant','appointment_follow_up',$6,$7::jsonb) on conflict do nothing returning id,occurred_at", [uuid(), ...rowScope(scope), appointment.customer_id, resourceId, json({ note, ...createDomainEventMetadata({
-        eventType: "customer.follow_up.created",
-        aggregateType: "customer",
-        aggregateId: appointment.customer_id,
-        references: { appointmentId: id, customerId: appointment.customer_id, storeId: scope.storeId },
-        data: { note },
-        idempotencyKey: `customer.follow_up.created:${resourceId}`,
-        actorType: "merchant",
-        actorId: scope.userId
-      }) })]);
+      const inserted = await tx.query("insert into customer_events(id,tenant_id,workspace_id,store_id,customer_id,event_type,source,resource_type,resource_id,metadata) values($1,$2,$3,$4,$5,'follow_up_created','merchant','appointment_follow_up',$6,$7::jsonb) on conflict do nothing returning id,occurred_at", [uuid(), ...rowScope(scope), appointment.customer_id, resourceId, json({ note })]);
       if (!inserted.rows[0]) return { duplicate: true, appointmentId: id, idempotencyKey: key };
       await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "appointment.follow_up.create", "appointment", id, { idempotencyKey: key });
       return { duplicate: false, appointmentId: id, customerId: appointment.customer_id, idempotencyKey: key, occurredAt: inserted.rows[0].occurred_at };
@@ -322,18 +303,8 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
       if (!row) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
       if (!TRANSITIONS[row.status]?.has(target)) throw new AppointmentError(409, "APPOINTMENT_STATUS_INVALID", "当前预约状态不能执行该操作");
       await tx.query("update appointments set status=$1,updated_at=now() where id=$2", [target, id]);
-      const eventType = target === "confirmed" ? "appointment_confirmed" : target === "completed" ? "appointment_completed" : target === "cancelled" ? "appointment_cancelled" : target === "no_show" ? "appointment_no_show" : null;
-      const integrationEventType = target === "confirmed" ? "appointment.confirmed" : target === "completed" ? "appointment.completed" : target === "cancelled" ? "appointment.cancelled" : target === "no_show" ? "appointment.no_show" : null;
-      if (eventType && integrationEventType) await identityService.appendEvent(tx, scope, row.customer_id, eventType, "merchant", "appointment", id, createDomainEventMetadata({
-        eventType: integrationEventType,
-        aggregateType: "appointment",
-        aggregateId: id,
-        references: { appointmentId: id, customerId: row.customer_id, storeId: scope.storeId },
-        data: { fromStatus: row.status, toStatus: target },
-        idempotencyKey: `appointment.status:${id}:${target}:${row.updated_at || row.created_at}`,
-        actorType: "merchant",
-        actorId: scope.userId
-      }));
+      const eventType = target === "completed" ? "appointment_completed" : target === "cancelled" ? "appointment_cancelled" : null;
+      if (eventType) await identityService.appendEvent(tx, scope, row.customer_id, eventType, "merchant", "appointment", id);
       await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, `appointment.${target === "confirmed" ? "confirm" : target === "completed" ? "complete" : target}`, "appointment", id, { from: row.status, to: target });
     });
     return getAppointment(scope, id);
