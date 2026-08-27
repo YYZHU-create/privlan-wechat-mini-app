@@ -1,0 +1,45 @@
+PREVIEW PACKAGE FIX VERIFICATION
+TARGET_WORKTREE=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a
+BRANCH=codex/merchant-os-sprint-3a
+HEAD=4101e1821da9504d549b0f0edb766a38af32aacc
+CHANGED_BRANCH_FIELD=admin/server.js: buildPreviewProject and POST /api/preview now use the allowlisted preview package report; admin/preview-package.js owns runtime copying and accounting.
+CODE_PATH_1=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\admin\server.js
+CODE_PATH_2=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\admin\preview-package.js
+CODE_PATH_3=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\admin\test\preview-package.test.js
+ARTIFACT_PATH_1=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\MODIFIED_FILE
+ARTIFACT_PATH_2=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\DIFF_FILE
+ARTIFACT_PATH_3=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\VERIFICATION.txt
+ARTIFACT_PATH_4=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\ROLLBACK.sh
+ORIGINAL_SERVER_SHA256=FC3DAF1D02722950A9E1931257449436FA65FB16277962913FBB0997BD403AAE
+MODIFIED_SERVER_SHA256=088FFAE073107DF471781AE56FA8EBA8251A035421FF62BA8F810781DDAE8A94
+
+BASELINE
+COMMAND=node --check server.js; npm test
+INPUT=admin/server.js before preview-package implementation
+LITERAL_RESULT=tests 112; pass 111; fail 0; skipped 1
+EXIT_STATUS=0
+
+MODIFIED
+COMMAND=node --check server.js; node --test test/preview-package.test.js test/generator.test.js test/server-security.test.js; npm test; git diff --check
+INPUT=allowlisted runtime preview package with only referenced images/fonts and configured cloudfunctions
+LITERAL_RESULT=focused tests 8; pass 8; fail 0; skipped 0. Full tests 113; pass 112; fail 0; skipped 1. git diff --check exit 0.
+EXIT_STATUS=0
+PREVIEW_TOTAL_BEFORE_BYTES=18963638
+PREVIEW_TOTAL_AFTER_BYTES=1544668
+MAIN_PACKAGE_BYTES=1420544
+RUNTIME_CODE_BYTES=180733
+IMAGE_BYTES=1239811
+FONT_BYTES=0
+CLOUD_FUNCTION_BYTES=124124
+IMAGE_FORMAT_BYTES={"jpg":313494,"jpeg":238296,"png":15649,"gif":672372,"webp":0,"other":0}
+SOURCE_MEDIA_UNCHANGED_BUILD=PASS
+WORKSPACE_CONFIG_UNCHANGED=PASS
+DATABASE_MODIFIED=NO
+
+ROLLBACK
+COMMAND=C:\Program Files\Git\bin\bash.exe C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\ROLLBACK.sh C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\rollback-test-root-12860
+INPUT=separate copy containing modified admin/server.js, admin/preview-package.js, and admin/test/preview-package.test.js
+LITERAL_RESULT=ROLLBACK_TARGET=C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\preview-package-fix\rollback-test-root-12860; ROLLBACK_SERVER_RESTORED=YES; ROLLBACK_NEW_PREVIEW_FILES_REMOVED=YES
+EXIT_STATUS=0
+RESTORED_SERVER_SHA256=FC3DAF1D02722950A9E1931257449436FA65FB16277962913FBB0997BD403AAE
+RESTORED_BEHAVIOR_STATUS=server baseline restored and added preview helper/test removed from the separate rollback copy

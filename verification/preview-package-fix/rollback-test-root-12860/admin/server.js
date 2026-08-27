@@ -15,7 +15,6 @@ const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } =
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { validateProductionEnvironment } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
-const { buildPreviewPackage, formatBytes } = require("./preview-package");
 
 validateProductionEnvironment(process.env);
 
@@ -649,15 +648,91 @@ function listSystemFonts() {
   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }
 
+function optimizePreviewJpeg(sourcePath, targetPath) {
+  execFileSync("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "preview-image.ps1"),
+    sourcePath, targetPath, String(PREVIEW_IMAGE_MAX_EDGE), String(PREVIEW_IMAGE_QUALITY)
+  ], { windowsHide: true, stdio: "pipe" });
+}
+
+function referencedPreviewImages(projectRoot) {
+  const references = new Set();
+  const supportedTextFiles = new Set([".js", ".json", ".wxml", ".wxss"]);
+  const pending = [projectRoot];
+
+  while (pending.length) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const filePath = path.join(directory, entry.name);
+      const relative = path.relative(projectRoot, filePath);
+      if (relative === "images" || relative.startsWith(`images${path.sep}`)) continue;
+      if (entry.isDirectory()) {
+        pending.push(filePath);
+        continue;
+      }
+      if (!entry.isFile() || !supportedTextFiles.has(path.extname(entry.name).toLowerCase())) continue;
+      const content = fs.readFileSync(filePath, "utf8");
+      for (const match of content.matchAll(/\/images\/([A-Za-z0-9._-]+)/g)) references.add(match[1]);
+    }
+  }
+  return references;
+}
+
+function prunePreviewImages(previewRoot) {
+  const previewImagesDir = path.join(previewRoot, "images");
+  if (!fs.existsSync(previewImagesDir)) return;
+  const referenced = referencedPreviewImages(previewRoot);
+  for (const entry of fs.readdirSync(previewImagesDir, { withFileTypes: true })) {
+    if (entry.isFile() && !referenced.has(entry.name)) fs.rmSync(path.join(previewImagesDir, entry.name), { force: true });
+  }
+}
+
+function directorySize(directory) {
+  let total = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const filePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) total += directorySize(filePath);
+    else if (entry.isFile()) total += fs.statSync(filePath).size;
+  }
+  return total;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 function buildPreviewProject() {
   previewBuildCount += 1;
   const previewRoot = `${PREVIEW_ROOT_BASE}-${Date.now()}-${process.pid}-${previewBuildCount}`;
-  return buildPreviewPackage({
-    projectRoot: ROOT,
-    previewRoot,
-    imageMaxEdge: PREVIEW_IMAGE_MAX_EDGE,
-    imageQuality: PREVIEW_IMAGE_QUALITY
+  fs.cpSync(ROOT, previewRoot, {
+    recursive: true,
+    filter(source) {
+      const relative = path.relative(ROOT, source);
+      return relative !== "admin" && !relative.startsWith(`admin${path.sep}`) && relative !== ".git" && !relative.startsWith(`.git${path.sep}`);
+    }
   });
+
+  const previewImagesDir = path.join(previewRoot, "images");
+  prunePreviewImages(previewRoot);
+  if (fs.existsSync(previewImagesDir)) {
+    for (const entry of fs.readdirSync(previewImagesDir)) {
+      const imagePath = path.join(previewImagesDir, entry);
+      const ext = path.extname(entry).toLowerCase();
+      if (fs.statSync(imagePath).isFile() && fs.statSync(imagePath).size > 5 * 1024 * 1024) {
+        throw new Error(`素材 /images/${entry} 体积为 ${formatBytes(fs.statSync(imagePath).size)}，不适合直接加入小程序包。该素材应迁移至 CDN/COS 后再用于正式发布。`);
+      }
+      if (fs.statSync(imagePath).isFile() && [".jpg", ".jpeg"].includes(ext)) {
+        const optimizedPath = `${imagePath}.preview`;
+        optimizePreviewJpeg(imagePath, optimizedPath);
+        if (fs.existsSync(optimizedPath)) {
+          fs.rmSync(imagePath, { force: true });
+          fs.renameSync(optimizedPath, imagePath);
+        }
+      }
+    }
+  }
+  return previewRoot;
 }
 
 function migrateCenterTabCrop(cfg) {
@@ -1585,13 +1660,11 @@ app.post("/api/preview", (req, res) => {
       });
     }
     const cliDir = path.dirname(cliPath);
-    const previewPackage = buildPreviewProject();
-    const { previewRoot: previewProject, report: previewReport } = previewPackage;
-    if (previewReport.mainPackageBytes > PREVIEW_PACKAGE_MAX_BYTES) {
-      const largestFiles = previewReport.largestRuntimeFiles.slice(0, 5)
-        .map(file => `${file.path} (${formatBytes(file.bytes)})`).join("、");
-      const error = new Error(`预览主包体积为 ${formatBytes(previewReport.mainPackageBytes)}，超过微信开发版二维码的 2 MB 限制。最大引用运行时文件：${largestFiles || "无"}。`);
-      error.details = JSON.stringify({ previewProject, previewReport });
+    const previewProject = buildPreviewProject();
+    const previewPackageSize = directorySize(previewProject);
+    if (previewPackageSize > PREVIEW_PACKAGE_MAX_BYTES) {
+      const error = new Error(`预览包体积为 ${formatBytes(previewPackageSize)}，超过微信开发版二维码的 2 MB 限制。请压缩或移除未使用的图片、GIF 和字体后重试。`);
+      error.details = `previewProject=${previewProject}`;
       throw error;
     }
     const tempQrPath = path.join(path.dirname(PREVIEW_QR_PATH), `preview-qr-${Date.now()}-${process.pid}.png`);
@@ -1606,7 +1679,7 @@ app.post("/api/preview", (req, res) => {
     fs.renameSync(tempQrPath, PREVIEW_QR_PATH);
     if (!fs.existsSync(PREVIEW_QR_PATH)) throw new Error("微信开发者工具没有生成预览二维码");
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}`, previewReport });
+    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}` });
   } catch (e) {
     res.status(502).json({ ok: false, error: e.message, details: e.details || "", stderr: e.stderr ? e.stderr.toString() : "" });
   }

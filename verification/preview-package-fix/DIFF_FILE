@@ -1,0 +1,438 @@
+=== admin/server.js ===
+diff --git a/admin/server.js b/admin/server.js
+index 508ded7..d6a2478 100644
+--- a/admin/server.js
++++ b/admin/server.js
+@@ -15,6 +15,7 @@ const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } =
+ const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
+ const { validateProductionEnvironment } = require("./runtime-config");
+ const { resolveRuntimeIdentity } = require("./runtime-identity");
++const { buildPreviewPackage, formatBytes } = require("./preview-package");
+ 
+ validateProductionEnvironment(process.env);
+ 
+@@ -648,91 +649,15 @@ function listSystemFonts() {
+   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+ }
+ 
+-function optimizePreviewJpeg(sourcePath, targetPath) {
+-  execFileSync("powershell.exe", [
+-    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "preview-image.ps1"),
+-    sourcePath, targetPath, String(PREVIEW_IMAGE_MAX_EDGE), String(PREVIEW_IMAGE_QUALITY)
+-  ], { windowsHide: true, stdio: "pipe" });
+-}
+-
+-function referencedPreviewImages(projectRoot) {
+-  const references = new Set();
+-  const supportedTextFiles = new Set([".js", ".json", ".wxml", ".wxss"]);
+-  const pending = [projectRoot];
+-
+-  while (pending.length) {
+-    const directory = pending.pop();
+-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+-      const filePath = path.join(directory, entry.name);
+-      const relative = path.relative(projectRoot, filePath);
+-      if (relative === "images" || relative.startsWith(`images${path.sep}`)) continue;
+-      if (entry.isDirectory()) {
+-        pending.push(filePath);
+-        continue;
+-      }
+-      if (!entry.isFile() || !supportedTextFiles.has(path.extname(entry.name).toLowerCase())) continue;
+-      const content = fs.readFileSync(filePath, "utf8");
+-      for (const match of content.matchAll(/\/images\/([A-Za-z0-9._-]+)/g)) references.add(match[1]);
+-    }
+-  }
+-  return references;
+-}
+-
+-function prunePreviewImages(previewRoot) {
+-  const previewImagesDir = path.join(previewRoot, "images");
+-  if (!fs.existsSync(previewImagesDir)) return;
+-  const referenced = referencedPreviewImages(previewRoot);
+-  for (const entry of fs.readdirSync(previewImagesDir, { withFileTypes: true })) {
+-    if (entry.isFile() && !referenced.has(entry.name)) fs.rmSync(path.join(previewImagesDir, entry.name), { force: true });
+-  }
+-}
+-
+-function directorySize(directory) {
+-  let total = 0;
+-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+-    const filePath = path.join(directory, entry.name);
+-    if (entry.isDirectory()) total += directorySize(filePath);
+-    else if (entry.isFile()) total += fs.statSync(filePath).size;
+-  }
+-  return total;
+-}
+-
+-function formatBytes(bytes) {
+-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+-}
+-
+ function buildPreviewProject() {
+   previewBuildCount += 1;
+   const previewRoot = `${PREVIEW_ROOT_BASE}-${Date.now()}-${process.pid}-${previewBuildCount}`;
+-  fs.cpSync(ROOT, previewRoot, {
+-    recursive: true,
+-    filter(source) {
+-      const relative = path.relative(ROOT, source);
+-      return relative !== "admin" && !relative.startsWith(`admin${path.sep}`) && relative !== ".git" && !relative.startsWith(`.git${path.sep}`);
+-    }
++  return buildPreviewPackage({
++    projectRoot: ROOT,
++    previewRoot,
++    imageMaxEdge: PREVIEW_IMAGE_MAX_EDGE,
++    imageQuality: PREVIEW_IMAGE_QUALITY
+   });
+-
+-  const previewImagesDir = path.join(previewRoot, "images");
+-  prunePreviewImages(previewRoot);
+-  if (fs.existsSync(previewImagesDir)) {
+-    for (const entry of fs.readdirSync(previewImagesDir)) {
+-      const imagePath = path.join(previewImagesDir, entry);
+-      const ext = path.extname(entry).toLowerCase();
+-      if (fs.statSync(imagePath).isFile() && fs.statSync(imagePath).size > 5 * 1024 * 1024) {
+-        throw new Error(`素材 /images/${entry} 体积为 ${formatBytes(fs.statSync(imagePath).size)}，不适合直接加入小程序包。该素材应迁移至 CDN/COS 后再用于正式发布。`);
+-      }
+-      if (fs.statSync(imagePath).isFile() && [".jpg", ".jpeg"].includes(ext)) {
+-        const optimizedPath = `${imagePath}.preview`;
+-        optimizePreviewJpeg(imagePath, optimizedPath);
+-        if (fs.existsSync(optimizedPath)) {
+-          fs.rmSync(imagePath, { force: true });
+-          fs.renameSync(optimizedPath, imagePath);
+-        }
+-      }
+-    }
+-  }
+-  return previewRoot;
+ }
+ 
+ function migrateCenterTabCrop(cfg) {
+@@ -1660,11 +1585,13 @@ app.post("/api/preview", (req, res) => {
+       });
+     }
+     const cliDir = path.dirname(cliPath);
+-    const previewProject = buildPreviewProject();
+-    const previewPackageSize = directorySize(previewProject);
+-    if (previewPackageSize > PREVIEW_PACKAGE_MAX_BYTES) {
+-      const error = new Error(`预览包体积为 ${formatBytes(previewPackageSize)}，超过微信开发版二维码的 2 MB 限制。请压缩或移除未使用的图片、GIF 和字体后重试。`);
+-      error.details = `previewProject=${previewProject}`;
++    const previewPackage = buildPreviewProject();
++    const { previewRoot: previewProject, report: previewReport } = previewPackage;
++    if (previewReport.mainPackageBytes > PREVIEW_PACKAGE_MAX_BYTES) {
++      const largestFiles = previewReport.largestRuntimeFiles.slice(0, 5)
++        .map(file => `${file.path} (${formatBytes(file.bytes)})`).join("、");
++      const error = new Error(`预览主包体积为 ${formatBytes(previewReport.mainPackageBytes)}，超过微信开发版二维码的 2 MB 限制。最大引用运行时文件：${largestFiles || "无"}。`);
++      error.details = JSON.stringify({ previewProject, previewReport });
+       throw error;
+     }
+     const tempQrPath = path.join(path.dirname(PREVIEW_QR_PATH), `preview-qr-${Date.now()}-${process.pid}.png`);
+@@ -1679,7 +1606,7 @@ app.post("/api/preview", (req, res) => {
+     fs.renameSync(tempQrPath, PREVIEW_QR_PATH);
+     if (!fs.existsSync(PREVIEW_QR_PATH)) throw new Error("微信开发者工具没有生成预览二维码");
+     res.set("Cache-Control", "no-store");
+-    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}` });
++    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}`, previewReport });
+   } catch (e) {
+     res.status(502).json({ ok: false, error: e.message, details: e.details || "", stderr: e.stderr ? e.stderr.toString() : "" });
+   }
+
+=== NEW admin\preview-package.js ===
+warning: in the working copy of 'C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\admin\preview-package.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\preview-package.js" "b/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\preview-package.js"
+new file mode 100644
+index 0000000..0899f08
+--- /dev/null
++++ "b/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\preview-package.js"
+@@ -0,0 +1,207 @@
++const fs = require("fs");
++const path = require("path");
++const { execFileSync } = require("child_process");
++
++const ROOT_RUNTIME_FILES = ["app.js", "app.json", "app.wxss", "project.config.json", "project.private.config.json", "sitemap.json"];
++const REQUIRED_ROOT_RUNTIME_FILES = new Set(["app.js", "app.json", "app.wxss", "project.config.json"]);
++const RUNTIME_DIRECTORIES = ["pages", "components", "custom-tab-bar", "utils"];
++const RUNTIME_TEXT_EXTENSIONS = new Set([".js", ".json", ".wxml", ".wxss", ".wxs", ".sjs"]);
++const PREVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
++
++function formatBytes(bytes) {
++  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
++  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
++}
++
++function isDescendantPath(root, candidate) {
++  const relative = path.relative(root, candidate);
++  return Boolean(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
++}
++
++function copyFile(sourcePath, targetPath) {
++  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
++  fs.copyFileSync(sourcePath, targetPath);
++}
++
++function copyRuntimeDirectory(sourceRoot, targetRoot, directoryName) {
++  const sourceDirectory = path.join(sourceRoot, directoryName);
++  if (!fs.existsSync(sourceDirectory)) return;
++
++  const pending = [sourceDirectory];
++  while (pending.length) {
++    const current = pending.pop();
++    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
++      const sourcePath = path.join(current, entry.name);
++      if (entry.isDirectory()) {
++        pending.push(sourcePath);
++        continue;
++      }
++      if (!entry.isFile() || !RUNTIME_TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
++      copyFile(sourcePath, path.join(targetRoot, path.relative(sourceRoot, sourcePath)));
++    }
++  }
++}
++
++function referencedPreviewAssets(previewRoot) {
++  const images = new Set();
++  const fonts = new Set();
++  const pending = [previewRoot];
++
++  while (pending.length) {
++    const directory = pending.pop();
++    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
++      const filePath = path.join(directory, entry.name);
++      const relative = path.relative(previewRoot, filePath);
++      if (["images", "fonts", "cloudfunctions"].includes(relative.split(path.sep)[0])) continue;
++      if (entry.isDirectory()) {
++        pending.push(filePath);
++        continue;
++      }
++      if (!entry.isFile() || !RUNTIME_TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
++      const content = fs.readFileSync(filePath, "utf8");
++      for (const match of content.matchAll(/\/(images|fonts)\/([A-Za-z0-9._-]+)/g)) {
++        if (match[1] === "images") images.add(match[2]);
++        else fonts.add(match[2]);
++      }
++    }
++  }
++
++  return { images, fonts };
++}
++
++function optimizePreviewJpeg(sourcePath, targetPath, maxEdge, quality) {
++  execFileSync("powershell.exe", [
++    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "preview-image.ps1"),
++    sourcePath, targetPath, String(maxEdge), String(quality)
++  ], { windowsHide: true, stdio: "pipe" });
++}
++
++function copyReferencedAssets({ sourceRoot, previewRoot, directoryName, referenced, optimizeJpeg, imageMaxEdge, imageQuality }) {
++  const sourceDirectory = path.join(sourceRoot, directoryName);
++  if (!fs.existsSync(sourceDirectory)) return;
++
++  for (const assetName of referenced) {
++    const sourcePath = path.resolve(sourceDirectory, assetName);
++    if (!isDescendantPath(sourceDirectory, sourcePath) || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) continue;
++
++    const sourceSize = fs.statSync(sourcePath).size;
++    if (directoryName === "images" && sourceSize > PREVIEW_IMAGE_MAX_BYTES) {
++      throw new Error(`素材 /images/${assetName} 体积为 ${formatBytes(sourceSize)}，不适合直接加入小程序包。该素材应迁移至 CDN/COS 后再用于正式发布。`);
++    }
++
++    const targetPath = path.join(previewRoot, directoryName, assetName);
++    copyFile(sourcePath, targetPath);
++    if (directoryName === "images" && [".jpg", ".jpeg"].includes(path.extname(assetName).toLowerCase())) {
++      const optimizedPath = `${targetPath}.preview`;
++      optimizeJpeg(targetPath, optimizedPath, imageMaxEdge, imageQuality);
++      if (fs.existsSync(optimizedPath)) {
++        fs.rmSync(targetPath, { force: true });
++        fs.renameSync(optimizedPath, targetPath);
++      }
++    }
++  }
++}
++
++function listFiles(root) {
++  if (!fs.existsSync(root)) return [];
++  const files = [];
++  const pending = [root];
++  while (pending.length) {
++    const directory = pending.pop();
++    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
++      const filePath = path.join(directory, entry.name);
++      if (entry.isDirectory()) pending.push(filePath);
++      else if (entry.isFile()) files.push(filePath);
++    }
++  }
++  return files;
++}
++
++function packageReport(previewRoot, cloudFunctionRelative) {
++  const cloudPrefix = cloudFunctionRelative ? `${cloudFunctionRelative}${path.sep}` : null;
++  const report = {
++    totalBytes: 0,
++    mainPackageBytes: 0,
++    codeBytes: 0,
++    imageBytes: 0,
++    fontBytes: 0,
++    cloudFunctionBytes: 0,
++    otherRuntimeBytes: 0,
++    imageBytesByFormat: { jpg: 0, jpeg: 0, png: 0, gif: 0, webp: 0, other: 0 },
++    largestRuntimeFiles: []
++  };
++
++  for (const filePath of listFiles(previewRoot)) {
++    const relative = path.relative(previewRoot, filePath);
++    const bytes = fs.statSync(filePath).size;
++    const topLevel = relative.split(path.sep)[0];
++    const isCloudFunction = cloudPrefix && (relative === cloudFunctionRelative || relative.startsWith(cloudPrefix));
++    report.totalBytes += bytes;
++    if (isCloudFunction) {
++      report.cloudFunctionBytes += bytes;
++      continue;
++    }
++    report.mainPackageBytes += bytes;
++    if (topLevel === "images") {
++      report.imageBytes += bytes;
++      const extension = path.extname(relative).slice(1).toLowerCase();
++      const imageFormat = Object.prototype.hasOwnProperty.call(report.imageBytesByFormat, extension) ? extension : "other";
++      report.imageBytesByFormat[imageFormat] += bytes;
++    } else if (topLevel === "fonts") report.fontBytes += bytes;
++    else report.codeBytes += bytes;
++    report.largestRuntimeFiles.push({ path: relative.split(path.sep).join("/"), bytes });
++  }
++
++  report.otherRuntimeBytes = Math.max(0, report.mainPackageBytes - report.codeBytes - report.imageBytes - report.fontBytes);
++  report.largestRuntimeFiles.sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path));
++  report.largestRuntimeFiles = report.largestRuntimeFiles.slice(0, 12);
++  return report;
++}
++
++function configuredCloudFunctionRelative(projectRoot) {
++  const configPath = path.join(projectRoot, "project.config.json");
++  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
++  if (typeof config.cloudfunctionRoot !== "string" || !config.cloudfunctionRoot.trim()) return null;
++  const cloudFunctionPath = path.resolve(projectRoot, config.cloudfunctionRoot);
++  if (!isDescendantPath(projectRoot, cloudFunctionPath) || !fs.existsSync(cloudFunctionPath) || !fs.statSync(cloudFunctionPath).isDirectory()) return null;
++  return path.relative(projectRoot, cloudFunctionPath);
++}
++
++function buildPreviewPackage({ projectRoot, previewRoot, imageMaxEdge = 960, imageQuality = 72, optimizeJpeg = optimizePreviewJpeg }) {
++  fs.mkdirSync(previewRoot, { recursive: true });
++
++  for (const fileName of ROOT_RUNTIME_FILES) {
++    const sourcePath = path.join(projectRoot, fileName);
++    if (!fs.existsSync(sourcePath)) {
++      if (REQUIRED_ROOT_RUNTIME_FILES.has(fileName)) throw new Error(`小程序运行时文件缺失：${fileName}`);
++      continue;
++    }
++    copyFile(sourcePath, path.join(previewRoot, fileName));
++  }
++  for (const directoryName of RUNTIME_DIRECTORIES) copyRuntimeDirectory(projectRoot, previewRoot, directoryName);
++
++  const referenced = referencedPreviewAssets(previewRoot);
++  copyReferencedAssets({ sourceRoot: projectRoot, previewRoot, directoryName: "images", referenced: referenced.images, optimizeJpeg, imageMaxEdge, imageQuality });
++  copyReferencedAssets({ sourceRoot: projectRoot, previewRoot, directoryName: "fonts", referenced: referenced.fonts, optimizeJpeg, imageMaxEdge, imageQuality });
++
++  const cloudFunctionRelative = configuredCloudFunctionRelative(projectRoot);
++  if (cloudFunctionRelative) fs.cpSync(path.join(projectRoot, cloudFunctionRelative), path.join(previewRoot, cloudFunctionRelative), { recursive: true });
++
++  return {
++    previewRoot,
++    referencedImages: [...referenced.images].sort(),
++    referencedFonts: [...referenced.fonts].sort(),
++    cloudFunctionRelative,
++    report: packageReport(previewRoot, cloudFunctionRelative)
++  };
++}
++
++module.exports = {
++  ROOT_RUNTIME_FILES,
++  RUNTIME_DIRECTORIES,
++  buildPreviewPackage,
++  formatBytes,
++  packageReport,
++  referencedPreviewAssets
++};
++
+
+=== NEW admin\test\preview-package.test.js ===
+warning: in the working copy of 'C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\admin\test\preview-package.test.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\test\\preview-package.test.js" "b/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\test\\preview-package.test.js"
+new file mode 100644
+index 0000000..b7ae064
+--- /dev/null
++++ "b/C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a\\admin\\test\\preview-package.test.js"
+@@ -0,0 +1,75 @@
++const assert = require("node:assert/strict");
++const crypto = require("node:crypto");
++const fs = require("node:fs");
++const os = require("node:os");
++const path = require("node:path");
++const test = require("node:test");
++const { buildPreviewPackage } = require("../preview-package");
++
++function write(root, relative, content) {
++  const target = path.join(root, relative);
++  fs.mkdirSync(path.dirname(target), { recursive: true });
++  fs.writeFileSync(target, content);
++}
++
++function sha256(filePath) {
++  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
++}
++
++test("preview package copies only runtime files and referenced assets", () => {
++  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-preview-source-"));
++  const previewRoot = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-preview-output-"));
++  try {
++    write(sourceRoot, "app.js", 'const hero = "/images/used.jpg";');
++    write(sourceRoot, "app.json", JSON.stringify({ pages: ["pages/appointment/index", "pages/service-chat/index"] }));
++    write(sourceRoot, "app.wxss", '@font-face { src: url("/fonts/used.ttf"); }');
++    write(sourceRoot, "project.config.json", JSON.stringify({ cloudfunctionRoot: "cloudfunctions/" }));
++    write(sourceRoot, "sitemap.json", "{}");
++    write(sourceRoot, "pages/appointment/index.js", 'const banner = "/images/used.jpg";');
++    write(sourceRoot, "pages/service-chat/index.wxml", "<view>chat</view>");
++    write(sourceRoot, "components/service-fab/index.js", "module.exports = {};");
++    write(sourceRoot, "custom-tab-bar/index.js", "module.exports = {};");
++    write(sourceRoot, "utils/runtime.js", "module.exports = {};");
++    write(sourceRoot, "utils/generator.py", "print('not runtime')");
++    write(sourceRoot, "images/used.jpg", "used-image-bytes");
++    write(sourceRoot, "images/unreferenced.png", "unused-image-bytes");
++    write(sourceRoot, "fonts/used.ttf", "used-font-bytes");
++    write(sourceRoot, "fonts/unreferenced.ttf", "unused-font-bytes");
++    write(sourceRoot, "cloudfunctions/appointment/index.js", "exports.main = async () => ({});");
++    write(sourceRoot, "verification/screenshot.png", "artifact");
++    write(sourceRoot, "docs/notes.md", "artifact");
++    write(sourceRoot, "admin/server.js", "artifact");
++
++    const sourceImageHash = sha256(path.join(sourceRoot, "images/used.jpg"));
++    const sourceFontHash = sha256(path.join(sourceRoot, "fonts/used.ttf"));
++    const result = buildPreviewPackage({
++      projectRoot: sourceRoot,
++      previewRoot,
++      optimizeJpeg(sourcePath, targetPath) { fs.copyFileSync(sourcePath, targetPath); }
++    });
++
++    assert.equal(fs.existsSync(path.join(previewRoot, "pages/appointment/index.js")), true);
++    assert.equal(fs.existsSync(path.join(previewRoot, "pages/service-chat/index.wxml")), true);
++    assert.equal(fs.existsSync(path.join(previewRoot, "images/used.jpg")), true);
++    assert.equal(fs.existsSync(path.join(previewRoot, "fonts/used.ttf")), true);
++    assert.equal(fs.existsSync(path.join(previewRoot, "cloudfunctions/appointment/index.js")), true);
++    assert.equal(fs.existsSync(path.join(previewRoot, "images/unreferenced.png")), false);
++    assert.equal(fs.existsSync(path.join(previewRoot, "fonts/unreferenced.ttf")), false);
++    assert.equal(fs.existsSync(path.join(previewRoot, "utils/generator.py")), false);
++    assert.equal(fs.existsSync(path.join(previewRoot, "verification/screenshot.png")), false);
++    assert.equal(fs.existsSync(path.join(previewRoot, "docs/notes.md")), false);
++    assert.equal(fs.existsSync(path.join(previewRoot, "admin/server.js")), false);
++    assert.equal(result.report.totalBytes, result.report.mainPackageBytes + result.report.cloudFunctionBytes);
++    assert.ok(result.report.cloudFunctionBytes > 0);
++    assert.deepEqual(result.referencedImages, ["used.jpg"]);
++    assert.deepEqual(result.referencedFonts, ["used.ttf"]);
++    assert.ok(result.report.imageBytesByFormat.jpg > 0);
++    assert.equal(result.report.imageBytesByFormat.gif, 0);
++    assert.equal(sha256(path.join(sourceRoot, "images/used.jpg")), sourceImageHash);
++    assert.equal(sha256(path.join(sourceRoot, "fonts/used.ttf")), sourceFontHash);
++  } finally {
++    fs.rmSync(sourceRoot, { recursive: true, force: true });
++    fs.rmSync(previewRoot, { recursive: true, force: true });
++  }
++});
++
