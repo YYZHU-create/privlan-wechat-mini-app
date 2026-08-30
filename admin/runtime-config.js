@@ -1,3 +1,5 @@
+const { resolveDatabaseBackend } = require("./database-adapter");
+
 function validBase64Key(value) {
   try { return Buffer.from(String(value || ""), "base64").length === 32; }
   catch (error) { return false; }
@@ -17,4 +19,16 @@ function validateProductionEnvironment(env = process.env) {
   return { ok: true, mode: "production" };
 }
 
-module.exports = { validateProductionEnvironment, validBase64Key };
+function validateDatabaseBackend(env = process.env) {
+  let backend;
+  try { backend = resolveDatabaseBackend(env); }
+  catch (error) { throw new Error(error.message); }
+  if (backend === "meoo") {
+    if (!/^postgres(?:ql)?:\/\//i.test(String(env.DATABASE_URL || ""))) throw new Error("DATABASE_URL is required for ATELIER Auth and Session");
+    if (!/^https:\/\//i.test(String(env.SUPABASE_URL || ""))) throw new Error("SUPABASE_URL is required for Meoo backend");
+    if (!String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim()) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for Meoo backend");
+  }
+  return backend;
+}
+
+module.exports = { validateProductionEnvironment, validateDatabaseBackend, validBase64Key };

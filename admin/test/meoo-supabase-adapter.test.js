@@ -97,7 +97,7 @@ test("portable PostgreSQL customer tag service matches adapter contract", async 
 });
 
 if (process.env.MEOO_B1_LIVE) test("live Meoo CRUD proves tenant isolation and cleanup when explicitly enabled", async () => {
-  const adapter = createSupabaseAdapter();
+  const adapter = createSupabaseAdapter({ table: process.env.MEOO_B1_TABLE || "customer_tags" });
   const idA = crypto.randomUUID();
   const idB = crypto.randomUUID();
   const scopeA = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() };

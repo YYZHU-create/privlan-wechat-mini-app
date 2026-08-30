@@ -11,13 +11,16 @@ const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 const { createDatabaseFromEnv } = require("./database");
 const { createSaasService } = require("./saas-service");
+const { createSupabaseAdapter } = require("./meoo-supabase-adapter");
+const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
-const { validateProductionEnvironment } = require("./runtime-config");
+const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
 
 validateProductionEnvironment(process.env);
+const DATABASE_BACKEND = validateDatabaseBackend(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
 const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
@@ -51,7 +54,12 @@ fs.mkdirSync(TRASH_DIR, { recursive: true });
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
 const databasePromise = createDatabaseFromEnv();
-const saasServicePromise = databasePromise.then(database => database ? createSaasService({ db: database }) : null);
+const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
+const saasServicePromise = databasePromise.then(database => database ? createSaasService({
+  db: database,
+  tagRepository: meooAdapter,
+  appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null
+}) : null);
 const getSaasService = () => saasServicePromise;
 
 app.disable("x-powered-by");

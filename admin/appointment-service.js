@@ -22,7 +22,7 @@ function int(value, min, max, fallback) { const number = Number(value); return N
 function rowScope(scope) { return [scope.tenantId, scope.workspaceId, scope.storeId]; }
 function publicStatus(status) { return ({ pending: "待确认", confirmed: "已确认", completed: "已完成", cancelled: "已取消", no_show: "未到店" })[status] || status; }
 
-function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, now = () => DateTime.utc() }) {
+function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, appointmentRepository = null, now = () => DateTime.utc() }) {
   if (!db) throw new Error("database is required");
   const identityService = customerService || createCustomerService({ db, openIdHashKey });
 
@@ -201,6 +201,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     const name = String(input.customerName || "").trim().slice(0,64); const phone = String(input.customerPhone || "").trim(); const openid = String(input.openid || ""); const idempotencyKey = String(input.idempotencyKey || "").trim().slice(0,128);
     if (!openid || !idempotencyKey || (phone && !/^1\d{10}$/.test(phone))) throw new AppointmentError(400, "INVALID_INPUT", "预约身份或幂等信息无效");
     const scope = { ...publicData, actorType: "mini_program", actorId: "wechat_customer", requestId: context.requestId };
+    if (appointmentRepository?.createAppointment) return appointmentRepository.createAppointment({ ...input, scope }, context);
     return db.transaction(async tx => {
       let prior = (await tx.query("select * from appointments where workspace_id=$1 and idempotency_key=$2", [scope.workspaceId, idempotencyKey])).rows[0];
       if (prior) return appointmentPublicView(prior, scope.storeName, true);

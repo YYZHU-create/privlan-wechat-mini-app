@@ -5,7 +5,7 @@ function scopeValues(scope) { return [scope.tenantId, scope.workspaceId, scope.s
 function maskPhone(phone) { const value = String(phone || ""); return value.length >= 7 ? value.slice(0, 3) + "****" + value.slice(-4) : value; }
 function anonymousName(id) { return "微信用户 " + String(id || "").replace(/-/g, "").slice(0, 4).toUpperCase(); }
 
-function createCustomerService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "" }) {
+function createCustomerService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", tagRepository = null }) {
   if (!db) throw new Error("database is required");
   function hashOpenId(openid) {
     if (Buffer.byteLength(openIdHashKey) < 32) throw Object.assign(new Error("预约身份服务尚未配置"), { status: 503, code: "OPENID_HASH_KEY_MISSING" });
@@ -95,8 +95,9 @@ function createCustomerService({ db, openIdHashKey = process.env.ATELIER_OPENID_
     const content = String(input.content || "").trim(); if (!content) throw Object.assign(new Error("备注不能为空"), { status: 400, code: "NOTE_INVALID" });
     return db.transaction(async tx => { const exists = (await tx.query("select id from customers where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id,...scopeValues(scope)])).rows[0]; if (!exists) throw Object.assign(new Error("客户不存在"), { status: 404, code: "CUSTOMER_NOT_FOUND" }); const row = (await tx.query("insert into customer_notes(id,tenant_id,workspace_id,store_id,customer_id,author_user_id,content) values($1,$2,$3,$4,$5,$6,$7) returning *", [uuid(),...scopeValues(scope),id,scope.userId || null,content.slice(0,5000)])).rows[0]; await appendEvent(tx,scope,id,"profile_updated","merchant","customer_note",row.id); await tx.query("insert into audit_events(id,tenant_id,workspace_id,actor_type,actor_id,action,resource_type,resource_id,request_id,metadata) values($1,$2,$3,'merchant',$4,'customer.note.create','customer_note',$5,$6,$7::jsonb)", [uuid(), scope.tenantId, scope.workspaceId, scope.userId || 'merchant', row.id, scope.requestId || uuid(), JSON.stringify({ customerId: id })]); return row; });
   }
-  async function listTags(scope) { return (await db.query("select id,name,created_at from customer_tags where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by name", scopeValues(scope))).rows; }
+  async function listTags(scope) { return tagRepository ? tagRepository.listTags(scope) : (await db.query("select id,name,created_at from customer_tags where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by name", scopeValues(scope))).rows; }
   async function createTag(scope, input = {}) {
+    if (tagRepository) return tagRepository.createTag(scope, input);
     const name = String(input.name || "").trim().slice(0, 80); if (!name) throw Object.assign(new Error("标签名称不能为空"), { status: 400, code: "TAG_INVALID" });
     return db.transaction(async tx => { const row = (await tx.query("insert into customer_tags(id,tenant_id,workspace_id,store_id,name) values($1,$2,$3,$4,$5) on conflict do nothing returning id,name,created_at", [uuid(), ...scopeValues(scope), name])).rows[0]; if (!row) throw Object.assign(new Error("标签已存在"), { status: 409, code: "TAG_EXISTS" }); await tx.query("insert into audit_events(id,tenant_id,workspace_id,actor_type,actor_id,action,resource_type,resource_id,request_id,metadata) values($1,$2,$3,'merchant',$4,'customer.tag.create','customer_tag',$5,$6,'{}'::jsonb)", [uuid(),scope.tenantId,scope.workspaceId,scope.userId || 'merchant',row.id,scope.requestId || uuid()]); return row; });
   }
