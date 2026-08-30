@@ -1,0 +1,26 @@
+ATELIER OS x MEOO B1 Database Adapter POC
+
+BRANCH=codex/meoo-b1-db-adapter-poc
+BASELINE_COMMIT=e731b1a99ebdc13a640516d27bb0baaa68faad4f
+SOURCE_DATABASE=atelier_os_staging (read-only)
+PROBE_PROJECT=ht4k2cei0n1n (synthetic data only)
+
+CHANGED_BRANCH=admin/meoo-supabase-adapter.js and focused tests
+CHANGED_FIELDS=server-scoped tenant/workspace/store REST predicates; CRUD/error normalization; concurrent booking probe
+MODIFIED_FILE=verification/meoo-b1-db-adapter-poc/MODIFIED_FILE
+DIFF_FILE=verification/meoo-b1-db-adapter-poc/DIFF_FILE
+ROLLBACK=verification/meoo-b1-db-adapter-poc/ROLLBACK.sh
+
+BASELINE_COMMAND=node --test test/customer-identity.test.js (baseline worktree)
+BASELINE_RESULT=6 passed, 0 failed, exit 0
+MODIFIED_COMMAND=node --test admin/test/meoo-supabase-adapter.test.js admin/test/meoo-appointment-concurrency.test.js
+MODIFIED_RESULT=10 focused assertions plus live CRUD and concurrency passed when MEOO_B1_LIVE=1; exit 0
+LIVE_CRUD_RESULT=tenant isolation, forged scope resistance, cleanup passed; exit 0
+LIVE_CONCURRENCY_RESULT=one booking success, one APPOINTMENT_CONFLICT, one persisted row; exit 0
+ROLLBACK_COMMAND=sh verification/meoo-b1-db-adapter-poc/ROLLBACK.sh <copy> <backup>
+ROLLBACK_RESULT=temporary copy restored and checksum matched backup; exit 0
+
+SOURCE_DATABASE_MUTATED=NO
+PRODUCTION_ROUTES_WIRED=NO
+SOURCE_MEDIA_CHANGED=NO
+MIGRATION_011_APPLIED=NO
