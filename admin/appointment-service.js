@@ -22,7 +22,7 @@ function int(value, min, max, fallback) { const number = Number(value); return N
 function rowScope(scope) { return [scope.tenantId, scope.workspaceId, scope.storeId]; }
 function publicStatus(status) { return ({ pending: "待确认", confirmed: "已确认", completed: "已完成", cancelled: "已取消", no_show: "未到店" })[status] || status; }
 
-function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, appointmentRepository = null, appointmentReadRepository = null, now = () => DateTime.utc() }) {
+function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, appointmentRepository = null, appointmentReadRepository = null, appointmentWriteRepository = null, now = () => DateTime.utc() }) {
   if (!db) throw new Error("database is required");
   const identityService = customerService || createCustomerService({ db, openIdHashKey });
 
@@ -33,6 +33,16 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
 
   function assertWritable(scope) {
     if (scope?.subscription?.status !== "active") throw new AppointmentError(403, "SUBSCRIPTION_REQUIRED", "订阅已到期，请兑换后继续使用");
+  }
+
+  async function readAfterWrite(read, matches) {
+    let value;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      value = await read();
+      if (matches(value)) return value;
+      if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt)));
+    }
+    return value;
   }
 
   async function audit(tx, scope, action, resourceType, resourceId, metadata = {}) {
@@ -145,8 +155,8 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     return { store: { publicStoreId: scope.publicStoreId, name: scope.storeName }, services: services.map(serviceView), advisors: eligibleAdvisors.map(advisorView), staff: staffRows.map(staffView), dates, slots, durationMinutes: Number(service.duration_minutes), effectiveBufferMinutes: buffer, selectedDate, resource: resource ? resourceView(resource) : null };
   }
 
-  function serviceView(row) { return { id: row.id, name: row.name, description: row.description || "", durationMinutes: Number(row.duration_minutes), bufferMinutesOverride: row.buffer_minutes_override === null ? null : Number(row.buffer_minutes_override), enabled: row.enabled, sortOrder: Number(row.sort_order) }; }
-  function advisorView(row) { return { id: row.id, staffId: row.staff_id || null, name: row.name, enabled: row.enabled, sortOrder: Number(row.sort_order) }; }
+  function serviceView(row) { return { id: row.id, name: row.name, description: row.description || "", durationMinutes: Number(row.duration_minutes ?? row.durationMinutes), bufferMinutesOverride: (row.buffer_minutes_override ?? row.bufferMinutesOverride) == null ? null : Number(row.buffer_minutes_override ?? row.bufferMinutesOverride), enabled: row.enabled, sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0) }; }
+  function advisorView(row) { return { id: row.id, staffId: row.staff_id ?? row.staffId ?? null, name: row.name, enabled: row.enabled, sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0) }; }
   function staffView(row) { return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url || "", title: row.title || "", status: row.status, publicVisible: row.public_visible, advisorId: row.advisor_id || null, assignmentStatus: row.assignment_status || null, services: row.services || [] }; }
   function scheduleView(row) { return { id: row.id, storeId: row.store_id, staffId: row.staff_id, weekday: Number(row.weekday), startTime: String(row.start_time).slice(0,5), endTime: String(row.end_time).slice(0,5), enabled: row.enabled }; }
   function leaveView(row) { return { id: row.id, storeId: row.store_id, staffId: row.staff_id, startAt: row.start_at, endAt: row.end_at, reason: row.reason || "" }; }
@@ -303,6 +313,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     const note = String(input.note || input.content || "").trim().slice(0, 1000);
     const key = String(input.idempotencyKey || `follow-up-${id}-${note}`).trim().slice(0, 180);
     if (!key) throw new AppointmentError(400, "FOLLOW_UP_INVALID", "跟进记录缺少幂等键");
+    if (appointmentWriteRepository?.createFollowUp) return appointmentWriteRepository.createFollowUp(scope, id, { ...input, note, idempotencyKey: key });
     return db.transaction(async tx => {
       const appointment = (await tx.query("select id,customer_id from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 for update", [id, ...rowScope(scope)])).rows[0];
       if (!appointment) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
@@ -325,6 +336,10 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
 
   async function updateStatus(scope, id, status) {
     assertWritable(scope); const target = String(status || "");
+    if (appointmentWriteRepository?.updateStatus) {
+      const result = await appointmentWriteRepository.updateStatus(scope, id, target);
+      return appointmentReadRepository?.getAppointment ? readAfterWrite(() => appointmentReadRepository.getAppointment(scope, id), value => value?.status === target) : result;
+    }
     await db.transaction(async tx => {
       const row = (await tx.query("select * from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 for update", [id, ...rowScope(scope)])).rows[0];
       if (!row) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
@@ -363,6 +378,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function getSettings(scope) {
+    if (appointmentReadRepository?.getSettings) return (await appointmentReadRepository.getSettings(scope)) || { ...DEFAULT_SETTINGS };
     const row = (await db.query("select * from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows[0];
     if (!row) return { ...DEFAULT_SETTINGS };
     return { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled };
@@ -371,6 +387,10 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   async function updateSettings(scope, input) {
     assertWritable(scope); const timezone = String(input.timezone || ""); const slot = int(input.slotIntervalMinutes,5,300,-1); const buffer = int(input.defaultBufferMinutes,1,30,-1); const days = int(input.maxAdvanceDays,1,365,-1);
     if (!assertTimezone(timezone) || slot < 0 || slot % 5 || buffer < 0 || days < 0) throw new AppointmentError(400, "APPOINTMENT_SETTINGS_INVALID", "预约规则设置无效");
+    if (appointmentWriteRepository?.updateSettings) {
+      const result = await appointmentWriteRepository.updateSettings(scope, { ...input, timezone, slotIntervalMinutes: slot, defaultBufferMinutes: buffer, maxAdvanceDays: days });
+      return appointmentReadRepository?.getSettings ? (await readAfterWrite(() => appointmentReadRepository.getSettings(scope), value => value && value.timezone === timezone && value.slotIntervalMinutes === slot && value.defaultBufferMinutes === buffer && value.maxAdvanceDays === days && value.bookingEnabled === (input.bookingEnabled !== false))) || result : result;
+    }
     await db.transaction(async tx => { await tx.query(`insert into appointment_settings(tenant_id,workspace_id,store_id,timezone,slot_interval_minutes,default_buffer_minutes,min_advance_minutes,max_advance_days,booking_enabled)
       values($1,$2,$3,$4,$5,$6,0,$7,$8)
       on conflict(workspace_id,store_id) do update set timezone=excluded.timezone,slot_interval_minutes=excluded.slot_interval_minutes,default_buffer_minutes=excluded.default_buffer_minutes,min_advance_minutes=0,max_advance_days=excluded.max_advance_days,booking_enabled=excluded.booking_enabled,updated_at=now()
@@ -378,10 +398,11 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     return getSettings(scope);
   }
 
-  async function listServices(scope) { return (await scopedResources(scope)).services.map(serviceView); }
+  async function listServices(scope) { return appointmentReadRepository?.listServices ? appointmentReadRepository.listServices(scope) : (await scopedResources(scope)).services.map(serviceView); }
   async function saveService(scope, input, id = null) {
     assertWritable(scope); const name = String(input.name || "").trim().slice(0,80); const duration = int(input.durationMinutes,5,1440,-1); const override = input.bufferMinutesOverride === null || input.bufferMinutesOverride === "" ? null : int(input.bufferMinutesOverride,0,480,-1);
     if (!name || duration < 0 || override === -1) throw new AppointmentError(400,"APPOINTMENT_SERVICE_INVALID","服务设置无效");
+    if (appointmentWriteRepository?.saveService) return serviceView(await appointmentWriteRepository.saveService(scope, { ...input, name, durationMinutes: duration, bufferMinutesOverride: override }, id));
     return db.transaction(async tx => {
       const serviceId = id || uuid();
       if (id) { const result = await tx.query("update appointment_services set name=$1,description=$2,duration_minutes=$3,buffer_minutes_override=$4,enabled=$5,sort_order=$6,updated_at=now() where id=$7 and tenant_id=$8 and workspace_id=$9 and store_id=$10 returning *", [name,String(input.description||"").slice(0,500),duration,override,input.enabled!==false,int(input.sortOrder,-10000,10000,0),id,...rowScope(scope)]); if (!result.rows[0]) throw new AppointmentError(404,"APPOINTMENT_SERVICE_NOT_FOUND","服务不存在"); }
@@ -403,9 +424,10 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     });
   }
 
-  async function listAdvisors(scope) { return (await scopedResources(scope)).advisors.map(advisorView); }
+  async function listAdvisors(scope) { return appointmentReadRepository?.listAdvisors ? appointmentReadRepository.listAdvisors(scope) : (await scopedResources(scope)).advisors.map(advisorView); }
   async function saveAdvisor(scope, input, id = null) {
     assertWritable(scope); const name=String(input.name||"").trim().slice(0,80); if(!name) throw new AppointmentError(400,"APPOINTMENT_ADVISOR_INVALID","请输入服务人员姓名");
+    if (appointmentWriteRepository?.saveAdvisor) return advisorView(await appointmentWriteRepository.saveAdvisor(scope, { ...input, name }, id));
     return db.transaction(async tx => { const advisorId=id||uuid(); let staffId=String(input.staffId||"") || null; if(id){const result=await tx.query("update appointment_advisors set name=$1,enabled=$2,sort_order=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6 and store_id=$7 returning *",[name,input.enabled!==false,int(input.sortOrder,-10000,10000,0),id,...rowScope(scope)]);if(!result.rows[0])throw new AppointmentError(404,"APPOINTMENT_ADVISOR_NOT_FOUND","服务人员不存在");staffId=result.rows[0].staff_id||staffId;if(staffId)await tx.query("update staff_members set display_name=$1,status=$2,public_visible=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6",[name,input.enabled!==false?"active":"inactive",input.enabled!==false,staffId,scope.tenantId,scope.workspaceId]);}else{staffId=staffId||uuid();const exists=(await tx.query("select id from staff_members where id=$1 and tenant_id=$2 and workspace_id=$3",[staffId,scope.tenantId,scope.workspaceId])).rows[0];if(!exists)await tx.query("insert into staff_members(id,tenant_id,workspace_id,display_name,status,public_visible) values($1,$2,$3,$4,$5,$6)",[staffId,scope.tenantId,scope.workspaceId,name,input.enabled!==false?"active":"inactive",input.enabled!==false]);await tx.query("insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id,status) values($1,$2,$3,$4,$5,$6) on conflict(store_id,staff_id) do update set status=excluded.status,updated_at=now()",[uuid(),...rowScope(scope),staffId,input.enabled!==false?"active":"inactive"]);await tx.query("insert into appointment_advisors(id,tenant_id,workspace_id,store_id,staff_id,name,enabled,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8)",[advisorId,...rowScope(scope),staffId,name,input.enabled!==false,int(input.sortOrder,-10000,10000,0)]);await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) select tenant_id,workspace_id,store_id,$1,id from appointment_services where tenant_id=$2 and workspace_id=$3 and store_id=$4 on conflict(advisor_id,service_id) do nothing",[advisorId,...rowScope(scope)]);const hours=(await tx.query("select weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3",rowScope(scope))).rows;for(const hour of hours)await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9)",[uuid(),...rowScope(scope),staffId,hour.weekday,hour.start_time,hour.end_time,hour.enabled]);}await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},id?"appointment.advisor.update":"appointment.advisor.create","appointment_advisor",advisorId,{enabled:input.enabled!==false,staffId});return advisorView((await tx.query("select * from appointment_advisors where id=$1",[advisorId])).rows[0]);});
   }
   async function removeAdvisor(scope, id) {
@@ -421,9 +443,13 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     });
   }
 
-  async function listHours(scope) { return (await db.query("select id,weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by weekday,start_time",rowScope(scope))).rows.map(row=>({id:row.id,weekday:Number(row.weekday),startTime:String(row.start_time).slice(0,5),endTime:String(row.end_time).slice(0,5),enabled:row.enabled})); }
+  async function listHours(scope) { return appointmentReadRepository?.listHours ? appointmentReadRepository.listHours(scope) : (await db.query("select id,weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by weekday,start_time",rowScope(scope))).rows.map(row=>({id:row.id,weekday:Number(row.weekday),startTime:String(row.start_time).slice(0,5),endTime:String(row.end_time).slice(0,5),enabled:row.enabled})); }
   async function replaceHours(scope, input) {
     assertWritable(scope); const hours=Array.isArray(input.hours)?input.hours:[]; if(hours.some(item=>!Number.isInteger(Number(item.weekday))||Number(item.weekday)<0||Number(item.weekday)>6||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item.startTime)||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item.endTime)||item.endTime<=item.startTime)) throw new AppointmentError(400,"BUSINESS_HOURS_INVALID","营业时间设置无效");
+    if (appointmentWriteRepository?.replaceHours) {
+      const result = await appointmentWriteRepository.replaceHours(scope, hours);
+      return appointmentReadRepository?.listHours ? readAfterWrite(() => appointmentReadRepository.listHours(scope), value => value.length === hours.length && value.every((item, index) => item.weekday === Number(hours[index].weekday) && item.startTime === hours[index].startTime && item.endTime === hours[index].endTime && item.enabled === (hours[index].enabled !== false))) : result;
+    }
     await db.transaction(async tx=>{await tx.query("delete from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3",rowScope(scope));for(const item of hours)await tx.query("insert into appointment_business_hours(id,tenant_id,workspace_id,store_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8)",[uuid(),...rowScope(scope),Number(item.weekday),item.startTime,item.endTime,item.enabled!==false]);await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.business_hours.update","appointment_business_hours",scope.storeId,{windowCount:hours.length});});return listHours(scope);
   }
 
@@ -436,6 +462,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     return (await tx.query("select * from appointment_advisors where staff_id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [staffId, ...rowScope(scope)])).rows[0];
   }
   async function listStaff(scope) {
+    if (appointmentReadRepository?.listStaff) return appointmentReadRepository.listStaff(scope);
     const [rows, mappings] = await Promise.all([
       db.query(`select sm.*,aa.id advisor_id,ssa.status assignment_status from staff_members sm join staff_store_assignments ssa on ssa.staff_id=sm.id and ssa.tenant_id=sm.tenant_id and ssa.workspace_id=sm.workspace_id left join appointment_advisors aa on aa.staff_id=sm.id and aa.tenant_id=sm.tenant_id and aa.workspace_id=sm.workspace_id and aa.store_id=ssa.store_id where sm.tenant_id=$1 and sm.workspace_id=$2 and ssa.store_id=$3 order by sm.status,sm.display_name`, rowScope(scope)),
       db.query(`select aas.advisor_id,s.id,s.name from appointment_advisor_services aas join appointment_services s on s.id=aas.service_id where aas.tenant_id=$1 and aas.workspace_id=$2 and aas.store_id=$3`, rowScope(scope))
@@ -443,14 +470,17 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     return rows.rows.map(row => staffView({ ...row, services: mappings.rows.filter(item => item.advisor_id === row.advisor_id).map(item => ({ id: item.id, name: item.name })) }));
   }
   async function listStaffSchedules(scope, staffId) {
+    if (appointmentReadRepository?.listStaffSchedules) return appointmentReadRepository.listStaffSchedules(scope, staffId);
     await requireStaff(scope, staffId);
     return (await db.query("select * from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 order by weekday,start_time", [...rowScope(scope), staffId])).rows.map(scheduleView);
   }
   async function listStaffLeaves(scope, staffId) {
+    if (appointmentReadRepository?.listStaffLeaves) return appointmentReadRepository.listStaffLeaves(scope, staffId);
     await requireStaff(scope, staffId);
     return (await db.query("select * from staff_leaves where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 order by start_at desc", [...rowScope(scope), staffId])).rows.map(leaveView);
   }
   async function getStaff(scope, staffId) {
+    if (appointmentReadRepository?.getStaff) return appointmentReadRepository.getStaff(scope, staffId);
     const item = (await listStaff(scope)).find(row => row.id === staffId);
     if (!item) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
     item.schedules = await listStaffSchedules(scope, staffId);
@@ -463,6 +493,11 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     const title = String(input.title || "").trim().slice(0, 80);
     const status = input.status === "inactive" ? "inactive" : "active";
     if (!displayName) throw new AppointmentError(400, "STAFF_INVALID", "请输入员工姓名");
+    if (appointmentWriteRepository?.saveStaff) {
+      const result = await appointmentWriteRepository.saveStaff(scope, { ...input, displayName, title, status }, staffId);
+      const id = result?.id || staffId;
+      return appointmentReadRepository?.getStaff && id ? readAfterWrite(() => appointmentReadRepository.getStaff(scope, id), value => value?.id === id) : result;
+    }
     const id = staffId || uuid();
     await db.transaction(async tx => {
       if (staffId) {
@@ -508,32 +543,51 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     return (await db.query("select store_id,status from staff_store_assignments where tenant_id=$1 and workspace_id=$2 and staff_id=$3 order by store_id", [scope.tenantId, scope.workspaceId, staffId])).rows.map(row => ({ storeId: row.store_id, status: row.status }));
   }
   async function setStaffCapabilities(scope, staffId, input = {}) {
-    assertWritable(scope); await requireStaff(scope, staffId);
-    const advisor = await advisorForStaff(scope, staffId); if (!advisor) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+    assertWritable(scope);
     const serviceIds = [...new Set((Array.isArray(input.serviceIds) ? input.serviceIds : []).map(String))];
+    if (appointmentWriteRepository?.setStaffCapabilities) {
+      const result = await appointmentWriteRepository.setStaffCapabilities(scope, staffId, serviceIds);
+      return appointmentReadRepository?.getStaff ? readAfterWrite(() => appointmentReadRepository.getStaff(scope, staffId), value => Array.isArray(value?.services) && value.services.length === serviceIds.length && value.services.every(item => serviceIds.includes(String(item.id))) ) : result;
+    }
+    await requireStaff(scope, staffId);
+    const advisor = await advisorForStaff(scope, staffId); if (!advisor) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
     const valid = serviceIds.length ? (await db.query("select id from appointment_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and enabled=true and id=any($4)", [...rowScope(scope), serviceIds])).rows : [];
     if (valid.length !== serviceIds.length) throw new AppointmentError(400, "APPOINTMENT_SCOPE_INVALID", "服务不属于当前门店");
     await db.transaction(async tx => { await tx.query("delete from appointment_advisor_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and advisor_id=$4", [...rowScope(scope), advisor.id]); for (const serviceId of serviceIds) await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) values($1,$2,$3,$4,$5)", [...rowScope(scope), advisor.id, serviceId]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.capability.update", "staff_member", staffId, { serviceCount: serviceIds.length }); });
     return getStaff(scope, staffId);
   }
   async function replaceStaffSchedules(scope, staffId, input = {}) {
-    assertWritable(scope); await requireStaff(scope, staffId);
+    assertWritable(scope);
     const schedules = Array.isArray(input.schedules) ? input.schedules : [];
     const validTime = value => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
     if (schedules.some(item => !Number.isInteger(Number(item.weekday)) || Number(item.weekday) < 0 || Number(item.weekday) > 6 || !validTime(item.startTime) || !validTime(item.endTime) || String(item.endTime) <= String(item.startTime))) throw new AppointmentError(400, "STAFF_SCHEDULE_INVALID", "员工工作时间无效");
+    if (appointmentWriteRepository?.replaceStaffSchedules) {
+      const result = await appointmentWriteRepository.replaceStaffSchedules(scope, staffId, schedules);
+      return appointmentReadRepository?.listStaffSchedules ? readAfterWrite(() => appointmentReadRepository.listStaffSchedules(scope, staffId), value => value.length === schedules.length && value.every((item, index) => item.weekday === Number(schedules[index].weekday) && item.startTime === schedules[index].startTime && item.endTime === schedules[index].endTime && item.enabled === (schedules[index].enabled !== false))) : result;
+    }
+    await requireStaff(scope, staffId);
     await db.transaction(async tx => { await tx.query("delete from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4", [...rowScope(scope), staffId]); for (const item of schedules) await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9)", [uuid(), ...rowScope(scope), staffId, Number(item.weekday), item.startTime, item.endTime, item.enabled !== false]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.schedule.update", "staff_member", staffId, { windowCount: schedules.length }); });
     return listStaffSchedules(scope, staffId);
   }
   async function saveStaffLeave(scope, staffId, input = {}) {
-    assertWritable(scope); await requireStaff(scope, staffId);
+    assertWritable(scope);
     const start = utcInstant(input.startAt); const end = utcInstant(input.endAt);
     if (!start.isValid || !end.isValid || end <= start) throw new AppointmentError(400, "STAFF_LEAVE_INVALID", "请假时间无效");
+    if (appointmentWriteRepository?.saveStaffLeave) {
+      const result = await appointmentWriteRepository.saveStaffLeave(scope, staffId, { ...input, startAt: start.toISO(), endAt: end.toISO() });
+      if (!appointmentReadRepository?.listStaffLeaves || !result?.id) return result;
+      const leaves = await readAfterWrite(() => appointmentReadRepository.listStaffLeaves(scope, staffId), value => value.some(row => String(row.id) === String(result.id)));
+      return leaves.find(row => String(row.id) === String(result.id)) || result;
+    }
+    await requireStaff(scope, staffId);
     const id = uuid();
     await db.transaction(async tx => { await tx.query("insert into staff_leaves(id,tenant_id,workspace_id,store_id,staff_id,start_at,end_at,reason) values($1,$2,$3,$4,$5,$6,$7,$8)", [id, ...rowScope(scope), staffId, start.toJSDate(), end.toJSDate(), String(input.reason || "").trim().slice(0, 500)]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.leave.create", "staff_leave", id, { staffId }); });
     return (await listStaffLeaves(scope, staffId)).find(row => row.id === id);
   }
   async function removeStaffLeave(scope, staffId, id) {
-    assertWritable(scope); await requireStaff(scope, staffId);
+    assertWritable(scope);
+    if (appointmentWriteRepository?.removeStaffLeave) return appointmentWriteRepository.removeStaffLeave(scope, staffId, id);
+    await requireStaff(scope, staffId);
     return db.transaction(async tx => {
       const existing = (await tx.query("select id,start_at,end_at,reason from staff_leaves where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and staff_id=$5 for update", [id, ...rowScope(scope), staffId])).rows[0];
       if (!existing) throw new AppointmentError(404, "STAFF_LEAVE_NOT_FOUND", "请假记录不存在");

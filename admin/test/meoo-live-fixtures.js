@@ -8,10 +8,16 @@ function createLiveClient({ url = process.env.SUPABASE_URL, key = process.env.SU
   const base = String(url).replace(/\/$/, "");
   async function request(path, options = {}) {
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const response = await fetch(base + path, {
-        ...options,
-        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(options.headers || {}) }
-      });
+      let response;
+      try {
+        response = await fetch(base + path, {
+          ...options,
+          headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(options.headers || {}) }
+        });
+      } catch (error) {
+        if (attempt < 3) { await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1))); continue; }
+        throw error;
+      }
       const text = await response.text();
       let body = null;
       try { body = text ? JSON.parse(text) : null; } catch { body = text; }
@@ -90,6 +96,8 @@ async function cleanupFixture(fixture) {
     ["customer_points_ledger", { tenant_id: tenantId }],
     ["customer_points_accounts", { tenant_id: tenantId }],
     ["customer_memberships", { tenant_id: tenantId }],
+    ["membership_levels", { tenant_id: tenantId }],
+    ["membership_programs", { tenant_id: tenantId }],
     ["appointments", { tenant_id: tenantId }],
     ["customers", { tenant_id: tenantId }],
     ["appointment_advisor_services", { tenant_id: tenantId }],
@@ -105,6 +113,7 @@ async function cleanupFixture(fixture) {
     ["stores", { tenant_id: tenantId }],
     ["merchant_sessions", userId ? { user_id: userId } : { workspace_id: workspaceId }],
     ["memberships", userId ? { user_id: userId } : { workspace_id: workspaceId }],
+    ["staff_members", { tenant_id: tenantId }],
     ["workspaces", { id: workspaceId }],
     ["users", userId ? { id: userId } : { login_identifier: "__no_match__" }],
     ["tenants", { id: tenantId }]

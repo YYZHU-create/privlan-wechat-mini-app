@@ -1,0 +1,19 @@
+ATELIER OS Meoo B1 visible write paths verification
+
+Changed branch/field: codex/meoo-b1-visible-writes; explicit Meoo RPC write repositories and provider migration 003.
+Four artifacts: MODIFIED_FILE, DIFF_FILE, VERIFICATION.txt, ROLLBACK.sh.
+
+BASELINE command: node --test admin/test/meoo-production-adapter.test.js admin/test/meoo-centers-repositories.test.js admin/test/appointment.test.js
+BASELINE result: 26 passed, 0 failed, 0 skipped; exit 0.
+MODIFIED command: node --test admin/test/meoo-visible-write-paths.test.js admin/test/meoo-production-adapter.test.js admin/test/appointment-saas.test.js admin/test/operation-engine-sprint2.test.js
+MODIFIED result: 27 passed, 0 failed, 0 skipped; exit 0.
+FULL command: node --test (cwd admin)
+FULL result: 153 passed, 0 failed, 1 skipped; exit 0. The skipped case is the existing real PostgreSQL integration test when its controlled URL is unavailable.
+CHECK command: node --check admin/appointment-service.js; node --check admin/customer-service.js; node --check admin/server.js; git diff --check
+CHECK result: all checks passed; exit 0.
+PROVIDER MIGRATION command: NODE_ENV=test node -e "create role service_role; execute platform/provider-migrations/meoo/003_visible_write_paths.sql in a portable PostgreSQL instance"
+PROVIDER MIGRATION result: parsed and installed all explicit RPC functions; exit 0.
+ROLLBACK command: ROLLBACK.sh <copy-of-MODIFIED_FILE>
+ROLLBACK result: removed the added-file copy to restore the committed baseline state; exit 0. The working MODIFIED_FILE remains changed.
+
+Restored behavior/status: native remains the default database backend, native transaction/client lifecycle is unchanged, and Meoo writes use explicit scoped RPCs only when the Meoo backend is selected.

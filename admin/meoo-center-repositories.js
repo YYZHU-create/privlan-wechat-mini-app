@@ -43,16 +43,14 @@ function createMeooCustomerRepository({ adapter } = {}) {
   async function get360(scope, customerId) {
     const customer = (await rows("customers", scope, `${scopeQuery(scope, [["id", customerId]])}&limit=1`)).find(row => String(row.id) === String(customerId));
     if (!customer) throw Object.assign(new Error("客户不存在"), { status: 404, code: "CUSTOMER_NOT_FOUND" });
-    const [appointments, orders, events, links, notes, memberships, points, pointLedger] = await Promise.all([
-      rows("appointments", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=start_at.desc&limit=200`),
-      rows("orders", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`),
-      rows("customer_events", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=occurred_at.desc&limit=200`),
-      rows("customer_tag_links", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&select=tag_id`),
-      rows("customer_notes", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`),
-      rows("customer_memberships", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&status=eq.active&limit=1`),
-      rows("customer_points_accounts", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&limit=1`),
-      rows("customer_points_ledger", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`)
-    ]);
+    const appointments = await rows("appointments", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=start_at.desc&limit=200`);
+    const orders = await rows("orders", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`);
+    const events = await rows("customer_events", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=occurred_at.desc&limit=200`);
+    const links = await rows("customer_tag_links", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&select=tag_id`);
+    const notes = await rows("customer_notes", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`);
+    const memberships = await rows("customer_memberships", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&status=eq.active&limit=1`);
+    const points = await rows("customer_points_accounts", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&limit=1`);
+    const pointLedger = await rows("customer_points_ledger", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`);
     const tagIds = links.map(row => row.tag_id).filter(Boolean); const tagRows = tagIds.length ? await rows("customer_tags", scope, `${scopeQuery(scope)}&id=in.(${tagIds.map(value => encodeURIComponent(String(value))).join(",")})`) : [];
     const levelIds = memberships.map(row => row.level_id).filter(Boolean); const levels = levelIds.length ? await rows("membership_levels", scope, `${scopeQuery(scope)}&id=in.(${levelIds.map(value => encodeURIComponent(String(value))).join(",")})`) : [];
     const level = levels.find(row => String(row.id) === String(memberships[0]?.level_id));
@@ -106,6 +104,55 @@ function createMeooAppointmentReadRepository({ adapter } = {}) {
   async function listAppointments(scope, filters = {}) { const all = await rows("appointments", scope); const filtered = all.filter(row => (!filters.status || row.status === filters.status) && (!filters.serviceId || row.service_id === filters.serviceId) && (!filters.advisorId || row.advisor_id === filters.advisorId) && (!filters.q || [row.customer_name_snapshot, row.customer_phone_snapshot, row.appointment_number].some(value => String(value || "").toLowerCase().includes(String(filters.q).toLowerCase()))) && (!filters.dateFrom || new Date(row.start_at) >= new Date(filters.dateFrom)) && (!filters.dateTo || new Date(row.start_at) < new Date(`${filters.dateTo}T23:59:59.999Z`))); filtered.sort((a, b) => new Date(b.start_at) - new Date(a.start_at)); return filtered.slice(0, 250).map(row => ({ id: row.id, number: row.appointment_number, startAt: row.start_at, customerName: row.customer_name_snapshot, customerPhoneMasked: maskPhone(row.customer_phone_snapshot), serviceName: row.service_name_snapshot, advisorName: row.advisor_name_snapshot, status: row.status, statusLabel: publicStatus(row.status), source: row.source })); }
   async function listServices(scope) { const rowsData = await rows("appointment_services", scope, `${scopeQuery(scope)}&order=sort_order.asc`); return rowsData.map(row => ({ id: row.id, name: row.name, description: row.description || "", durationMinutes: Number(row.duration_minutes), bufferMinutesOverride: row.buffer_minutes_override === null ? null : Number(row.buffer_minutes_override), enabled: row.enabled, sortOrder: Number(row.sort_order || 0) })); }
   async function listAdvisors(scope) { const rowsData = await rows("appointment_advisors", scope, `${scopeQuery(scope)}&order=sort_order.asc`); return rowsData.map(row => ({ id: row.id, staffId: row.staff_id || null, name: row.name, enabled: row.enabled, sortOrder: Number(row.sort_order || 0) })); }
+  async function getSettings(scope) {
+    const row = (await rows("appointment_settings", scope, `${scopeQuery(scope)}&limit=1`))[0];
+    return row ? { timezone: row.timezone, slotIntervalMinutes: Number(row.slot_interval_minutes), defaultBufferMinutes: Number(row.default_buffer_minutes), maxAdvanceDays: Number(row.max_advance_days), bookingEnabled: row.booking_enabled } : null;
+  }
+  async function listHours(scope) {
+    const rowsData = await rows("appointment_business_hours", scope, `${scopeQuery(scope)}&order=weekday.asc,start_time.asc`);
+    return rowsData.map(row => ({ id: row.id, weekday: Number(row.weekday), startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), enabled: row.enabled }));
+  }
+  async function listStaff(scope) {
+    const tenantWorkspace = `tenant_id=eq.${encodeURIComponent(String(scope.tenantId))}&workspace_id=eq.${encodeURIComponent(String(scope.workspaceId))}`;
+    const staffRows = await adapter.readResource("staff_members", tenantWorkspace);
+    const assignments = await rows("staff_store_assignments", scope);
+    const advisors = await rows("appointment_advisors", scope);
+    const mappings = await rows("appointment_advisor_services", scope);
+    const services = await rows("appointment_services", scope);
+    const assignmentByStaffId = new Map((assignments || []).map(row => [String(row.staff_id), row]));
+    const advisorByStaffId = new Map((advisors || []).filter(row => row.staff_id).map(row => [String(row.staff_id), row]));
+    const serviceById = new Map((services || []).map(row => [String(row.id), row]));
+    return (staffRows || []).filter(row => assignmentByStaffId.has(String(row.id))).map(row => {
+      const assignment = assignmentByStaffId.get(String(row.id));
+      const advisor = advisorByStaffId.get(String(row.id));
+      const staffServices = advisor ? (mappings || []).filter(item => String(item.advisor_id) === String(advisor.id)).map(item => serviceById.get(String(item.service_id))).filter(Boolean).map(item => ({ id: item.id, name: item.name })) : [];
+      return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url || "", title: row.title || "", status: row.status, publicVisible: row.public_visible, advisorId: advisor?.id || null, assignmentStatus: assignment?.status || null, services: staffServices };
+    }).sort((left, right) => `${left.status || ""}:${left.displayName || ""}`.localeCompare(`${right.status || ""}:${right.displayName || ""}`));
+  }
+  async function requireStaff(scope, staffId) {
+    const staff = (await listStaff(scope)).find(item => String(item.id) === String(staffId));
+    if (!staff) throw Object.assign(new Error("员工不存在"), { status: 404, code: "STAFF_NOT_FOUND" });
+    return staff;
+  }
+  async function requireStaffAssignment(scope, staffId) {
+    const assignment = (await rows("staff_store_assignments", scope, `${scopeQuery(scope, [["staff_id", staffId]])}&limit=1`))[0];
+    if (!assignment) throw Object.assign(new Error("员工不存在"), { status: 404, code: "STAFF_NOT_FOUND" });
+    return assignment;
+  }
+  async function listStaffSchedules(scope, staffId) {
+    await requireStaffAssignment(scope, staffId);
+    const rowsData = await rows("staff_schedules", scope, `${scopeQuery(scope, [["staff_id", staffId]])}&order=weekday.asc,start_time.asc`);
+    return rowsData.map(row => ({ id: row.id, storeId: row.store_id, staffId: row.staff_id, weekday: Number(row.weekday), startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), enabled: row.enabled }));
+  }
+  async function listStaffLeaves(scope, staffId) {
+    await requireStaffAssignment(scope, staffId);
+    const rowsData = await rows("staff_leaves", scope, `${scopeQuery(scope, [["staff_id", staffId]])}&order=start_at.desc`);
+    return rowsData.map(row => ({ id: row.id, storeId: row.store_id, staffId: row.staff_id, startAt: row.start_at, endAt: row.end_at, reason: row.reason || "" }));
+  }
+  async function getStaff(scope, staffId) {
+    const staff = await requireStaff(scope, staffId);
+    return { ...staff, schedules: await listStaffSchedules(scope, staffId), leaves: await listStaffLeaves(scope, staffId) };
+  }
   async function getAppointment(scope, id) {
     const row = (await rows("appointments", scope, `${scopeQuery(scope, [["id", id]])}&limit=1`))[0];
     if (!row) throw Object.assign(new Error("预约不存在"), { status: 404, code: "APPOINTMENT_NOT_FOUND" });
@@ -120,7 +167,7 @@ function createMeooAppointmentReadRepository({ adapter } = {}) {
     ]);
     return [...events.map(row => ({ type: row.event_type, source: row.source, resourceType: row.resource_type, resourceId: row.resource_id, metadata: row.metadata || {}, occurredAt: row.occurred_at })), ...audits.map(row => ({ type: row.action, source: row.actor_type, resourceType: row.resource_type, resourceId: row.resource_id, metadata: row.metadata || {}, occurredAt: row.created_at }))].sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
   }
-  return { stats, listAppointments, listServices, listAdvisors, getAppointment, timeline };
+  return { stats, listAppointments, listServices, listAdvisors, getSettings, listHours, listStaff, getStaff, listStaffSchedules, listStaffLeaves, getAppointment, timeline };
 }
 
 module.exports = { createMeooCustomerRepository, createMeooAppointmentReadRepository };

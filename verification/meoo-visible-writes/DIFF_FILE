@@ -1,0 +1,9 @@
+Task-owned implementation diff summary
+
+MODIFIED admin/meoo-write-repositories.js: explicit scoped RPC repositories for customer and appointment visible writes.
+MODIFIED admin/customer-service.js: optional Meoo customer-write dispatch with native fallback.
+MODIFIED admin/appointment-service.js: optional Meoo appointment-write dispatch with native fallback.
+MODIFIED admin/saas-service.js and admin/server.js: Meoo-only repository wiring.
+MODIFIED admin/public/app.js: Promise.allSettled isolation for auxiliary appointment/customer center reads.
+ADDED platform/provider-migrations/meoo/003_visible_write_paths.sql: static provider RPCs and grants.
+ADDED admin/test/meoo-visible-write-paths.test.js: scoped payload and dispatch coverage.

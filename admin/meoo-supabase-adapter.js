@@ -29,25 +29,31 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
 
   async function request(path = "", options = {}, baseEndpoint = endpoint) {
     const startedAt = Date.now();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let response;
-    try {
-      response = await fetchImpl(`${baseEndpoint}${path}`, { ...options, signal: controller.signal, headers: { ...headers, ...(options.headers || {}) } });
-    } catch (error) {
-      onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: false, errorCategory: "DATABASE_UNAVAILABLE" });
-      throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
-    } finally { clearTimeout(timer); }
-    const text = await response.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
-    if (!response.ok) {
+    const method = options.method || "GET";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let response;
+      try {
+        response = await fetchImpl(`${baseEndpoint}${path}`, { ...options, signal: controller.signal, headers: { ...headers, ...(options.headers || {}) } });
+      } catch (error) {
+        if (method === "GET" && attempt < 2) { clearTimeout(timer); await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt))); continue; }
+        onEvent({ backend: "meoo", operation: method, durationMs: Date.now() - startedAt, success: false, errorCategory: "DATABASE_UNAVAILABLE" });
+        throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
+      } finally { clearTimeout(timer); }
+      const text = await response.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+      if (response.ok) {
+        onEvent({ backend: "meoo", operation: method, durationMs: Date.now() - startedAt, success: true, errorCategory: null });
+        return body;
+      }
+      if (method === "GET" && [429, 502, 503].includes(response.status) && attempt < 2) { await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt))); continue; }
       const normalized = normalizeError(body, response.status);
-      onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
+      onEvent({ backend: "meoo", operation: method, durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
       throw normalized;
     }
-    onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: true, errorCategory: null });
-    return body;
+    throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
   }
 
   async function callRpc(name, body = {}) {
@@ -169,7 +175,7 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
   }
 
   async function readResource(tableName, query = "") {
-    const allowed = new Set(["customers", "customer_memberships", "customer_tag_links", "customer_tags", "customer_notes", "customer_events", "customer_points_accounts", "customer_points_ledger", "membership_levels", "membership_programs", "appointments", "orders", "appointment_services", "appointment_advisors", "audit_events"]);
+    const allowed = new Set(["customers", "customer_memberships", "customer_tag_links", "customer_tags", "customer_notes", "customer_events", "customer_points_accounts", "customer_points_ledger", "membership_levels", "membership_programs", "appointments", "orders", "appointment_settings", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_advisor_services", "staff_members", "staff_store_assignments", "staff_schedules", "staff_leaves", "audit_events"]);
     if (!allowed.has(String(tableName || ""))) throw new SupabaseAdapterError("RESOURCE_INVALID", "database resource is invalid", 400);
     if (query && !/^[A-Za-z0-9_.=(),%:+&-]+$/.test(String(query))) throw new SupabaseAdapterError("QUERY_INVALID", "database query is invalid", 400);
     return request(`${query ? `?${query}` : ""}`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);

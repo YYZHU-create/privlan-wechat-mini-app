@@ -755,9 +755,14 @@ createApp({
       try {
         const appointmentQuery = new URLSearchParams(Object.entries(appointmentWorkspace.filters).filter(([key,value]) => value && !["identity","source","sort"].includes(key))).toString();
         const customerQuery = new URLSearchParams({ page: appointmentWorkspace.customerPage, pageSize: appointmentWorkspace.customerPageSize, q: appointmentWorkspace.filters.q, identity: appointmentWorkspace.filters.identity, source: appointmentWorkspace.filters.source, sort: appointmentWorkspace.filters.sort });
-        const [stats, customerStats, appointments, customerResult, services, advisors, tags, program, levels] = await Promise.all([
+        const requests = await Promise.allSettled([
           apiJson("/v1/appointments/stats"), apiJson("/v1/customers/stats"), apiJson(`/v1/appointments${appointmentQuery ? `?${appointmentQuery}` : ""}`), apiJson(`/v1/customers?${customerQuery}`), apiJson("/v1/appointment-services"), apiJson("/v1/appointment-advisors"), apiJson("/v1/customer-tags"), apiJson("/v1/membership-program"), apiJson("/v1/membership-levels")
         ]);
+        const value = (index, fallback) => requests[index].status === "fulfilled" ? requests[index].value : fallback;
+        const criticalErrors = [1, 3].filter(index => requests[index].status === "rejected").map(index => requests[index].reason?.message || "数据读取失败");
+        if (criticalErrors.length) throw new Error(criticalErrors.join("；"));
+        const stats = value(0, {}), customerStats = value(1, {}), appointments = value(2, []), customerResult = value(3, { items: [], total: 0 });
+        const services = value(4, appointmentWorkspace.services || []), advisors = value(5, appointmentWorkspace.advisors || []), tags = value(6, customerAdmin.tags || []), program = value(7, customerAdmin.program || { enabled: false, points_enabled: false }), levels = value(8, customerAdmin.levels || []);
         Object.assign(appointmentWorkspace.stats, stats || {}); Object.assign(appointmentWorkspace.customerStats, customerStats || {}); appointmentWorkspace.appointments = appointments || []; appointmentWorkspace.customers = customerResult?.items || []; appointmentWorkspace.customerTotal = Number(customerResult?.total || 0); appointmentWorkspace.services = services || []; editorAppointmentServices.value = services || []; appointmentWorkspace.advisors = advisors || []; customerAdmin.tags=tags||[]; customerAdmin.program=program||{enabled:false,points_enabled:false}; customerAdmin.levels=levels||[];
       } catch (error) { appointmentWorkspace.error = error.message; }
       finally { appointmentWorkspace.loading = false; }

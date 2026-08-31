@@ -29,10 +29,10 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, authRepository = null, configRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null }) {
   if (!db) throw new Error("database is required");
-  const customerService = createCustomerService({ db, tagRepository, customerRepository });
-  const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository });
+  const customerService = createCustomerService({ db, tagRepository, customerRepository, customerWriteRepository });
+  const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository, appointmentWriteRepository });
   const licenseHash = code => {
     if (!licensePepper) throw new ServiceError(503, "LICENSE_PEPPER_MISSING", "兑换服务尚未配置");
     return crypto.createHmac("sha256", licensePepper).update(String(code || "").trim().toUpperCase()).digest("hex");
