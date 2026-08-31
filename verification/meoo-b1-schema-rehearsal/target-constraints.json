@@ -1,0 +1,510 @@
+{
+  "success": true,
+  "data": {
+    "query": "select conrelid::regclass::text as table_name, conname, pg_get_constraintdef(oid) as definition\nfrom pg_constraint\nwhere connamespace='public'::regnamespace\norder by 1,2;",
+    "rowCount": 230,
+    "truncated": true,
+    "rows": [
+      {
+        "table_name": "appointment_advisor_services",
+        "conname": "appointment_advisor_services_pkey",
+        "definition": "PRIMARY KEY (advisor_id, service_id)"
+      },
+      {
+        "table_name": "appointment_advisor_services",
+        "conname": "appointment_advisor_services_tenant_id_workspace_id_store__fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, advisor_id) REFERENCES appointment_advisors(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "appointment_advisor_services",
+        "conname": "appointment_advisor_services_tenant_id_workspace_id_store_fkey1",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, service_id) REFERENCES appointment_services(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "appointment_advisors",
+        "conname": "appointment_advisors_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "appointment_advisors",
+        "conname": "appointment_advisors_staff_scope_fk",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, staff_id) REFERENCES staff_members(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointment_advisors",
+        "conname": "appointment_advisors_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointment_advisors",
+        "conname": "appointment_advisors_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_check",
+        "definition": "CHECK ((end_time > start_time))"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_store_id_weekday_start_time_end__key",
+        "definition": "UNIQUE (store_id, weekday, start_time, end_time)"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointment_business_hours",
+        "conname": "appointment_business_hours_weekday_check",
+        "definition": "CHECK (((weekday >= 0) AND (weekday <= 6)))"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_source_kind_check",
+        "definition": "CHECK ((source_kind = ANY (ARRAY['normalized_json'::text, 'feishu_export'::text])))"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_status_check",
+        "definition": "CHECK ((status = ANY (ARRAY['completed'::text, 'failed'::text])))"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointment_import_runs",
+        "conname": "appointment_import_runs_workspace_id_source_hash_dry_run_key",
+        "definition": "UNIQUE (workspace_id, source_hash, dry_run)"
+      },
+      {
+        "table_name": "appointment_services",
+        "conname": "appointment_services_buffer_minutes_override_check",
+        "definition": "CHECK (((buffer_minutes_override >= 0) AND (buffer_minutes_override <= 480)))"
+      },
+      {
+        "table_name": "appointment_services",
+        "conname": "appointment_services_duration_minutes_check",
+        "definition": "CHECK (((duration_minutes >= 5) AND (duration_minutes <= 1440)))"
+      },
+      {
+        "table_name": "appointment_services",
+        "conname": "appointment_services_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "appointment_services",
+        "conname": "appointment_services_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointment_services",
+        "conname": "appointment_services_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_default_buffer_minutes_check",
+        "definition": "CHECK (((default_buffer_minutes >= 1) AND (default_buffer_minutes <= 30)))"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_max_advance_days_check",
+        "definition": "CHECK (((max_advance_days >= 1) AND (max_advance_days <= 365)))"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_min_advance_minutes_check",
+        "definition": "CHECK (((min_advance_minutes >= 0) AND (min_advance_minutes <= 525600)))"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_pkey",
+        "definition": "PRIMARY KEY (workspace_id, store_id)"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_slot_interval_minutes_check",
+        "definition": "CHECK ((((slot_interval_minutes >= 5) AND (slot_interval_minutes <= 300)) AND ((slot_interval_minutes % 5) = 0)))"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointment_settings",
+        "conname": "appointment_settings_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_buffer_minutes_snapshot_check",
+        "definition": "CHECK ((buffer_minutes_snapshot >= 0))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_check",
+        "definition": "CHECK ((service_end_at > start_at))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_check1",
+        "definition": "CHECK ((occupied_until >= service_end_at))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_duration_minutes_snapshot_check",
+        "definition": "CHECK ((duration_minutes_snapshot > 0))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_resource_scope_fk",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, resource_id) REFERENCES resources(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_source_check",
+        "definition": "CHECK ((source = ANY (ARRAY['mini_program'::text, 'merchant_manual'::text, 'import'::text])))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_status_check",
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'completed'::text, 'cancelled'::text, 'no_show'::text])))"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_tenant_id_workspace_id_store_id_advisor_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, advisor_id) REFERENCES appointment_advisors(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_tenant_id_workspace_id_store_id_customer_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_tenant_id_workspace_id_store_id_service_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, service_id) REFERENCES appointment_services(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_workspace_id_appointment_number_key",
+        "definition": "UNIQUE (workspace_id, appointment_number)"
+      },
+      {
+        "table_name": "appointments",
+        "conname": "appointments_workspace_id_idempotency_key_key",
+        "definition": "UNIQUE (workspace_id, idempotency_key)"
+      },
+      {
+        "table_name": "assets",
+        "conname": "assets_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "assets",
+        "conname": "assets_store_id_fkey",
+        "definition": "FOREIGN KEY (store_id) REFERENCES stores(id)"
+      },
+      {
+        "table_name": "assets",
+        "conname": "assets_tenant_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id)"
+      },
+      {
+        "table_name": "assets",
+        "conname": "assets_workspace_id_fkey",
+        "definition": "FOREIGN KEY (workspace_id) REFERENCES workspaces(id)"
+      },
+      {
+        "table_name": "audit_events",
+        "conname": "audit_events_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_events",
+        "conname": "customer_events_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_events",
+        "conname": "customer_events_tenant_id_workspace_id_store_id_customer_i_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_events",
+        "conname": "customer_events_tenant_id_workspace_id_store_id_event_type__key",
+        "definition": "UNIQUE (tenant_id, workspace_id, store_id, event_type, source, resource_type, resource_id)"
+      },
+      {
+        "table_name": "customer_memberships",
+        "conname": "customer_memberships_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_memberships",
+        "conname": "customer_memberships_status_check",
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text])))"
+      },
+      {
+        "table_name": "customer_memberships",
+        "conname": "customer_memberships_tenant_id_workspace_id_store_id_custo_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_memberships",
+        "conname": "customer_memberships_tenant_id_workspace_id_store_id_level_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, level_id) REFERENCES membership_levels(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_notes",
+        "conname": "customer_notes_content_check",
+        "definition": "CHECK (((length(content) >= 1) AND (length(content) <= 5000)))"
+      },
+      {
+        "table_name": "customer_notes",
+        "conname": "customer_notes_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_notes",
+        "conname": "customer_notes_tenant_id_workspace_id_store_id_customer_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_points_accounts",
+        "conname": "customer_points_accounts_balance_check",
+        "definition": "CHECK ((balance >= 0))"
+      },
+      {
+        "table_name": "customer_points_accounts",
+        "conname": "customer_points_accounts_pkey",
+        "definition": "PRIMARY KEY (tenant_id, workspace_id, store_id, customer_id)"
+      },
+      {
+        "table_name": "customer_points_accounts",
+        "conname": "customer_points_accounts_tenant_id_workspace_id_store_id_c_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_points_ledger",
+        "conname": "customer_points_ledger_balance_after_check",
+        "definition": "CHECK ((balance_after >= 0))"
+      },
+      {
+        "table_name": "customer_points_ledger",
+        "conname": "customer_points_ledger_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_points_ledger",
+        "conname": "customer_points_ledger_tenant_id_workspace_id_store_id_cus_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_points_ledger",
+        "conname": "customer_points_ledger_tenant_id_workspace_id_store_id_idem_key",
+        "definition": "UNIQUE (tenant_id, workspace_id, store_id, idempotency_key)"
+      },
+      {
+        "table_name": "customer_points_ledger",
+        "conname": "customer_points_ledger_type_check",
+        "definition": "CHECK ((type = ANY (ARRAY['earn'::text, 'spend'::text, 'adjust'::text, 'expire'::text])))"
+      },
+      {
+        "table_name": "customer_tag_links",
+        "conname": "customer_tag_links_pkey",
+        "definition": "PRIMARY KEY (customer_id, tag_id)"
+      },
+      {
+        "table_name": "customer_tag_links",
+        "conname": "customer_tag_links_tenant_id_workspace_id_store_id_custome_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, customer_id) REFERENCES customers(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_tag_links",
+        "conname": "customer_tag_links_tenant_id_workspace_id_store_id_tag_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id, tag_id) REFERENCES customer_tags(tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customer_tags",
+        "conname": "customer_tags_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customer_tags",
+        "conname": "customer_tags_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "customer_tags",
+        "conname": "customer_tags_tenant_id_workspace_id_store_id_id_key",
+        "definition": "UNIQUE (tenant_id, workspace_id, store_id, id)"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_appointment_count_check",
+        "definition": "CHECK ((appointment_count >= 0))"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_order_count_check",
+        "definition": "CHECK ((order_count >= 0))"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_source_check",
+        "definition": "CHECK ((source = ANY (ARRAY['mini_program'::text, 'merchant_manual'::text, 'import'::text, 'order'::text, 'appointment'::text])))"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_status_check",
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'blocked'::text])))"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_tenant_id_workspace_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id)"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_tenant_id_workspace_id_store_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id, workspace_id, store_id) REFERENCES stores(tenant_id, workspace_id, id)"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_total_spend_fen_check",
+        "definition": "CHECK ((total_spend_fen >= 0))"
+      },
+      {
+        "table_name": "customers",
+        "conname": "customers_workspace_id_wechat_openid_hash_key",
+        "definition": "UNIQUE (workspace_id, wechat_openid_hash)"
+      },
+      {
+        "table_name": "legacy_imports",
+        "conname": "legacy_imports_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "legacy_imports",
+        "conname": "legacy_imports_source_hash_key",
+        "definition": "UNIQUE (source_hash)"
+      },
+      {
+        "table_name": "legacy_imports",
+        "conname": "legacy_imports_tenant_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id)"
+      },
+      {
+        "table_name": "legacy_imports",
+        "conname": "legacy_imports_workspace_id_fkey",
+        "definition": "FOREIGN KEY (workspace_id) REFERENCES workspaces(id)"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_code_hash_key",
+        "definition": "UNIQUE (code_hash)"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_duration_hours_check",
+        "definition": "CHECK ((duration_hours > 0))"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_max_uses_check",
+        "definition": "CHECK ((max_uses > 0))"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_plan_id_fkey",
+        "definition": "FOREIGN KEY (plan_id) REFERENCES plan_catalog(id)"
+      },
+      {
+        "table_name": "license_codes",
+        "conname": "license_codes_used_count_check",
+        "definition": "CHECK ((used_count >= 0))"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_license_id_fkey",
+        "definition": "FOREIGN KEY (license_id) REFERENCES license_codes(id)"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_license_id_workspace_id_key",
+        "definition": "UNIQUE (license_id, workspace_id)"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_tenant_id_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id)"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_user_id_fkey",
+        "definition": "FOREIGN KEY (user_id) REFERENCES users(id)"
+      },
+      {
+        "table_name": "license_redemptions",
+        "conname": "license_redemptions_workspace_id_fkey",
+        "definition": "FOREIGN KEY (workspace_id) REFERENCES workspaces(id)"
+      }
+    ]
+  }
+}

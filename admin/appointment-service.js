@@ -201,7 +201,10 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
     const name = String(input.customerName || "").trim().slice(0,64); const phone = String(input.customerPhone || "").trim(); const openid = String(input.openid || ""); const idempotencyKey = String(input.idempotencyKey || "").trim().slice(0,128);
     if (!openid || !idempotencyKey || (phone && !/^1\d{10}$/.test(phone))) throw new AppointmentError(400, "INVALID_INPUT", "预约身份或幂等信息无效");
     const scope = { ...publicData, actorType: "mini_program", actorId: "wechat_customer", requestId: context.requestId };
-    if (appointmentRepository?.createAppointment) return appointmentRepository.createAppointment({ ...input, scope }, context);
+    if (appointmentRepository?.createAppointment) {
+      const openidHash = hashOpenId(openid);
+      return appointmentRepository.createAppointment({ ...input, scope, openidHash }, context);
+    }
     return db.transaction(async tx => {
       let prior = (await tx.query("select * from appointments where workspace_id=$1 and idempotency_key=$2", [scope.workspaceId, idempotencyKey])).rows[0];
       if (prior) return appointmentPublicView(prior, scope.storeName, true);

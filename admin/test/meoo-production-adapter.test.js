@@ -38,26 +38,34 @@ test("real AppointmentService dispatches to the Meoo repository path", async () 
   let received;
   const db = { query: async () => ({ rows: [{ store_id: "store-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_name: "B1 店", public_store_id: "public-a", subscription_status: "active", expires_at: null, timezone: "Asia/Shanghai", slot_interval_minutes: 15, default_buffer_minutes: 0, max_advance_days: 30, booking_enabled: true }] }) };
   const repository = { createAppointment: async (input, context) => { received = { input, context }; return { number: "AT-B1", status: "待确认" }; } };
-  const service = createAppointmentService({ db, appointmentRepository: repository, customerService: { findOrCreateCustomer() {}, appendEvent() {} } });
+  const service = createAppointmentService({ db, openIdHashKey: "b1-test-openid-hash-key-32-bytes!!", appointmentRepository: repository, customerService: { findOrCreateCustomer() {}, appendEvent() {} } });
   const result = await service.createAppointment({ publicStoreId: "public-a", customerName: "客户", customerPhone: "13800138000", openid: "openid", idempotencyKey: "b1-key", serviceId: "service-a", advisorId: "advisor-a", startAt: "2030-01-01T01:00:00.000Z" }, { requestId: "b1-request" });
   assert.deepEqual(result, { number: "AT-B1", status: "待确认" });
   assert.equal(received.input.scope.tenantId, "tenant-a");
   assert.equal(received.input.scope.workspaceId, "workspace-a");
   assert.equal(received.input.scope.storeId, "store-a");
+  assert.equal(received.input.openidHash.length, 64);
   assert.equal(received.context.requestId, "b1-request");
 });
 
 test("Meoo appointment repository sends one RPC request and normalizes conflict", async () => {
   let call;
   const repo = createMeooAppointmentRepository({ adapter: { callRpc: async (...args) => { call = args; return { ok: true, data: { number: "AT-1" } }; } } });
-  const result = await repo.createAppointment({ scope: { tenantId: "t", workspaceId: "w", storeId: "s", publicStoreId: "p" }, customerName: "客户", idempotencyKey: "k" }, { requestId: "r" });
+  const result = await repo.createAppointment({ scope: { tenantId: "t", workspaceId: "w", storeId: "s", publicStoreId: "p" }, customerName: "客户", openidHash: "h", idempotencyKey: "k" }, { requestId: "r" });
   assert.deepEqual(result, { number: "AT-1" });
   assert.equal(call[0], "atelier_create_appointment");
   assert.equal(call[1].p_tenant_id, "t");
   assert.equal(call[1].p_workspace_id, "w");
   assert.equal(call[1].p_store_id, "s");
   const conflict = createMeooAppointmentRepository({ adapter: { callRpc: async () => ({ code: "APPOINTMENT_CONFLICT" }) } });
-  await assert.rejects(() => conflict.createAppointment({ scope: { tenantId: "t", workspaceId: "w", storeId: "s" } }), error => error.code === "APPOINTMENT_CONFLICT" && error.status === 409);
+  await assert.rejects(() => conflict.createAppointment({ scope: { tenantId: "t", workspaceId: "w", storeId: "s" }, openidHash: "h", idempotencyKey: "k" }), error => error.code === "APPOINTMENT_CONFLICT" && error.status === 409);
+});
+
+test("Meoo appointment repository preserves provider business error semantics", async () => {
+  for (const [code, status] of [["APPOINTMENT_SCOPE_INVALID", 400], ["CUSTOMER_SCOPE_CONFLICT", 409], ["SLOT_UNAVAILABLE", 409], ["INVALID_INPUT", 400]]) {
+    const repo = createMeooAppointmentRepository({ adapter: { callRpc: async () => ({ code }) } });
+    await assert.rejects(() => repo.createAppointment({ scope: { tenantId: "t", workspaceId: "w", storeId: "s" }, openidHash: "h", idempotencyKey: "k" }), error => error.code === code && error.status === status);
+  }
 });
 
 test("Meoo adapter emits provider-neutral operation metrics without payloads", async () => {

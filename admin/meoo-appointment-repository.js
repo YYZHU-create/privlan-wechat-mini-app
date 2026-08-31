@@ -6,6 +6,7 @@ function createMeooAppointmentRepository({ adapter, rpcName = "atelier_create_ap
     async createAppointment(input, context = {}) {
       const scope = input.scope;
       if (!scope?.tenantId || !scope?.workspaceId || !scope?.storeId) throw new SupabaseAdapterError("SCOPE_REQUIRED", "appointment scope is required", 400);
+      if (!input.openidHash) throw new SupabaseAdapterError("OPENID_HASH_REQUIRED", "预约身份哈希缺失", 503);
       const result = await adapter.callRpc(rpcName, {
         p_tenant_id: scope.tenantId,
         p_workspace_id: scope.workspaceId,
@@ -13,7 +14,7 @@ function createMeooAppointmentRepository({ adapter, rpcName = "atelier_create_ap
         p_public_store_id: scope.publicStoreId,
         p_customer_name: String(input.customerName || "").trim().slice(0, 64),
         p_customer_phone: String(input.customerPhone || "").trim(),
-        p_openid: String(input.openid || ""),
+        p_openid_hash: input.openidHash,
         p_service_id: input.serviceId || null,
         p_advisor_id: input.advisorId || null,
         p_resource_id: input.resourceId || null,
@@ -25,6 +26,9 @@ function createMeooAppointmentRepository({ adapter, rpcName = "atelier_create_ap
       });
       if (result?.code === "APPOINTMENT_CONFLICT") throw new SupabaseAdapterError("APPOINTMENT_CONFLICT", "该时间刚刚被预约，请选择其他时间", 409);
       if (result?.code === "APPOINTMENT_SCOPE_INVALID") throw new SupabaseAdapterError("APPOINTMENT_SCOPE_INVALID", "预约资源无效或不属于当前门店", 400);
+      if (result?.code === "CUSTOMER_SCOPE_CONFLICT") throw new SupabaseAdapterError("CUSTOMER_SCOPE_CONFLICT", "客户身份已绑定其他门店", 409);
+      if (result?.code === "SLOT_UNAVAILABLE") throw new SupabaseAdapterError("SLOT_UNAVAILABLE", "该时间当前不可预约", 409);
+      if (result?.code === "INVALID_INPUT") throw new SupabaseAdapterError("INVALID_INPUT", "预约参数无效", 400);
       if (!result || result.ok === false) throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "预约服务暂时不可用", 503);
       return result.data || result;
     }

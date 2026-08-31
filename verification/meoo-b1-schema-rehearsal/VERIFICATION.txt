@@ -1,0 +1,52 @@
+ATELIER OS x MEOO B1 schema rehearsal
+
+WORKTREE=C:\Users\Administrator\WorkBuddy\2026-08-30-meoo-b1-schema-rehearsal
+BRANCH=codex/meoo-b1-schema-rehearsal
+BASE_HEAD=a5310cd4ef9c2d1fd1605038195e352089f669aa
+
+SOURCE_DATABASE=atelier_os_staging
+SOURCE_POSTGRES=16.15
+SOURCE_SCHEMA_DIGEST=d724ac5f0e4e7e67229a27ee7aa9b8d5
+TARGET_SCHEMA_DIGEST=d724ac5f0e4e7e67229a27ee7aa9b8d5
+SCHEMA_DIGEST_MATCH=PASS
+TARGET_POSTGRES=17.9
+TARGET_MIGRATIONS=001-010
+SOURCE_011=NOT_APPLIED
+TARGET_011=NOT_APPLIED
+TARGET_STRUCTURE=tables 50; columns 485; indexes 138; constraints 661; triggers 3; routines 2; sequences 0
+
+Constraint classification:
+Migration 005 creates orders_customer_workspace_required_check and orders_customer_scope_fk as NOT VALID. The source reports both convalidated=true. The target was empty, so both target constraints were validated with PostgreSQL ALTER TABLE ... VALIDATE CONSTRAINT. No migration SQL or application code was changed.
+
+Provider extension:
+Namespace=platform/provider-migrations/meoo/
+File=001_appointment_transaction_rpc.sql
+Object=public.atelier_create_appointment(uuid,uuid,uuid,text,text,text,text,uuid,uuid,uuid,timestamptz,text,text,text,text)
+Security=SECURITY INVOKER; search_path=pg_catalog, public; dynamic SQL=NO
+Provider digest=1f52aacbb3f3fa0f194f3bbbc1f2df46
+Provider inventory=one expected function; unexpected provider objects=0
+Provider migration was re-applied successfully after installation (repeatable).
+
+Appointment acceptance:
+Required path: AppointmentService -> Meoo appointment repository -> atelier_create_appointment RPC -> PostgreSQL.
+Result: PASS on a clean synthetic target fixture. First request created one appointment (idempotent=false); same idempotency key replay returned idempotent=true; two simultaneous same-advisor requests returned one success and one APPOINTMENT_CONFLICT; forged tenant scope returned APPOINTMENT_SCOPE_INVALID.
+The repository now normalizes APPOINTMENT_SCOPE_INVALID, CUSTOMER_SCOPE_CONFLICT, SLOT_UNAVAILABLE, and INVALID_INPUT to existing provider-neutral errors.
+
+Target data after stop: tenants 0; workspaces 0; stores 0; customers 0; customer_tags 0; appointments 0.
+The rehearsal schema checks were read-only on source. The existing real PostgreSQL integration test used its controlled synthetic create/cleanup lifecycle; final source identity, counts, and digest remained unchanged.
+Final target count recheck: tenants 0; workspaces 0; stores 0; customers 0; customer_tags 0; appointments 0; staff_schedules 0; appointment_business_hours 0; audit_events 0.
+Final target provider check: atelier_create_appointment present; schema_migrations version 011 count 0; core digest d724ac5f0e4e7e67229a27ee7aa9b8d5.
+Final source read-only recheck: database atelier_os_staging; PostgreSQL 16.15; structure 50/485/138/661/3/2/0; digest d724ac5f0e4e7e67229a27ee7aa9b8d5.
+
+Focused static/live tests: node --test admin/test/meoo-production-adapter.test.js admin/test/meoo-supabase-adapter.test.js admin/test/appointment-postgres-integration.test.js with controlled staging secret => 20 passed, 0 failed, 0 skipped.
+Full admin suite: npm test => 130 passed, 0 failed, 0 skipped.
+Customer Tag production path: PASS with synthetic target tag created, scoped read, and cleanup.
+Native PostgreSQL integration: PASS against controlled staging secret; test-created staging rows were cleaned by the existing lifecycle and final source identity/counts/digest matched the baseline.
+Forged scope protection: PASS.
+Synthetic rows remaining: 0.
+Collation: source Chinese (Simplified)_China.936; target C/en_US.utf8. Equality remains case-sensitive, explicit lower(name) uniqueness/lookup remains deterministic, and Chinese text equality is preserved. No blocker observed for current indexed business fields; broader production data migration remains out of scope.
+Secret scan: PASS; no credential values, passwords, hashes, session tokens, or connection URLs were written to changed source/artifacts.
+Migration result: 001-010 each PASS; 011 not applied.
+Commit: LOCAL_RC_CREATED
+Push: NOT_RUN
+Rollback rehearsal: bash ./verification/meoo-b1-schema-rehearsal/ROLLBACK.sh => exit 0; source and target state remained unchanged after cleanup.
