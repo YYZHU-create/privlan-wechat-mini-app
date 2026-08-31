@@ -3,6 +3,7 @@ const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("
 const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
 const { createAppointmentService } = require("./appointment-service");
 const { createCustomerService } = require("./customer-service");
+const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
 const { createWorkflowService } = require("./workflow-service");
 const { createWorkflowIntegrationService } = require("./workflow-integration-service");
 const { DEFAULT_WORKFLOW_MAPPINGS } = require("./workflow-integration-mappings");
@@ -28,10 +29,10 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, authRepository = null, configRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, authRepository = null, configRepository = null }) {
   if (!db) throw new Error("database is required");
-  const customerService = createCustomerService({ db, tagRepository });
-  const appointmentService = createAppointmentService({ db, customerService, appointmentRepository });
+  const customerService = createCustomerService({ db, tagRepository, customerRepository });
+  const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository });
   const licenseHash = code => {
     if (!licensePepper) throw new ServiceError(503, "LICENSE_PEPPER_MISSING", "兑换服务尚未配置");
     return crypto.createHmac("sha256", licensePepper).update(String(code || "").trim().toUpperCase()).digest("hex");

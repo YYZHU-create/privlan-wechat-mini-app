@@ -22,7 +22,7 @@ function int(value, min, max, fallback) { const number = Number(value); return N
 function rowScope(scope) { return [scope.tenantId, scope.workspaceId, scope.storeId]; }
 function publicStatus(status) { return ({ pending: "待确认", confirmed: "已确认", completed: "已完成", cancelled: "已取消", no_show: "未到店" })[status] || status; }
 
-function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, appointmentRepository = null, now = () => DateTime.utc() }) {
+function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPENID_HASH_KEY || "", customerService = null, appointmentRepository = null, appointmentReadRepository = null, now = () => DateTime.utc() }) {
   if (!db) throw new Error("database is required");
   const identityService = customerService || createCustomerService({ db, openIdHashKey });
 
@@ -254,6 +254,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function stats(scope) {
+    if (appointmentReadRepository?.stats) return appointmentReadRepository.stats(scope);
     const settings = await getSettings(scope); const zone = settings.timezone; const current = now().setZone(zone); const weekEnd = current.endOf("week").toUTC().toJSDate();
     const row = (await db.query(`select count(*) filter(where start_at>=$4 and start_at<$5)::int today,
       count(*) filter(where start_at>=$4 and start_at<$6)::int week,
@@ -262,6 +263,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function listAppointments(scope, filters = {}) {
+    if (appointmentReadRepository?.listAppointments) return appointmentReadRepository.listAppointments(scope, filters);
     const values = [...rowScope(scope)]; const where = ["a.tenant_id=$1", "a.workspace_id=$2", "a.store_id=$3"];
     for (const [field, column] of [["status","a.status"],["serviceId","a.service_id"],["advisorId","a.advisor_id"]]) if (filters[field]) { values.push(filters[field]); where.push(`${column}=$${values.length}`); }
     if (filters.q) { values.push(`%${String(filters.q).slice(0,80)}%`); where.push(`(a.customer_name_snapshot ilike $${values.length} or a.customer_phone_snapshot ilike $${values.length} or a.appointment_number ilike $${values.length})`); }
@@ -272,6 +274,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function getAppointment(scope, id) {
+    if (appointmentReadRepository?.getAppointment) return appointmentReadRepository.getAppointment(scope, id);
     const row = (await db.query("select a.*,st.name store_name from appointments a join stores st on st.id=a.store_id and st.tenant_id=a.tenant_id and st.workspace_id=a.workspace_id where a.id=$1 and a.tenant_id=$2 and a.workspace_id=$3 and a.store_id=$4", [id, ...rowScope(scope)])).rows[0];
     if (!row) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
     return { id: row.id, number: row.appointment_number, customerId: row.customer_id, customerName: row.customer_name_snapshot, customerPhone: maskPhone(row.customer_phone_snapshot), storeName: row.store_name, storeId: row.store_id, serviceName: row.service_name_snapshot, advisorName: row.advisor_name_snapshot, startAt: row.start_at, serviceEndAt: row.service_end_at, occupiedUntil: row.occupied_until, durationMinutes: Number(row.duration_minutes_snapshot), bufferMinutes: Number(row.buffer_minutes_snapshot), timezone: row.timezone_snapshot, notes: row.notes, source: row.source, status: row.status, statusLabel: publicStatus(row.status), createdAt: row.created_at };
@@ -285,6 +288,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
   }
 
   async function timeline(scope, id) {
+    if (appointmentReadRepository?.timeline) return appointmentReadRepository.timeline(scope, id);
     const appointment = (await db.query("select id,customer_id from appointments where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id, ...rowScope(scope)])).rows[0];
     if (!appointment) throw new AppointmentError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
     const [events, auditEvents] = await Promise.all([

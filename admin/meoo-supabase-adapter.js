@@ -168,7 +168,14 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return Array.isArray(rows) ? rows[0] || null : null;
   }
 
-  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, readConfig, writeConfig, getSubscription, getAiPolicy, callRpc };
+  async function readResource(tableName, query = "") {
+    const allowed = new Set(["customers", "customer_memberships", "customer_tag_links", "customer_tags", "customer_notes", "customer_events", "customer_points_accounts", "customer_points_ledger", "membership_levels", "membership_programs", "appointments", "orders", "appointment_services", "appointment_advisors", "audit_events"]);
+    if (!allowed.has(String(tableName || ""))) throw new SupabaseAdapterError("RESOURCE_INVALID", "database resource is invalid", 400);
+    if (query && !/^[A-Za-z0-9_.=(),%:+&-]+$/.test(String(query))) throw new SupabaseAdapterError("QUERY_INVALID", "database query is invalid", 400);
+    return request(`${query ? `?${query}` : ""}`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);
+  }
+
+  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, readConfig, writeConfig, getSubscription, getAiPolicy, readResource, callRpc };
 }
 
 function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl = globalThis.fetch, timeoutMs = 8000 } = {}) {

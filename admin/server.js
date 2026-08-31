@@ -13,6 +13,7 @@ const { createDatabaseFromEnv } = require("./database");
 const { createSaasService } = require("./saas-service");
 const { createSupabaseAdapter, createMeooAuthRepository } = require("./meoo-supabase-adapter");
 const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
+const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
@@ -60,6 +61,8 @@ const saasServicePromise = databasePromise.then(database => database ? createSaa
   db: database,
   tagRepository: meooAdapter,
   appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null,
+  customerRepository: meooAdapter ? createMeooCustomerRepository({ adapter: meooAdapter }) : null,
+  appointmentReadRepository: meooAdapter ? createMeooAppointmentReadRepository({ adapter: meooAdapter }) : null,
   authRepository: database?.authRepository || meooAuthRepository,
   configRepository: meooAdapter
 }) : null);
