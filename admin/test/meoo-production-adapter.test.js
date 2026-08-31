@@ -18,10 +18,9 @@ test("native remains the default and invalid backends fail closed", () => {
 });
 
 test("Meoo backend validates server-only configuration", () => {
-  assert.throws(() => validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo" }), /DATABASE_URL/);
-  assert.throws(() => validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo", DATABASE_URL: "postgresql://native/app" }), /SUPABASE_URL/);
-  assert.throws(() => validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo", DATABASE_URL: "postgresql://native/app", SUPABASE_URL: "https://probe.example" }), /SERVICE_ROLE_KEY/);
-  assert.equal(validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo", DATABASE_URL: "postgresql://native/app", SUPABASE_URL: "https://probe.example", SUPABASE_SERVICE_ROLE_KEY: "server-only" }), "meoo");
+  assert.throws(() => validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo" }), /SUPABASE_URL/);
+  assert.throws(() => validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo", SUPABASE_URL: "https://probe.example" }), /SERVICE_ROLE_KEY/);
+  assert.equal(validateDatabaseBackend({ ATELIER_DB_BACKEND: "meoo", SUPABASE_URL: "https://probe.example", SUPABASE_SERVICE_ROLE_KEY: "server-only" }), "meoo");
 });
 
 test("native adapter delegates lifecycle without changing transaction behavior", async () => {

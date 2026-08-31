@@ -8,7 +8,8 @@ function validBase64Key(value) {
 function validateProductionEnvironment(env = process.env) {
   if (env.NODE_ENV !== "production") return { ok: true, mode: env.NODE_ENV || "development" };
   const missing = [];
-  if (!/^postgres(?:ql)?:\/\//i.test(String(env.DATABASE_URL || ""))) missing.push("DATABASE_URL");
+  const backend = String(env.ATELIER_DB_BACKEND || "native").trim().toLowerCase();
+  if (backend !== "meoo" && !/^postgres(?:ql)?:\/\//i.test(String(env.DATABASE_URL || ""))) missing.push("DATABASE_URL");
   if (String(env.ATELIER_LICENSE_PEPPER || "").length < 32) missing.push("ATELIER_LICENSE_PEPPER");
   if (!validBase64Key(env.ATELIER_MASTER_KEY)) missing.push("ATELIER_MASTER_KEY");
   if (!String(env.ATELIER_OPS_EMAIL || "").includes("@")) missing.push("ATELIER_OPS_EMAIL");
@@ -24,7 +25,6 @@ function validateDatabaseBackend(env = process.env) {
   try { backend = resolveDatabaseBackend(env); }
   catch (error) { throw new Error(error.message); }
   if (backend === "meoo") {
-    if (!/^postgres(?:ql)?:\/\//i.test(String(env.DATABASE_URL || ""))) throw new Error("DATABASE_URL is required for ATELIER Auth and Session");
     if (!/^https:\/\//i.test(String(env.SUPABASE_URL || ""))) throw new Error("SUPABASE_URL is required for Meoo backend");
     if (!String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim()) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for Meoo backend");
   }

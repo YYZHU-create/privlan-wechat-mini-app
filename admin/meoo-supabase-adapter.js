@@ -132,4 +132,66 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
   return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, callRpc };
 }
 
-module.exports = { createSupabaseAdapter, SupabaseAdapterError };
+function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl = globalThis.fetch, timeoutMs = 8000 } = {}) {
+  if (!url || !/^https:\/\//i.test(String(url)) || !serviceRoleKey || typeof fetchImpl !== "function") throw new Error("Meoo server configuration is required");
+  const base = String(url).replace(/\/$/, "");
+  const revokedSessionIds = new Set();
+  const headers = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" };
+  async function request(table, query = "", options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(`${base}/rest/v1/${table}${query}`, { ...options, signal: controller.signal, headers: { ...headers, "Cache-Control": "no-store", ...(options.headers || {}) } });
+      const text = await response.text();
+      let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+      if (!response.ok) throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", response.status >= 500 ? 503 : response.status);
+      return body;
+    } finally { clearTimeout(timer); }
+  }
+  async function findUserByLogin(login) {
+    const rows = await request("users", `?select=id,login_identifier,password_hash,display_name,avatar_url,status&login_identifier=eq.${encodeURIComponent(login)}&limit=1`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+  async function findMembership(userId) {
+    const rows = await request("memberships", `?select=tenant_id,workspace_id,user_id,role&user_id=eq.${encodeURIComponent(userId)}&order=created_at.asc&limit=1`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+  async function getProfile(userId, workspaceId) {
+    const [users, memberships] = await Promise.all([
+      request("users", `?select=id,login_identifier,display_name,avatar_url,status&id=eq.${encodeURIComponent(userId)}&status=eq.active&limit=1`),
+      request("memberships", `?select=user_id,workspace_id,role&user_id=eq.${encodeURIComponent(userId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&limit=1`)
+    ]);
+    const user = users?.[0]; const membership = memberships?.[0];
+    return user && membership ? { ...user, role: membership.role } : null;
+  }
+  async function loadSession(tokenHash) {
+    const sessions = await request("merchant_sessions", `?select=id,user_id,workspace_id,csrf_token_hash,expires_at,revoked_at&token_hash=eq.${encodeURIComponent(tokenHash)}&revoked_at=is.null&limit=1`);
+    const session = Array.isArray(sessions) ? sessions[0] : null;
+    if (!session || revokedSessionIds.has(session.id) || session.revoked_at || (session.expires_at && new Date(session.expires_at) <= new Date())) return null;
+    const [users, memberships, workspaces, stores, subscriptions] = await Promise.all([
+      request("users", `?select=id,login_identifier,display_name,avatar_url,status&id=eq.${encodeURIComponent(session.user_id)}&status=eq.active&limit=1`),
+      request("memberships", `?select=tenant_id,workspace_id,user_id,role&user_id=eq.${encodeURIComponent(session.user_id)}&workspace_id=eq.${encodeURIComponent(session.workspace_id)}&limit=1`),
+      request("workspaces", `?select=id,tenant_id,name,plan_id&id=eq.${encodeURIComponent(session.workspace_id)}&limit=1`),
+      request("stores", `?select=id,workspace_id,tenant_id,name,public_store_id&workspace_id=eq.${encodeURIComponent(session.workspace_id)}&limit=1`),
+      request("subscriptions", `?select=id,workspace_id,plan_id,status,started_at,expires_at&workspace_id=eq.${encodeURIComponent(session.workspace_id)}&limit=1`)
+    ]);
+    const user = users?.[0]; const membership = memberships?.[0]; const workspace = workspaces?.[0]; const store = stores?.[0]; const subscription = subscriptions?.[0];
+    if (!user || !membership || !workspace || !store || membership.tenant_id !== workspace.tenant_id || store.tenant_id !== workspace.tenant_id) return null;
+    return { session_id: session.id, user_id: user.id, workspace_id: workspace.id, csrf_token_hash: session.csrf_token_hash, expires_at: session.expires_at, login_identifier: user.login_identifier, display_name: user.display_name, avatar_url: user.avatar_url, user_status: user.status, tenant_id: workspace.tenant_id, workspace_name: workspace.name, plan_id: workspace.plan_id, store_id: store.id, store_name: store.name, public_store_id: store.public_store_id, role: membership.role, subscription_id: subscription?.id || null, subscription_status: subscription?.status || null, subscription_plan_id: subscription?.plan_id || null, started_at: subscription?.started_at || null, subscription_expires_at: subscription?.expires_at || null };
+  }
+  async function createSession(input) {
+    const rows = await request("merchant_sessions", "", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(input) });
+    return Array.isArray(rows) ? rows[0] : rows;
+  }
+  async function revokeSession(sessionId) {
+    const rows = await request("merchant_sessions", `?id=eq.${encodeURIComponent(sessionId)}&revoked_at=is.null&select=id,revoked_at`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ revoked_at: new Date().toISOString() }) });
+    if (!Array.isArray(rows) || !rows[0]) throw new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
+    revokedSessionIds.add(String(sessionId));
+  }
+  async function recordAudit(input) {
+    await request("audit_events", "", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(input) });
+  }
+  return { findUserByLogin, findMembership, getProfile, loadSession, createSession, revokeSession, recordAudit };
+}
+
+module.exports = { createSupabaseAdapter, createMeooAuthRepository, SupabaseAdapterError };

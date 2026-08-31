@@ -28,7 +28,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, authRepository = null }) {
   if (!db) throw new Error("database is required");
   const customerService = createCustomerService({ db, tagRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository });
@@ -46,8 +46,13 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const token = crypto.randomBytes(32).toString("base64url");
     const csrfToken = crypto.randomBytes(24).toString("base64url");
     const expiresAt = addHours(new Date(), 24 * 7);
+    const sessionInput = { id: id(), user_id: userId, workspace_id: workspaceId, token_hash: sha256(token), csrf_token_hash: sha256(csrfToken), ip_address: ipAddress || null, user_agent: userAgent || null, expires_at: expiresAt.toISOString() };
+    if (authRepository) {
+      await authRepository.createSession(sessionInput);
+      return { token, csrfToken, expiresAt };
+    }
     await tx.query(`insert into merchant_sessions(id,user_id,workspace_id,token_hash,csrf_token_hash,ip_address,user_agent,expires_at)
-      values($1,$2,$3,$4,$5,$6,$7,$8)`, [id(), userId, workspaceId, sha256(token), sha256(csrfToken), ipAddress || null, userAgent || null, expiresAt]);
+      values($1,$2,$3,$4,$5,$6,$7,$8)`, [sessionInput.id, userId, workspaceId, sessionInput.token_hash, sessionInput.csrf_token_hash, ipAddress || null, userAgent || null, expiresAt]);
     return { token, csrfToken, expiresAt };
   }
 
@@ -81,14 +86,19 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function login(input, context = {}) {
     const login = normalizeLogin(input.login);
-    const result = await db.query("select id,login_identifier,password_hash,display_name,status from users where login_identifier=$1", [login]);
-    const user = result.rows[0];
+    const user = authRepository ? await authRepository.findUserByLogin(login) : (await db.query("select id,login_identifier,password_hash,display_name,status from users where login_identifier=$1", [login])).rows[0];
     if (!user || user.status !== "active" || !verifyPassword(String(input.password || ""), user.password_hash)) {
-      await db.transaction(tx => audit(tx, { actorType: "merchant", actorId: login || "unknown", requestId: context.requestId }, "merchant.login_failed", "merchant_session", null, { ip: context.ipAddress || null }));
+      if (authRepository) await authRepository.recordAudit({ id: id(), actor_type: "merchant", actor_id: login || "unknown", action: "merchant.login_failed", resource_type: "merchant_session", request_id: context.requestId || id(), metadata: { ip: context.ipAddress || null } });
+      else await db.transaction(tx => audit(tx, { actorType: "merchant", actorId: login || "unknown", requestId: context.requestId }, "merchant.login_failed", "merchant_session", null, { ip: context.ipAddress || null }));
       throw new ServiceError(401, "INVALID_CREDENTIALS", "账号或密码不正确");
     }
-    const membership = (await db.query("select workspace_id from memberships where user_id=$1 order by created_at limit 1", [user.id])).rows[0];
+    const membership = authRepository ? await authRepository.findMembership(user.id) : (await db.query("select workspace_id from memberships where user_id=$1 order by created_at limit 1", [user.id])).rows[0];
     if (!membership) throw new ServiceError(403, "WORKSPACE_ACCESS_DENIED", "账号没有可访问的工作区");
+    if (authRepository) {
+      const session = await issueSession(null, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent });
+      await authRepository.recordAudit({ id: id(), tenant_id: membership.tenant_id || null, workspace_id: membership.workspace_id, actor_type: "merchant", actor_id: user.id, action: "merchant.login", resource_type: "merchant_session", request_id: context.requestId || id(), metadata: {} });
+      return { session, user: publicUser(user) };
+    }
     return db.transaction(async tx => {
       const session = await issueSession(tx, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent });
       await audit(tx, { actorType: "merchant", actorId: user.id, workspaceId: membership.workspace_id, requestId: context.requestId }, "merchant.login", "merchant_session", null);
@@ -98,6 +108,12 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function resolveSession(token) {
     if (!token) return null;
+    if (authRepository) {
+      const row = await authRepository.loadSession(sha256(token));
+      if (!row) return null;
+      const expired = row.expires_at && new Date(row.expires_at) <= new Date();
+      return { sessionId: row.session_id, userId: row.user_id, tenantId: row.tenant_id, workspaceId: row.workspace_id, storeId: row.store_id, role: row.role, csrfTokenHash: row.csrf_token_hash, user: publicUser(row), workspace: { id: row.workspace_id, tenantId: row.tenant_id, storeId: row.store_id, publicStoreId: row.public_store_id, name: row.workspace_name, storeName: row.store_name }, subscription: { id: row.subscription_id, planId: row.subscription_plan_id || row.plan_id, status: expired ? "expired" : row.subscription_status, startedAt: row.started_at, expiresAt: row.subscription_expires_at } };
+    }
     const result = await db.query(`select s.id session_id,s.user_id,s.workspace_id,s.csrf_token_hash,s.expires_at,
       u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
       st.id store_id,st.name store_name,st.public_store_id,m.role,sub.id subscription_id,sub.status subscription_status,
@@ -118,6 +134,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function logout(sessionId, context = {}) {
     if (!sessionId) return;
+    if (authRepository) {
+      await authRepository.revokeSession(sessionId);
+      await authRepository.recordAudit({ id: id(), tenant_id: context.tenantId || null, workspace_id: context.workspaceId || null, actor_type: "merchant", actor_id: context.actorId || "merchant", action: "merchant.logout", resource_type: "merchant_session", resource_id: sessionId, request_id: context.requestId || id(), metadata: {} });
+      return;
+    }
     await db.transaction(async tx => {
       await tx.query("update merchant_sessions set revoked_at=now() where id=$1", [sessionId]);
       await audit(tx, { ...context, actorType: "merchant" }, "merchant.logout", "merchant_session", sessionId);
@@ -143,6 +164,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function getProfile(scope) {
+    if (authRepository) {
+      const row = await authRepository.getProfile(scope.userId, scope.workspaceId);
+      if (!row) throw new ServiceError(404, "PROFILE_NOT_FOUND", "账户资料不存在");
+      return publicUser(row);
+    }
     const row = (await db.query(`select u.id,u.login_identifier,u.display_name,u.avatar_url,u.status,m.role
       from users u join memberships m on m.user_id=u.id and m.workspace_id=$2
       where u.id=$1 and u.status='active' limit 1`, [scope.userId, scope.workspaceId])).rows[0];

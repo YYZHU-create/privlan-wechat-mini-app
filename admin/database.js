@@ -91,6 +91,11 @@ async function createPortableTestDatabase(options = {}) {
 
 async function createDatabaseFromEnv() {
   if (process.env.DATABASE_URL) return createPostgresDatabase(process.env.DATABASE_URL, { migrate: process.env.ATELIER_AUTO_MIGRATE === "1" });
+  if (String(process.env.ATELIER_DB_BACKEND || "native").toLowerCase() === "meoo") {
+    const { createMeooAuthRepository } = require("./meoo-supabase-adapter");
+    const authRepository = createMeooAuthRepository();
+    return { kind: "meoo", authRepository, async query() { throw new Error("MEOO_QUERY_UNSUPPORTED_OUTSIDE_REPOSITORY"); }, async exec() { throw new Error("MEOO_EXEC_UNSUPPORTED_OUTSIDE_REPOSITORY"); }, async transaction() { throw new Error("MEOO_TRANSACTION_UNSUPPORTED_OUTSIDE_REPOSITORY"); }, async close() {}, async health() { await authRepository.findUserByLogin("__atelier_health_probe__"); return true; } };
+  }
   if (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable") return createPortableTestDatabase();
   return null;
 }

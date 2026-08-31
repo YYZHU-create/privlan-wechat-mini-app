@@ -11,7 +11,7 @@ const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 const { createDatabaseFromEnv } = require("./database");
 const { createSaasService } = require("./saas-service");
-const { createSupabaseAdapter } = require("./meoo-supabase-adapter");
+const { createSupabaseAdapter, createMeooAuthRepository } = require("./meoo-supabase-adapter");
 const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
@@ -37,7 +37,7 @@ const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
-const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
+const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || DATABASE_BACKEND === "meoo" || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
 const LEGACY_LOCAL_MODE = !SAAS_DATABASE_ENABLED;
 const TRASH_DIR = path.resolve(process.env.PRIVLAN_MEDIA_TRASH_DIR || path.join(__dirname, "media-trash"));
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
@@ -55,10 +55,12 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3456;
 const databasePromise = createDatabaseFromEnv();
 const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
+const meooAuthRepository = DATABASE_BACKEND === "meoo" ? createMeooAuthRepository() : null;
 const saasServicePromise = databasePromise.then(database => database ? createSaasService({
   db: database,
   tagRepository: meooAdapter,
-  appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null
+  appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null,
+  authRepository: database?.authRepository || meooAuthRepository
 }) : null);
 const getSaasService = () => saasServicePromise;
 

@@ -1,0 +1,5 @@
+Base: 1e9bcfbdb20d4e15a0b256817a994575f7b63069
+Branch: codex/meoo-b1-auth-runtime
+Scope: Meoo Auth and merchant session provider adapter only.
+Runtime: native keeps existing PostgreSQL path; meoo boots without DATABASE_URL and uses server-side Meoo REST for Auth/Session.
+Result: synthetic live login/profile/logout passed; native regression passed; non-auth SQL domains remain explicitly partial.

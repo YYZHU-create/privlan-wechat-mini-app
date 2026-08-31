@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { hashPassword } = require("../platform-store");
 
 function uuid() { return crypto.randomUUID(); }
 
@@ -6,18 +7,19 @@ function createLiveClient({ url = process.env.SUPABASE_URL, key = process.env.SU
   if (!url || !key) throw new Error("live Meoo configuration is required");
   const base = String(url).replace(/\/$/, "");
   async function request(path, options = {}) {
-    const response = await fetch(base + path, {
-      ...options,
-      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(options.headers || {}) }
-    });
-    const text = await response.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-    if (!response.ok) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await fetch(base + path, {
+        ...options,
+        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(options.headers || {}) }
+      });
+      const text = await response.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+      if (response.ok) return body;
+      if ([429, 502, 503].includes(response.status) && attempt < 3) { await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1))); continue; }
       const code = body && typeof body === "object" ? (body.code || body.message || body.hint || "provider-error") : "provider-error";
       throw new Error(`live Meoo request failed: HTTP ${response.status} ${String(code).slice(0, 120)}`);
     }
-    return body;
   }
   async function insert(table, row) {
     const rows = await request(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
@@ -63,8 +65,23 @@ async function createCustomerFixture(client = createLiveClient()) {
   return { ...appointment, customerId };
 }
 
+async function createAuthFixture(client = createLiveClient()) {
+  const appointment = await createAppointmentFixture(client);
+  const userId = uuid();
+  const login = `b1-auth-${userId.slice(0, 12)}@example.test`;
+  const password = `B1-auth-${userId.slice(0, 12)}!`;
+  try {
+    await client.insert("users", { id: userId, login_identifier: login, password_hash: hashPassword(password), display_name: "B1 synthetic auth", status: "active" });
+    await client.insert("memberships", { tenant_id: appointment.tenantId, workspace_id: appointment.workspaceId, user_id: userId, role: "owner" });
+    return { ...appointment, userId, login, password };
+  } catch (error) {
+    await cleanupFixture({ ...appointment, userId });
+    throw error;
+  }
+}
+
 async function cleanupFixture(fixture) {
-  const { client, tenantId, workspaceId, storeId, customerId } = fixture;
+  const { client, tenantId, workspaceId, storeId, customerId, userId } = fixture;
   const removals = [
     ["customer_tag_links", customerId ? { customer_id: customerId } : { tenant_id: tenantId }],
     ["customer_tags", { tenant_id: tenantId }],
@@ -86,7 +103,10 @@ async function cleanupFixture(fixture) {
     ["audit_events", { tenant_id: tenantId }],
     ["subscriptions", { tenant_id: tenantId }],
     ["stores", { tenant_id: tenantId }],
+    ["merchant_sessions", userId ? { user_id: userId } : { workspace_id: workspaceId }],
+    ["memberships", userId ? { user_id: userId } : { workspace_id: workspaceId }],
     ["workspaces", { id: workspaceId }],
+    ["users", userId ? { id: userId } : { login_identifier: "__no_match__" }],
     ["tenants", { id: tenantId }]
   ];
   for (const [table, filters] of removals) await client.remove(table, filters);
@@ -98,4 +118,4 @@ function scopedDatabase(fixture, override = {}) {
   return { query: async sql => ({ rows: /from stores st join appointment_settings/i.test(sql) ? [row] : [] }), ...override };
 }
 
-module.exports = { createLiveClient, createAppointmentFixture, createCustomerFixture, cleanupFixture, scopedDatabase };
+module.exports = { createLiveClient, createAppointmentFixture, createCustomerFixture, createAuthFixture, cleanupFixture, scopedDatabase };
