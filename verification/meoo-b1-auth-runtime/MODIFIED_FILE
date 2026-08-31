@@ -9,3 +9,5 @@ admin/test/meoo-live-fixtures.js
 admin/test/meoo-production-adapter.test.js
 
 Meoo Auth/Session repository now supports normal ATELIER login, session resolution, profile authorization, CSRF logout, and explicit synthetic cleanup while native remains the default provider.
+
+Follow-up runtime closure adds scoped workspace configuration, subscription, and AI-policy reads plus configuration versioned writes through the existing Meoo adapter. Native SQL remains the default path.

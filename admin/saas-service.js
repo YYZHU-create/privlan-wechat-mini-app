@@ -28,7 +28,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, authRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, authRepository = null, configRepository = null }) {
   if (!db) throw new Error("database is required");
   const customerService = createCustomerService({ db, tagRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository });
@@ -205,6 +205,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   function verifyCsrf(scope, token) { return Boolean(token && scope?.csrfTokenHash && crypto.timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(scope.csrfTokenHash))); }
 
   async function readConfig(scope) {
+    if (configRepository) return configRepository.readConfig(scope);
     const row = (await db.query("select document,version,updated_at from workspace_configs where workspace_id=$1 and tenant_id=$2", [scope.workspaceId, scope.tenantId])).rows[0];
     if (!row) throw new ServiceError(404, "CONFIG_NOT_FOUND", "工作区配置不存在");
     return { document: row.document, version: row.version, updatedAt: row.updated_at };
@@ -212,6 +213,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function writeConfig(scope, document) {
     assertWritable(scope);
+    if (configRepository) return configRepository.writeConfig(scope, document);
     const row = (await db.query("update workspace_configs set document=$1::jsonb,version=version+1,updated_at=now() where workspace_id=$2 and tenant_id=$3 returning version,updated_at", [json(document), scope.workspaceId, scope.tenantId])).rows[0];
     if (!row) throw new ServiceError(404, "CONFIG_NOT_FOUND", "工作区配置不存在");
     return { document, version: row.version, updatedAt: row.updated_at };
@@ -236,6 +238,12 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function getSubscription(scope) {
+    if (configRepository) {
+      const row = await configRepository.getSubscription(scope);
+      if (!row) throw new ServiceError(404, "SUBSCRIPTION_NOT_FOUND", "订阅不存在");
+      const expired = row.expires_at && new Date(row.expires_at) <= new Date();
+      return { id: row.id, planId: row.plan_id === "PRO_LEGACY" ? "PRO" : row.plan_id, status: expired ? "expired" : row.status, startedAt: row.started_at, expiresAt: row.expires_at, source: row.source, remainingDays: row.expires_at ? Math.max(0, Math.ceil((new Date(row.expires_at) - Date.now()) / 86400000)) : null };
+    }
     const row = (await db.query("select id,plan_id,status,started_at,expires_at,source,metadata from subscriptions where workspace_id=$1 and tenant_id=$2", [scope.workspaceId, scope.tenantId])).rows[0];
     if (!row) throw new ServiceError(404, "SUBSCRIPTION_NOT_FOUND", "订阅不存在");
     const expired = row.expires_at && new Date(row.expires_at) <= new Date();
@@ -280,6 +288,10 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   async function deleteAiConnection(scope, connectionId) { assertWritable(scope); await scopedAiConnection(scope, connectionId); await db.transaction(async tx => { await tx.query("update merchant_ai_policies set mode='rules',connection_id=null,updated_at=now() where workspace_id=$1 and connection_id=$2", [scope.workspaceId, connectionId]); await tx.query("delete from merchant_ai_connections where id=$1 and workspace_id=$2", [connectionId, scope.workspaceId]); }); return { id: connectionId }; }
 
   async function getAiPolicy(scope) {
+    if (configRepository) {
+      const row = await configRepository.getAiPolicy(scope);
+      return row ? { tenantId: scope.tenantId, workspaceId: scope.workspaceId, storeId: scope.storeId, mode: row.mode, connectionId: row.connection_id, fallbackToRules: row.fallback_to_rules } : { tenantId: scope.tenantId, workspaceId: scope.workspaceId, storeId: scope.storeId, mode: "rules", connectionId: null, fallbackToRules: true };
+    }
     const row = (await db.query("select * from merchant_ai_policies where tenant_id=$1 and workspace_id=$2 and store_id=$3", [scope.tenantId, scope.workspaceId, scope.storeId])).rows[0];
     return row ? { tenantId: scope.tenantId, workspaceId: scope.workspaceId, storeId: scope.storeId, mode: row.mode, connectionId: row.connection_id, fallbackToRules: row.fallback_to_rules } : { tenantId: scope.tenantId, workspaceId: scope.workspaceId, storeId: scope.storeId, mode: "rules", connectionId: null, fallbackToRules: true };
   }

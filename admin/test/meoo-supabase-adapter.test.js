@@ -75,6 +75,41 @@ test("rejects missing scope before making a request", async () => {
   assert.equal(called, false);
 });
 
+test("reads and writes workspace config through the trusted scope", async () => {
+  const calls = [];
+  const adapter = createSupabaseAdapter({ url: "https://probe.example", serviceRoleKey: "test-key", fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    if (options?.method === "PATCH") return response(200, [{ document: { theme: "updated" }, version: 2, updated_at: "2026-08-31T00:00:00.000Z" }]);
+    return response(200, [{ document: { theme: "initial" }, version: 1, updated_at: "2026-08-30T00:00:00.000Z" }]);
+  } });
+  assert.deepEqual(await adapter.readConfig(SCOPE_A), { document: { theme: "initial" }, version: 1, updatedAt: "2026-08-30T00:00:00.000Z" });
+  assert.deepEqual(await adapter.writeConfig(SCOPE_A, { theme: "updated" }), { document: { theme: "updated" }, version: 2, updatedAt: "2026-08-31T00:00:00.000Z" });
+  assert.match(calls[0].url, /workspace_configs\?select=.*workspace_id=eq\.workspace-a/);
+  assert.match(calls[0].url, /tenant_id=eq\.tenant-a/);
+  assert.match(calls[0].url, /store_id=eq\.store-a/);
+  assert.equal(calls[2].options.method, "PATCH");
+  assert.match(calls[2].url, /version=eq\.1/);
+  const patchBody = JSON.parse(calls[2].options.body);
+  assert.deepEqual({ document: patchBody.document, version: patchBody.version }, { document: { theme: "updated" }, version: 2 });
+  assert.doesNotThrow(() => new Date(patchBody.updated_at).toISOString());
+});
+
+test("reports a config conflict when the optimistic version update affects no row", async () => {
+  const adapter = createSupabaseAdapter({ url: "https://probe.example", serviceRoleKey: "test-key", fetchImpl: async (url, options) => options?.method === "PATCH"
+    ? response(200, [])
+    : response(200, [{ document: {}, version: 4, updated_at: "2026-08-30T00:00:00.000Z" }]) });
+  await assert.rejects(() => adapter.writeConfig(SCOPE_A, { changed: true }), error => error.code === "CONFIG_CONFLICT" && error.status === 409);
+});
+
+test("reads subscription and AI policy through scoped Meoo resources", async () => {
+  const adapter = createSupabaseAdapter({ url: "https://probe.example", serviceRoleKey: "test-key", fetchImpl: async (url) => {
+    if (url.includes("/subscriptions?")) return response(200, [{ id: "sub-a", plan_id: "TRIAL", status: "active" }]);
+    return response(200, [{ tenant_id: SCOPE_A.tenantId, workspace_id: SCOPE_A.workspaceId, store_id: SCOPE_A.storeId, mode: "rules", connection_id: null, fallback_to_rules: true }]);
+  } });
+  assert.equal((await adapter.getSubscription(SCOPE_A)).id, "sub-a");
+  assert.equal((await adapter.getAiPolicy(SCOPE_A)).mode, "rules");
+});
+
 test("portable PostgreSQL customer tag service matches adapter contract", async () => {
   process.env.NODE_ENV = "test";
   const db = await createPortableTestDatabase();

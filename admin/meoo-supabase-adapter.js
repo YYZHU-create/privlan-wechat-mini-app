@@ -129,7 +129,46 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return { id: rows[0].id, revoked: true };
   }
 
-  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, callRpc };
+  async function readConfig(scope) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    const rows = await request(`?select=workspace_id,tenant_id,store_id,document,version,updated_at&workspace_id=eq.${encodeURIComponent(workspaceId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&store_id=eq.${encodeURIComponent(storeId)}&limit=1`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/workspace_configs`);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) throw new SupabaseAdapterError("CONFIG_NOT_FOUND", "工作区配置不存在", 404);
+    return { document: row.document, version: Number(row.version), updatedAt: row.updated_at };
+  }
+
+  async function writeConfig(scope, document) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    const current = await readConfig(scope);
+    let rows;
+    try {
+      rows = await request(`?workspace_id=eq.${encodeURIComponent(workspaceId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&store_id=eq.${encodeURIComponent(storeId)}&version=eq.${encodeURIComponent(String(current.version))}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ document, version: current.version + 1, updated_at: new Date().toISOString() })
+      }, `${String(url).replace(/\/$/, "")}/rest/v1/workspace_configs`);
+    } catch (error) {
+      if (error?.status === 409) throw new SupabaseAdapterError("CONFIG_CONFLICT", "配置已被其他操作更新，请刷新后重试", 409);
+      throw error;
+    }
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) throw new SupabaseAdapterError("CONFIG_CONFLICT", "配置已被其他操作更新，请刷新后重试", 409);
+    return { document: row.document, version: Number(row.version), updatedAt: row.updated_at };
+  }
+
+  async function getSubscription(scope) {
+    const [tenantId, workspaceId] = scopeValues(scope);
+    const rows = await request(`?select=id,tenant_id,workspace_id,plan_id,status,started_at,expires_at,source&workspace_id=eq.${encodeURIComponent(workspaceId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&limit=1`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/subscriptions`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+
+  async function getAiPolicy(scope) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    const rows = await request(`?select=tenant_id,workspace_id,store_id,mode,connection_id,fallback_to_rules&tenant_id=eq.${encodeURIComponent(tenantId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&store_id=eq.${encodeURIComponent(storeId)}&limit=1`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/merchant_ai_policies`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+
+  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, readConfig, writeConfig, getSubscription, getAiPolicy, callRpc };
 }
 
 function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl = globalThis.fetch, timeoutMs = 8000 } = {}) {

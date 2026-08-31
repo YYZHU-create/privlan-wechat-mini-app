@@ -91,3 +91,13 @@ FOCUSED=node --test admin/test/meoo-auth-runtime.test.js admin/test/meoo-product
 LIVE_AUTH=protected Meoo env + MEOO_B1_LIVE=1 + node --test admin/test/meoo-auth-live.test.js; RESULT=1 passed, 0 failed, 0 skipped; EXIT=0
 FULL=protected staging env + npm test; RESULT=144 passed, 0 failed, 0 skipped; EXIT=0
 ROLLBACK=C:\\Program Files\\Git\\bin\\sh.exe verification\\meoo-b1-auth-runtime\\ROLLBACK.sh; RESULT=restored behavior; EXIT=0
+
+MERCHANT RUNTIME CLOSURE FOLLOW-UP
+BASELINE_FOCUSED=21 passed, 0 failed, 0 skipped
+MODIFIED_FOCUSED=16 passed, 0 failed, 0 skipped
+MODIFIED_FULL=146 passed, 0 failed, 1 skipped
+MODIFIED_NODE_CHECK=PASS
+MODIFIED_DIFF_CHECK=PASS
+MEOO_SYNTHETIC_RUNTIME=login 200, config read 200, bootstrap 200, config write 200, version 1 to 2
+ROLLBACK_REHEARSAL=PASS on temporary worktree; original worktree remained changed
+CHANGED_PATHS=admin/meoo-supabase-adapter.js, admin/saas-service.js, admin/server.js, admin/test/meoo-supabase-adapter.test.js

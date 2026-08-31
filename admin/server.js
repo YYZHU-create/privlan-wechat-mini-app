@@ -60,7 +60,8 @@ const saasServicePromise = databasePromise.then(database => database ? createSaa
   db: database,
   tagRepository: meooAdapter,
   appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null,
-  authRepository: database?.authRepository || meooAuthRepository
+  authRepository: database?.authRepository || meooAuthRepository,
+  configRepository: meooAdapter
 }) : null);
 const getSaasService = () => saasServicePromise;
 
