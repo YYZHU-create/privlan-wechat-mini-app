@@ -9,6 +9,7 @@ const { createAppointmentService } = require("../appointment-service");
 const { createMeooAppointmentRepository } = require("../meoo-appointment-repository");
 const { createSupabaseAdapter } = require("../meoo-supabase-adapter");
 const { createCustomerService } = require("../customer-service");
+const { createAppointmentFixture, createCustomerFixture, cleanupFixture, scopedDatabase } = require("./meoo-live-fixtures");
 
 test("native remains the default and invalid backends fail closed", () => {
   assert.equal(resolveDatabaseBackend({}), "native");
@@ -105,39 +106,37 @@ test("service-role credentials are not referenced by frontend assets", () => {
   for (const file of files) assert.doesNotMatch(fs.readFileSync(file, "utf8"), /SUPABASE_SERVICE_ROLE_KEY|MEOO_PROJECT_API_KEY/);
 });
 
-if (process.env.MEOO_B1_LIVE) test("real AppointmentService reaches Meoo RPC concurrently", async () => {
+if (process.env.MEOO_B1_LIVE) test("real AppointmentService reaches current Meoo RPC through a valid synthetic graph", async () => {
   const adapter = createSupabaseAdapter();
-  const url = process.env.SUPABASE_URL.replace(/\/$/, "");
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const scope = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID(), publicStoreId: "b1-public" };
-  const slot = `service-${crypto.randomUUID()}`;
-  const db = { query: async () => ({ rows: [{ store_id: scope.storeId, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_name: "B1", public_store_id: scope.publicStoreId, subscription_status: "active", expires_at: null, timezone: "Asia/Shanghai", slot_interval_minutes: 15, default_buffer_minutes: 0, max_advance_days: 30, booking_enabled: true }] }) };
-  const service = createAppointmentService({ db, appointmentRepository: createMeooAppointmentRepository({ adapter }), customerService: { findOrCreateCustomer() {}, appendEvent() {} } });
-  const makeInput = phone => ({ publicStoreId: scope.publicStoreId, customerName: "客户", customerPhone: phone, openid: `openid-${phone}`, idempotencyKey: crypto.randomUUID(), slotId: slot, startAt: "2030-01-01T01:00:00.000Z" });
+  const fixture = await createAppointmentFixture();
+  const service = createAppointmentService({ db: scopedDatabase(fixture), openIdHashKey: "b1-live-openid-hash-key-32-bytes!!", appointmentRepository: createMeooAppointmentRepository({ adapter }) });
+  const start = new Date(Date.now() + 86400000); start.setUTCMinutes(Math.ceil(start.getUTCMinutes() / 15) * 15, 0, 0);
+  const makeInput = (phone, idempotencyKey = crypto.randomUUID()) => ({ publicStoreId: fixture.publicStoreId, customerName: "B1 synthetic customer", customerPhone: phone, openid: `b1-openid-${phone}`, idempotencyKey, serviceId: fixture.serviceId, advisorId: fixture.advisorId, startAt: start.toISOString() });
   try {
-    const inputs = [makeInput("13800138000"), makeInput("13900139000")];
+    const first = makeInput("13800138000");
+    const created = await service.createAppointment(first);
+    assert.ok(created.number);
+    assert.equal((await service.createAppointment(first)).idempotent, true);
+    const concurrentStart = new Date(start.getTime() + 3600000).toISOString();
+    const inputs = [makeInput("13900139000"), makeInput("13700137000")].map(input => ({ ...input, startAt: concurrentStart }));
     const results = await Promise.all(inputs.map(input => service.createAppointment(input).catch(error => error)));
     assert.equal(results.filter(result => result.number).length, 1);
     assert.equal(results.filter(result => result.code === "APPOINTMENT_CONFLICT").length, 1);
-    const winner = inputs[results.findIndex(result => result.number)];
-    const duplicate = await service.createAppointment(winner);
-    assert.equal(duplicate.idempotent, true);
-    const rows = await fetch(`${url}/rest/v1/b1_appointment_bookings?select=id&tenant_id=eq.${scope.tenantId}&workspace_id=eq.${scope.workspaceId}&store_id=eq.${scope.storeId}&slot_key=eq.${encodeURIComponent(slot)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }).then(response => response.json());
-    assert.equal(rows.length, 1);
-    const rollbackSlot = `rollback-${crypto.randomUUID()}`;
-    await assert.rejects(() => service.createAppointment({ ...makeInput("13700137000"), slotId: rollbackSlot, notes: "B1_FORCE_ROLLBACK" }), error => error.code === "DATABASE_UNAVAILABLE");
-    const rollbackRows = await fetch(`${url}/rest/v1/b1_appointment_bookings?select=id&tenant_id=eq.${scope.tenantId}&workspace_id=eq.${scope.workspaceId}&store_id=eq.${scope.storeId}&slot_key=eq.${encodeURIComponent(rollbackSlot)}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }).then(response => response.json());
-    assert.equal(rollbackRows.length, 0);
+    const forgedDb = scopedDatabase(fixture, { scopeOverride: { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() } });
+    const forgedService = createAppointmentService({ db: forgedDb, openIdHashKey: "b1-live-openid-hash-key-32-bytes!!", appointmentRepository: createMeooAppointmentRepository({ adapter }) });
+    await assert.rejects(() => forgedService.createAppointment(makeInput("13600136000")), error => error.code === "APPOINTMENT_SCOPE_INVALID");
   } finally {
-    await fetch(`${url}/rest/v1/b1_appointment_bookings?tenant_id=eq.${scope.tenantId}&workspace_id=eq.${scope.workspaceId}&store_id=eq.${scope.storeId}`, { method: "DELETE", headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: "return=minimal" } });
+    await cleanupFixture(fixture);
   }
 });
 
 if (process.env.MEOO_B1_LIVE) test("real CustomerService uses Meoo tag repository with trusted scope", async () => {
   const adapter = createSupabaseAdapter({ table: process.env.MEOO_B1_TABLE || "customer_tags" });
   const service = createCustomerService({ db: {}, tagRepository: adapter });
-  const scopeA = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() };
-  const scopeB = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() };
+  const fixtureA = await createCustomerFixture();
+  const fixtureB = await createCustomerFixture(fixtureA.client);
+  const scopeA = { tenantId: fixtureA.tenantId, workspaceId: fixtureA.workspaceId, storeId: fixtureA.storeId };
+  const scopeB = { tenantId: fixtureB.tenantId, workspaceId: fixtureB.workspaceId, storeId: fixtureB.storeId };
   const tag = await service.createTag(scopeA, { name: `B1-service-${crypto.randomUUID().slice(0, 8)}`, tenantId: scopeB.tenantId, workspaceId: scopeB.workspaceId, storeId: scopeB.storeId });
   try {
     assert.equal((await service.listTags(scopeA)).some(row => row.id === tag.id), true);
@@ -145,5 +144,7 @@ if (process.env.MEOO_B1_LIVE) test("real CustomerService uses Meoo tag repositor
     await adapter.deleteTag(scopeA, tag.id);
   } finally {
     try { await adapter.deleteTag(scopeA, tag.id); } catch {}
+    await cleanupFixture(fixtureB);
+    await cleanupFixture(fixtureA);
   }
 });

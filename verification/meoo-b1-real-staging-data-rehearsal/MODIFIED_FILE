@@ -1,0 +1,17 @@
+admin/meoo-data-rehearsal.js
+admin/test/meoo-data-rehearsal.test.js
+admin/test/meoo-live-fixtures.js
+admin/test/meoo-appointment-concurrency.test.js
+admin/test/meoo-production-adapter.test.js
+admin/test/meoo-supabase-adapter.test.js
+platform/provider-migrations/meoo/002_lock_down_core_data_access.sql
+verification/meoo-b1-real-staging-data-rehearsal/DIFF_FILE
+verification/meoo-b1-real-staging-data-rehearsal/MODIFIED_FILE
+verification/meoo-b1-real-staging-data-rehearsal/ROLLBACK.sh
+verification/meoo-b1-real-staging-data-rehearsal/VERIFICATION.txt
+verification/meoo-b1-real-staging-data-rehearsal/import-policy.json
+verification/meoo-b1-real-staging-data-rehearsal/DIFF_FILE
+verification/meoo-b1-real-staging-data-rehearsal/MODIFIED_FILE
+verification/meoo-b1-real-staging-data-rehearsal/ROLLBACK.sh
+verification/meoo-b1-real-staging-data-rehearsal/VERIFICATION.txt
+verification/meoo-b1-real-staging-data-rehearsal/import-policy.json

@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { createSupabaseAdapter, SupabaseAdapterError } = require("../meoo-supabase-adapter");
 const { createPortableTestDatabase } = require("../database");
 const { createSaasService } = require("../saas-service");
+const { createCustomerFixture, cleanupFixture } = require("./meoo-live-fixtures");
 
 const SCOPE_A = { tenantId: "tenant-a", workspaceId: "workspace-a", storeId: "store-a" };
 const SCOPE_B = { tenantId: "tenant-b", workspaceId: "workspace-b", storeId: "store-b" };
@@ -98,10 +99,12 @@ test("portable PostgreSQL customer tag service matches adapter contract", async 
 
 if (process.env.MEOO_B1_LIVE) test("live Meoo CRUD proves tenant isolation and cleanup when explicitly enabled", async () => {
   const adapter = createSupabaseAdapter({ table: process.env.MEOO_B1_TABLE || "customer_tags" });
+  const fixtureA = await createCustomerFixture();
+  const fixtureB = await createCustomerFixture(fixtureA.client);
   const idA = crypto.randomUUID();
   const idB = crypto.randomUUID();
-  const scopeA = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() };
-  const scopeB = { tenantId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), storeId: crypto.randomUUID() };
+  const scopeA = { tenantId: fixtureA.tenantId, workspaceId: fixtureA.workspaceId, storeId: fixtureA.storeId };
+  const scopeB = { tenantId: fixtureB.tenantId, workspaceId: fixtureB.workspaceId, storeId: fixtureB.storeId };
   try {
     const tagA = await adapter.createTag(scopeA, { id: idA, name: `B1-A-${idA.slice(0, 8)}` });
     const tagB = await adapter.createTag(scopeB, { id: idB, name: `B1-B-${idB.slice(0, 8)}` });
@@ -113,5 +116,7 @@ if (process.env.MEOO_B1_LIVE) test("live Meoo CRUD proves tenant isolation and c
   } finally {
     try { await adapter.deleteTag(scopeA, idA); } catch {}
     try { await adapter.deleteTag(scopeB, idB); } catch {}
+    await cleanupFixture(fixtureB);
+    await cleanupFixture(fixtureA);
   }
 });
