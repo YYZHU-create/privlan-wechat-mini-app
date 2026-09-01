@@ -89,12 +89,6 @@ async function createAuthFixture(client = createLiveClient()) {
 async function cleanupFixture(fixture) {
   const { client, tenantId, workspaceId, storeId, customerId, userId } = fixture;
   const removals = [
-    ["workflow_event_consumptions", { tenant_id: tenantId }],
-    ["workflow_events", { tenant_id: tenantId }],
-    ["workflow_tasks", { tenant_id: tenantId }],
-    ["workflow_instances", { tenant_id: tenantId }],
-    ["workflow_definitions", { tenant_id: tenantId }],
-    ["workflow_versions", { tenant_id: tenantId }],
     ["customer_tag_links", customerId ? { customer_id: customerId } : { tenant_id: tenantId }],
     ["customer_tags", { tenant_id: tenantId }],
     ["customer_events", { tenant_id: tenantId }],

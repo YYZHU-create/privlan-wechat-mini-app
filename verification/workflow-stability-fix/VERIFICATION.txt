@@ -1,0 +1,8 @@
+WORKFLOW_STABILITY_FIX
+CHANGED_BRANCH=workflow event sequence allocation and UAT fixture cleanup
+BASELINE_COMMAND=node --test test/launch-v1.test.js test/workflow-runtime.test.js
+MODIFIED_COMMAND=node --test test/launch-v1.test.js test/workflow-runtime.test.js
+ROLLBACK_COMMAND=sh verification/workflow-stability-fix/ROLLBACK.sh
+BASELINE_RESULT=prior candidate UAT WORKFLOW_UAT 409 on retry; cleanup 409 23503
+MODIFIED_RESULT=local focused tests 12 passed, 0 failed
+ROLLBACK_RESULT=restored copies and rerun required
