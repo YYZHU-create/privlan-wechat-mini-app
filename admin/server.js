@@ -1051,6 +1051,7 @@ app.use("/ops/v1", (req, res, next) => {
   next();
 });
 app.use("/ops/v1", requireOperator);
+registerLaunchV1OpsRoutes(app, getSaasService);
 registerOpsSaasRoutes(app, getSaasService);
 
 // In SaaS mode PostgreSQL is the only operator data source. Anything not
