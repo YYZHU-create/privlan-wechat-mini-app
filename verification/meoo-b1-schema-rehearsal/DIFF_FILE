@@ -1,0 +1,6 @@
+Schema digest before target constraint validation: 6144aa7d802a4428a1c91d89080c0239
+Schema digest after target constraint validation:  d724ac5f0e4e7e67229a27ee7aa9b8d5
+Source schema digest:                             d724ac5f0e4e7e67229a27ee7aa9b8d5
+Difference classified: migration 005 preserves NOT VALID on target; source constraints are validated.
+Application change: AppointmentService passes the existing HMAC OpenID hash into the provider repository; Meoo repository sends p_openid_hash and normalizes provider business errors.
+Provider change: versioned SECURITY INVOKER public.atelier_create_appointment RPC in platform/provider-migrations/meoo/001_appointment_transaction_rpc.sql.

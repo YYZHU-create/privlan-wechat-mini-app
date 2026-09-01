@@ -1,0 +1,95 @@
+diff --git a/admin/legacy-migration.js b/admin/legacy-migration.js
+index 35367af..5484142 100644
+--- a/admin/legacy-migration.js
++++ b/admin/legacy-migration.js
+@@ -50,7 +50,7 @@ function createLegacyBackup({ root, backupRoot }) {
+ async function importLegacyPrivlan({ db, root, backup, ownerLogin, ownerPassword, dataRoot }) {
+   if (!backup?.path || !backup?.manifest?.sourceHash) throw new Error("Verified backup is required before import");
+   if (!ownerLogin || !ownerPassword) throw new Error("PRIVLAN legacy owner credentials are required before import");
+-  if (String(ownerPassword).length < 10) throw new Error("PRIVLAN legacy owner password must be at least 10 characters");
++  if (String(ownerPassword).length < 8) throw new Error("PRIVLAN legacy owner password must be at least 8 characters");
+   const prior = await db.query("select tenant_id,workspace_id from legacy_imports where source_hash=$1", [backup.manifest.sourceHash]);
+   if (prior.rows.length) return { imported: false, duplicate: true, tenantId: prior.rows[0].tenant_id, workspaceId: prior.rows[0].workspace_id, sourceHash: backup.manifest.sourceHash };
+   const config = JSON.parse(fs.readFileSync(path.join(root, "admin", "config.json"), "utf8"));
+diff --git a/admin/public/app.js b/admin/public/app.js
+index 5e17aee..d0909d4 100644
+--- a/admin/public/app.js
++++ b/admin/public/app.js
+@@ -2496,7 +2496,7 @@ createApp({
+   template: `
+     <div v-if="auth.loading" class="merchant-auth-loading"><span class="workspace-mark">A</span><p>正在验证工作区…</p></div>
+     <main v-else-if="!auth.session" class="merchant-auth-page">
+-      <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-brand"><strong translate="no">ATELIER OS</strong><span>零售品牌数字工作台</span></div><div class="merchant-auth-copy"><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，几分钟内建立自己的小程序工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="10" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
++      <section class="merchant-auth-panel" aria-labelledby="merchant-auth-title"><div class="merchant-auth-brand"><strong translate="no">ATELIER OS</strong><span>零售品牌数字工作台</span></div><div class="merchant-auth-copy"><h1 id="merchant-auth-title">{{ auth.mode==='login'?'登录你的店铺':'创建新的工作区' }}</h1><p>{{ auth.mode==='login'?'继续管理设计、商品、预约和智能客服。':'选择起始模板，几分钟内建立自己的小程序工作区。' }}</p></div><form @submit.prevent="submitAuth"><label>登录账号<input v-model.trim="auth.login" name="login" type="email" inputmode="email" autocomplete="username" spellcheck="false" maxlength="64"></label><label>密码<input v-model="auth.password" name="password" type="password" :autocomplete="auth.mode==='login'?'current-password':'new-password'" minlength="8" maxlength="128"></label><template v-if="auth.mode==='register'"><label>店铺名称<input v-model.trim="auth.storeName" name="store-name" autocomplete="organization" maxlength="64"></label><label>联系人姓名（选填）<input v-model.trim="auth.contactName" name="contact-name" autocomplete="name" maxlength="40"></label><fieldset><legend>初始内容</legend><label><input v-model="auth.template" name="initial-template" type="radio" value="sample">使用示例模板</label><label><input v-model="auth.template" name="initial-template" type="radio" value="blank">创建空白店铺</label></fieldset></template><p v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</p><button class="btn primary" type="submit" :disabled="auth.sending">{{ auth.sending?'正在处理…':auth.mode==='login'?'登录':'创建我的工作区' }}</button></form><button type="button" class="text-btn" @click="auth.mode=auth.mode==='login'?'register':'login';auth.error=''">{{ auth.mode==='login'?'还没有账户？创建店铺':'已有账户？返回登录' }}</button></section>
+       <aside class="merchant-auth-aside"><div><span>ATELIER / COMMERCE SYSTEM</span><h2>把品牌内容、商品与服务放在一个清晰的工作台里。</h2></div><dl><div><dt>设计</dt><dd>实时小程序画布</dd></div><div><dt>经营</dt><dd>商品、客户与预约</dd></div><div><dt>服务</dt><dd>可配置的智能客服</dd></div></dl></aside>
+     </main>
+     <div v-else class="app-shell" :class="{'editor-mode': currentView === 'editor', 'has-subscription-banner': account.subscription?.status==='expired' || account.subscription?.status==='inactive' || (account.subscription?.remainingDays!==null && account.subscription?.remainingDays<=3)}">
+diff --git a/admin/saas-service.js b/admin/saas-service.js
+index 05a2f29..05106bb 100644
+--- a/admin/saas-service.js
++++ b/admin/saas-service.js
+@@ -50,7 +50,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+     const storeName = String(input.storeName || "").trim();
+     const template = input.template === "blank" ? "blank" : "sample";
+     if (!/^[\p{L}\p{N}_.@+-]{3,64}$/u.test(login)) throw new ServiceError(400, "INVALID_LOGIN", "登录账号格式不正确");
+-    if (password.length < 10 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 10 至 128 位");
++    if (password.length < 8 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 8 至 128 位");
+     if (storeName.length < 2 || storeName.length > 64) throw new ServiceError(400, "INVALID_STORE_NAME", "店铺名称长度需为 2 至 64 位");
+     return db.transaction(async tx => {
+       if ((await tx.query("select id from users where login_identifier=$1", [login])).rows.length) throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法注册");
+diff --git a/admin/test/database-migration.test.js b/admin/test/database-migration.test.js
+index df698f1..e84a2bd 100644
+--- a/admin/test/database-migration.test.js
++++ b/admin/test/database-migration.test.js
+@@ -21,8 +21,9 @@ test("backs up, verifies and imports legacy PRIVLAN exactly once", async () => {
+   try {
+     const backup = createLegacyBackup({ root, backupRoot: path.join(temp, "backups") });
+     assert.ok(fs.existsSync(path.join(backup.path, "manifest.json")));
+-    const first = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "migration-password" });
+-    const second = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "migration-password" });
++    await assert.rejects(() => importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "short@privlan.test", ownerPassword: "seven77" }), /at least 8 characters/);
++    const first = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "Owner123" });
++    const second = await importLegacyPrivlan({ db, root, backup, dataRoot: path.join(temp, "data"), ownerLogin: "owner@privlan.test", ownerPassword: "Owner123" });
+     assert.equal(first.imported, true);
+     assert.equal(second.duplicate, true);
+     assert.equal((await db.query("select count(*)::int count from legacy_imports")).rows[0].count, 1);
+diff --git a/admin/test/merchant-auth.test.js b/admin/test/merchant-auth.test.js
+index c4e591a..abbc541 100644
+--- a/admin/test/merchant-auth.test.js
++++ b/admin/test/merchant-auth.test.js
+@@ -9,16 +9,17 @@ test("registers a complete merchant workspace and enforces credentials and sessi
+   const db = await createPortableTestDatabase();
+   const service = createSaasService({ db, licensePepper: "auth-test-pepper" });
+   try {
+-    const created = await service.register({ login: "merchant@example.com", password: "correct-password", storeName: "Example Atelier", template: "blank" });
++    await assert.rejects(() => service.register({ login: "short@example.com", password: "seven77", storeName: "Too Short" }), error => error.code === "INVALID_PASSWORD");
++    const created = await service.register({ login: "merchant@example.com", password: "passw0rd", storeName: "Example Atelier", template: "blank" });
+     assert.equal(created.subscription.status, "inactive");
+     assert.equal((await service.resolveSession(created.session.token)).workspace.name, "Example Atelier");
+     await assert.rejects(() => service.register({ login: "merchant@example.com", password: "another-password", storeName: "Duplicate" }), error => error.code === "ACCOUNT_EXISTS");
+     await assert.rejects(() => service.login({ login: "merchant@example.com", password: "wrong-password" }), error => error.code === "INVALID_CREDENTIALS");
+-    const loggedIn = await service.login({ login: "merchant@example.com", password: "correct-password" });
++    const loggedIn = await service.login({ login: "merchant@example.com", password: "passw0rd" });
+     const scope = await service.resolveSession(loggedIn.session.token);
+     await service.logout(scope.sessionId, { tenantId: scope.tenantId, workspaceId: scope.workspaceId, actorId: scope.userId });
+     assert.equal(await service.resolveSession(loggedIn.session.token), null);
+     const stored = (await db.query("select password_hash from users where login_identifier='merchant@example.com'")).rows[0].password_hash;
+-    assert.doesNotMatch(stored, /correct-password/);
++    assert.doesNotMatch(stored, /passw0rd/);
+   } finally { await db.close(); }
+ });
+diff --git a/admin/test/merchant-http.test.js b/admin/test/merchant-http.test.js
+index f4235d0..1f6e1bd 100644
+--- a/admin/test/merchant-http.test.js
++++ b/admin/test/merchant-http.test.js
+@@ -45,7 +45,9 @@ test.after(() => { if (processHandle && !processHandle.killed) processHandle.kil
+ 
+ test("HTTP authentication sets secure server sessions and isolates workspace hints", async () => {
+   const register = body => api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+-  const a = await register({ login: "http-a@example.com", password: "http-password-a", storeName: "HTTP A", template: "blank" });
++  const tooShort = await register({ login: "short@example.com", password: "seven77", storeName: "Too Short", template: "blank" });
++  assert.equal(tooShort.status, 400); assert.equal(tooShort.data.code, "INVALID_PASSWORD");
++  const a = await register({ login: "http-a@example.com", password: "passw0rd", storeName: "HTTP A", template: "blank" });
+   const b = await register({ login: "http-b@example.com", password: "http-password-b", storeName: "HTTP B", template: "blank" });
+   assert.equal(a.status, 201); assert.equal(b.status, 201);
+   const aCookies = cookieValues(a.response); const aCookie = cookieJar(aCookies); const aCsrf = csrf(aCookies);

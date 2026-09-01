@@ -1,0 +1,5 @@
+Base: 2e856f4cb3cc6cc8abe47ca3f9ebae4b76a8eace
+Branch: codex/meoo-b1-real-staging-data-rehearsal
+Changed files: admin/meoo-data-rehearsal.js; admin/test/meoo-data-rehearsal.test.js; admin/test/meoo-live-fixtures.js; admin/test/meoo-appointment-concurrency.test.js; admin/test/meoo-production-adapter.test.js; admin/test/meoo-supabase-adapter.test.js; platform/provider-migrations/meoo/002_lock_down_core_data_access.sql; verification/meoo-b1-real-staging-data-rehearsal/.
+Result: policy-driven rehearsal copied 695 source rows into the Meoo target, verified exact authorized data fingerprints, then removed copied business data while retaining the approved plan_catalog seed rows. Current-architecture Appointment and Customer Tag live tests pass through the production service/repository/Meoo RPC path with synthetic fixtures and cleanup.
+Gate: final rehearsal gates pass; the local RC commit is the current Git HEAD.

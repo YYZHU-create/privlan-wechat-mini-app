@@ -32,4 +32,6 @@ function createHandler(core) {
 }
 
 exports.createHandler = createHandler;
-exports.main = () => createHandler(require("./common"))();
+function createPostgresHandler(core){return async event=>{const requestId=core.requestId();try{const openid=core.currentOpenId();if(!openid)return core.fail("AUTH_REQUIRED","请先在微信中登录",requestId);return await core.appointmentApi("/v1/miniprogram/appointments/list",{publicStoreId:String(event?.publicStoreId||""),openid});}catch(error){return core.handleError(error,requestId);}};}
+exports.createPostgresHandler=createPostgresHandler;
+exports.main=event=>process.env.ATELIER_APPOINTMENT_BACKEND==="feishu"?createHandler(require("./common"))(event):createPostgresHandler(require("./common"))(event);

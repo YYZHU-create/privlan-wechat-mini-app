@@ -1,0 +1,20 @@
+Branch: codex/merchant-os-sprint-3a
+Base: c57a9b3178c63da8fabca212dde5638ed95e6710
+
+Modified implementation paths:
+- platform/migrations/008_workflow_runtime.sql
+- platform/schema.sql
+- admin/workflow-service.js
+- admin/workflow-routes.js
+- admin/saas-service.js
+- admin/merchant-routes.js
+- admin/test/workflow-runtime.test.js
+- admin/test/merchant-http.test.js
+- admin/verify-sprint3a-staging.js
+- docs/architecture/ATELIER_OS_ARCHITECTURE_BASELINE.md
+
+Workflow service boundary: runtime orchestration only. Existing customer, appointment, staff, commerce, authentication, and audit domains remain owned by their existing modules.
+
+Hardening changes: published-version database immutability, tenant/workspace composite foreign keys, version-to-instance binding, atomic per-instance event sequence allocation, and concurrent idempotency convergence. Merchant HTTP tests now isolate the test media data root.
+
+Architecture baseline update: documentation only; no additional business code or database migration execution.

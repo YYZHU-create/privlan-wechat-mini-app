@@ -12,6 +12,11 @@
 
 客服与预约云函数按各自职责配置以下环境变量：
 
+- `ATELIER_API_BASE_URL`：ATELIER OS 的公网 HTTPS 地址
+- `ATELIER_APPOINTMENT_GATEWAY_TOKEN`：至少 32 字符的预约 S2S 凭证，只保存在服务端与预约云函数环境
+- `ATELIER_APPOINTMENT_BACKEND=postgres`：默认且推荐；只有显式设置为 `feishu` 才运行 legacy adapter，不自动降级
+- `ATELIER_FEISHU_APPOINTMENT_MIRROR=0`：设为 `1` 时在 PostgreSQL 成功后尝试飞书镜像，镜像失败不改变预约结果
+
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 - `FEISHU_BITABLE_APP_TOKEN`
@@ -30,7 +35,7 @@
 - `ATELIER_AI_TIMEOUT_MS=15000`
 
 模型供应商地址、模型名称和 API Key 由商户后台或平台运营后台配置。小程序与云函数不直接保存商户模型密钥。
-- `APPOINTMENT_DURATION_MINUTES=135`
+- `APPOINTMENT_DURATION_MINUTES=135`：仅供显式 `feishu` legacy adapter 使用；PostgreSQL 模式从店铺服务快照读取时长
 - `APPOINTMENT_REMINDER_TEMPLATE_ID`：微信订阅消息模板 ID
 - `APPOINTMENT_REMINDER_LEAD_MINUTES=1440`：默认提前 24 小时提醒
 - `REMINDER_FIELD_SUBJECT=thing1`
@@ -55,10 +60,10 @@
 
 ## 生产部署检查
 
-- 部署 `appointmentList`，并确认 `privlan_appointment_records` 仅由云函数读取。客户端不得提交 `openId`。
+- 部署 `appointmentCreate`、`appointmentOptions`、`appointmentList`、`customerTouch`，并确认 `privlan_appointment_records` 仅用于提醒通知镜像。客户触达、预约列表与商户后台均从 PostgreSQL 读取，客户端提交的 `openId` 会被忽略，身份只取 `cloud.getWXContext().OPENID`。
 - 未配置 `AUTH_MODE` 时系统默认使用 `wechat`。测试认证只有在同时设置 `AUTH_MODE=test` 和 `TEST_AUTH_CODE` 时才会启用。
 - 正式环境必须设置 `AUTH_MODE=wechat` 并删除 `TEST_AUTH_CODE`，避免测试验证码入口继续存在。
-- 预约创建、预约选项和预约列表三个云函数必须使用相同的飞书字段映射和 `APPOINTMENT_DURATION_MINUTES`。
+- 三个预约云函数必须使用相同的 `ATELIER_API_BASE_URL`、gateway token 和 backend 配置。Gateway token 不得写入 `utils/appointment-runtime.js`、其他前端源码或 Git。
 - `privlan_appointment_locks` 同时保存顾问时间桶和预约请求幂等锁；不要从客户端直接读写该集合。
 - 关注 `appointment_reconciliation_required` 审计事件。该事件表示飞书预约已经创建，但时段计数或镜像数据需要人工对账。
 

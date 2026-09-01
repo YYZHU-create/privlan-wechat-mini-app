@@ -1,0 +1,50 @@
+MODIFIED_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-runtime\MODIFIED_FILE
+DIFF_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-runtime\DIFF_FILE
+VERIFICATION_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-runtime\VERIFICATION.txt
+ROLLBACK_FILE: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a\verification\sprint3a-runtime\ROLLBACK.sh
+
+Changed branch/field: codex/merchant-os-sprint-3a / Workflow Runtime Core
+Base commit: c57a9b3178c63da8fabca212dde5638ed95e6710
+Database rule: migration-only additive change; protected tables untouched
+
+ARCHITECTURE_BASELINE_UPDATE=PASS
+Changed path: docs/architecture/ATELIER_OS_ARCHITECTURE_BASELINE.md
+Result: documentation-only update; no business code modification and no migration execution during commit preparation
+
+BASELINE
+Command: git status --short --branch at Sprint 3A base
+Input: worktree created from Sprint 2 commit c57a9b3 before implementation
+Literal output/result: ## codex/merchant-os-sprint-3a
+Exit status: 0
+
+MODIFIED
+Command: node --test test/workflow-runtime.test.js
+Input: Sprint 3A portable PostgreSQL test database; 12 concurrent instance starts, 16 concurrent event appends, and 12 concurrent HTTP starts
+Literal output/result: tests 6; pass 6; fail 0; skipped 0; CONCURRENT_IDEMPOTENCY=PASS; CONCURRENT_EVENT_APPEND=PASS; PUBLISHED_VERSION_UPDATE_REJECTED=PASS; PUBLISHED_VERSION_DELETE_REJECTED=PASS
+Exit status: 0
+
+Command: node --test test/merchant-http.test.js
+Input: isolated merchant HTTP server with ATELIER_DATA_ROOT in its temporary test directory
+Literal output/result: tests 5; pass 5; fail 0; skipped 0; media upload returned HTTP 200
+Exit status: 0
+
+Command: node verify-sprint3a-staging.js
+Input: protected staging connection from staging-postgres.env; expected database atelier_os_staging
+Literal output/result: DATABASE_IDENTITY_MATCH=PASS database=atelier_os_staging current_user=atelier_staging; MIGRATION_APPLIED=PASS version=008_workflow_runtime state=already_applied; MIGRATION_STRUCTURE=PASS; DATA_COUNTS_STABLE=PASS counts={users:10,memberships:9,tenants:9,workspaces:9,merchant_sessions:102,customers:15,appointments:2,staff_members:11}; POST_SUITE_DATA_COUNTS_STABLE=PASS same counts
+Exit status: 0
+
+Regression gates
+AUTH_REGRESSION=PASS (8/8, exit 0)
+CUSTOMER_REGRESSION=PASS (6/6, exit 0)
+APPOINTMENT_REGRESSION=PASS (25/25 plus real PostgreSQL concurrency 1/1, exit 0)
+STAFF_REGRESSION=PASS (3/3, exit 0)
+TENANT_ISOLATION=PASS (4/4, exit 0)
+WORKFLOW_TEST=PASS (6/6, exit 0)
+FULL_TEST_SUITE=PASS (staging PostgreSQL: tests 103; pass 103; fail 0; skipped 0; exit 0)
+
+ROLLBACK
+Command: C:\Program Files\Git\bin\bash.exe verification/sprint3a-runtime/ROLLBACK.sh <isolated-copy> <isolated-copy/.baseline>
+Input: isolated copy containing the hardening-modified tracked files, Sprint 3A new files, and baseline copies from c57a9b3
+Literal output/result: ROLLBACK=PASS; tracked files restored; new files removed; ROLLBACK_VERIFY=PASS tracked=4 new_files=5
+Exit status: 0
+Restored behavior/status: isolated copy matches baseline file set; active Sprint 3A worktree remains modified; staging Migration 008 remains retained (STAGING_ROLLBACK_GUARD=PASS).

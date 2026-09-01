@@ -1,0 +1,10 @@
+branch=codex/atelier-os-saas-mvp
+field=preview_command_bar
+value=channels_only;topbar_height=58px;status_states=未保存|保存中…|正在生成…|✓ 已保存|操作失败;scan=secondary;generate=primary
+preserved=saveConfig;undo;redo;openPhonePreview;syncProject;non_preview_topbar;sidebar_behavior
+baseline_commit=d57946c
+baseline_app_sha256=D7E96AE1FB66FF590A5FD22C231F737CA4ECA03D3A4DAE7736FC338358375DF1
+baseline_styles_sha256=3D926B15601AC0A4568DE25A84254289C94843D7A584F9FD8C9209E8ABC4DA21
+modified_app_sha256=506AB2ED6C6A3013456497945B4C27777307A9531C59C09881880E35020EFCC6
+modified_styles_sha256=A0963C4462728337F8775EB2DF568C40F91A80C02C06AA0E73E05B094FB83748
+diff_file=admin/verification/preview-command-bar/DIFF_FILE

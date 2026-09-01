@@ -1,0 +1,50 @@
+ATELIER OS SaaS MVP 1.0 verification
+
+Branch: codex/atelier-os-saas-mvp
+Changed field: atelier_os_saas_mvp_state=modified
+Baseline commit: 6aa0a28e957cee489fb4bcdf07600c920d6e5032
+Config SHA-256: 6C20C9C406024C0C03589E6479ACC36166B071876A4B8104E6709CC63D22A033
+
+Artifacts:
+- MODIFIED_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/MODIFIED_FILE
+- DIFF_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/DIFF_FILE
+- VERIFICATION.txt: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/VERIFICATION.txt
+- ROLLBACK.sh: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/ROLLBACK.sh
+
+DIFF_FILE SHA-256: A7049AD07961EF301282C8756DA8CE0CD3A3A3E1B0A925DB03BE44D5B694288E
+
+BASELINE
+Command: C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe --test
+Working directory/input: C:/Users/Administrator/AppData/Local/Temp/atelier-os-rollback-a332b3b9719743d9abac712dea88bd57/admin at 6aa0a28e957cee489fb4bcdf07600c920d6e5032
+Literal result: tests 33; pass 33; fail 0; cancelled 0; skipped 0; todo 0; duration_ms 4567.8434
+Exit status: 0
+
+MODIFIED
+Command: git apply C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/DIFF_FILE; C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe --test
+Working directory/input: the same disposable clone plus DIFF_FILE SHA-256 A7049AD07961EF301282C8756DA8CE0CD3A3A3E1B0A925DB03BE44D5B694288E
+Literal result: PATCH_APPLY_EXIT=0; tests 46; pass 46; fail 0; cancelled 0; skipped 0; todo 0; duration_ms 4895.6899
+Exit status: 0
+
+ROLLBACK
+Command: C:/Program Files/Git/bin/bash.exe C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/atelier-os-saas-mvp/ROLLBACK.sh C:/Users/Administrator/AppData/Local/Temp/atelier-os-rollback-a332b3b9719743d9abac712dea88bd57; C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe --test
+Working directory/input: modified disposable clone from the MODIFIED step
+Literal result: ROLLBACK_APPLIED target=/tmp/atelier-os-rollback-a332b3b9719743d9abac712dea88bd57; ROLLBACK_APPLY_EXIT=0; tests 33; pass 33; fail 0; cancelled 0; skipped 0; todo 0; duration_ms 4418.7952; ROLLBACK_DIFF_EXIT=0; tracked status empty
+Exit status: 0
+Restored behavior/status: the original 33-test baseline passed and every tracked file matched 6aa0a28; only an untracked test runtime admin/data directory remained in the disposable clone.
+
+CURRENT WORKTREE VERIFICATION
+Command: C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe --test
+Literal result: tests 46; pass 46; fail 0; cancelled 0; skipped 0; todo 0; duration_ms 4891.1277
+Exit status: 0
+
+Command: node --check for all repository JavaScript outside node_modules/runtime verification artifacts
+Literal result: JS_CHECKED=63; JS_FAILED=0
+Exit status: 0
+
+Command: Node JSON.parse for all repository JSON outside node_modules/runtime data
+Literal result: JSON_CHECKED=37; JSON_FAILED=0
+Exit status: 0
+
+Command: node admin/verification/ui-browser-check.js with ATELIER_UI_BASE_URL=http://127.0.0.1:40000
+Literal result: UI browser checks passed: 1366x768, 1920x1080, 2560x1440, 430x932, AI drawer, disabled views, ops licenses
+Exit status: 0

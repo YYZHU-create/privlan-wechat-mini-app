@@ -1,0 +1,102 @@
+{
+  "previewRoot": "C:\\Users\\Administrator\\WorkBuddy\\2026-08-24-merchant-os-sprint-3a-preview-final-20260827150152-2036",
+  "referencedImages": [
+    "29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg",
+    "371b2a8ec840f557725bb8150bf126c8.jpg",
+    "41b7d4277afa3c44ee45d3606b761c6e.jpg",
+    "4ee185dc154e35f14e551c06411b653d.jpg",
+    "7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg",
+    "Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg",
+    "b1ab190011e268ef1156a894e91412b7.jpg",
+    "d5f9cfe54e41e6dda2cf77987cb75749.jpg",
+    "hero1.jpg",
+    "hero2.jpg",
+    "hero3.jpg",
+    "icon-back.png",
+    "icon-headset.png",
+    "icon-search.png",
+    "privlan-ai-logo-white.png",
+    "svc-cs.png",
+    "svc-gift.png",
+    "svc-presale.png",
+    "svc-tailor.png",
+    "tab-3-centerIcon-pinterest.gif",
+    "tab-bag-on.png",
+    "tab-bag.png",
+    "tab-grid-on.png",
+    "tab-grid.png",
+    "tab-home-on.png",
+    "tab-home.png",
+    "tab-user-on.png",
+    "tab-user.png"
+  ],
+  "referencedFonts": [],
+  "cloudFunctionRelative": "cloudfunctions",
+  "report": {
+    "totalBytes": 1544668,
+    "mainPackageBytes": 1420544,
+    "codeBytes": 180733,
+    "imageBytes": 1239811,
+    "fontBytes": 0,
+    "cloudFunctionBytes": 124124,
+    "otherRuntimeBytes": 0,
+    "imageBytesByFormat": {
+      "jpg": 313494,
+      "jpeg": 238296,
+      "png": 15649,
+      "gif": 672372,
+      "webp": 0,
+      "other": 0
+    },
+    "largestRuntimeFiles": [
+      {
+        "path": "images/tab-3-centerIcon-pinterest.gif",
+        "bytes": 672372
+      },
+      {
+        "path": "images/29_0df4a244-de71-4b8a-a8c4-69ecaef14d83.jpeg",
+        "bytes": 89307
+      },
+      {
+        "path": "images/7_33529103-a9a4-4ed2-bc1b-2dbca5c4bb89.jpeg",
+        "bytes": 78284
+      },
+      {
+        "path": "images/Kith_Giorgio_Armani__The_Archetype_Lookbook.jpeg",
+        "bytes": 70705
+      },
+      {
+        "path": "images/4ee185dc154e35f14e551c06411b653d.jpg",
+        "bytes": 62935
+      },
+      {
+        "path": "images/b1ab190011e268ef1156a894e91412b7.jpg",
+        "bytes": 61043
+      },
+      {
+        "path": "images/41b7d4277afa3c44ee45d3606b761c6e.jpg",
+        "bytes": 59620
+      },
+      {
+        "path": "images/371b2a8ec840f557725bb8150bf126c8.jpg",
+        "bytes": 50920
+      },
+      {
+        "path": "images/d5f9cfe54e41e6dda2cf77987cb75749.jpg",
+        "bytes": 35126
+      },
+      {
+        "path": "images/hero2.jpg",
+        "bytes": 15197
+      },
+      {
+        "path": "images/hero3.jpg",
+        "bytes": 14693
+      },
+      {
+        "path": "images/hero1.jpg",
+        "bytes": 13960
+      }
+    ]
+  }
+}

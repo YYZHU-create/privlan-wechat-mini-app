@@ -9,7 +9,10 @@ miniprogram_npm/
 dist/
 tmp/
 admin/config-backups/
+admin/data/
 admin/media-trash/
+admin/verification/*.png
+admin/verification/*.log
 admin/qa/final-*.png
 admin/qa/atelier-*.png
 admin/qa/merchant-*-final.png

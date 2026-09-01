@@ -1,0 +1,4 @@
+POST_MIGRATION_COUNTS=tenants=0;workspaces=0;stores=0;customers=0;appointments=0;orders=0
+SCHEMA_MIGRATIONS=001_saas_mvp,002_workspace_resources,003_appointments,004_appointment_rule_controls,005_customer_identity_membership
+CUSTOMERS_DISPLAY_NAME_BACKFILL=NO_ROWS
+APPOINTMENT_COUNT_BACKFILL=NO_ROWS

@@ -1,0 +1,39 @@
+ATELIER OS Appointment Service Sync
+
+CHANGED_BRANCH=codex/merchant-os-sprint-2
+CHANGED_FIELD=Appointment settings defaults/upsert and Editor appointment-service API preview
+HEAD=c8d1835a1766f8e86aa2bbc0e4d0aacfb43c0b9c
+
+BASELINE
+COMMAND=GET /v1/appointment-settings; read-only staging PostgreSQL count audit
+INPUT=PRIVLAN Retail current tenant/workspace/store scope
+LITERAL_OUTPUT=预约设置不存在 | SETTINGS_COUNT=0 | SERVICES_COUNT=0 | ENABLED_SERVICE_NAMES=[]
+EXIT_STATUS=0
+RESULT=BASELINE_MISSING_SETTINGS_AND_SERVICES
+
+MODIFIED
+COMMAND=node --check admin/public/app.js; node --check admin/appointment-service.js; node --test admin/test/editor-panel-redesign.test.js admin/test/appointment-saas.test.js; npm test; git diff --check
+INPUT=getSettings read defaults; updateSettings scoped upsert; Editor reads /v1/appointment-services and displays enabled service names
+LITERAL_OUTPUT=focused tests 19 pass 19 fail 0 skipped 0 | full tests 95 pass 94 fail 0 skipped 1 | git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+RUNTIME
+COMMAND=restart node server.js from Sprint 2 worktree with staging PostgreSQL and ATELIER_AUTO_MIGRATE=0; GET /health
+INPUT=port 40003
+LITERAL_OUTPUT=READY=True | {"app":"atelier-os","database":"ok","version":"development"} | STDERR_PRESENT=NO
+EXIT_STATUS=0
+RESULT=PASS
+
+ROLLBACK
+COMMAND=ROLLBACK.sh <temporary-copy>
+INPUT=independent copy of four modified source/test files
+LITERAL_OUTPUT=Appointment service sync rollback applied. | appointment-service MATCH=True | app.js MATCH=True | appointment-saas.test MATCH=True | editor-panel-redesign.test MATCH=True | ROLLBACK_EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR_STATUS=预约设置恢复缺失时报错；Editor 恢复示例服务文字；四个文件原始哈希恢复
+
+STAGING_DATABASE_READ_ONLY_AUDIT=YES
+DATABASE_MODIFIED=NO
+MIGRATION_RUN=NO
+PRODUCTION_CONNECTED=NO

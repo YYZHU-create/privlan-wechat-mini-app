@@ -1,9 +1,9 @@
 {
   "brand": {
-    "name": "PRIVLAN",
+    "name": "我的店铺",
     "logo": "brand-logo.png",
-    "slogan": "成为 PRIVLAN 会员 享受更多礼遇服务",
-    "advisorslogan": "扫描二维码，添加 PRIVLAN 专属顾问，获取独家礼遇"
+    "slogan": "成为 我的店铺 会员 享受更多礼遇服务",
+    "advisorslogan": "扫描二维码，添加 我的店铺 服务顾问，获取独家礼遇"
   },
   "theme": {
     "preset": "black-gold",
@@ -78,9 +78,9 @@
     {
       "id": 2,
       "img": "/images/hero2.jpg",
-      "title": "LAKE MAGGIORE",
+      "title": "精选内容",
       "sub": "湖畔假日系列",
-      "channel": "LAKE MAGGIORE"
+      "channel": "精选内容"
     },
     {
       "id": 3,
@@ -92,7 +92,7 @@
   ],
   "homeChannels": [
     "推荐",
-    "LAKE MAGGIORE"
+    "精选内容"
   ],
   "categories": [
     {
@@ -101,7 +101,7 @@
     },
     {
       "id": "summer",
-      "name": "夏季系列"
+      "name": "系列"
     },
     {
       "id": "stitch",
@@ -203,8 +203,8 @@
       "img": "/images/gift.png",
       "tag": "限量 10 份",
       "title": "限量行李牌",
-      "desc": "支付订单满 12,000 元，并添加专属顾问即可尊享",
-      "note": "* 行李牌将在订单确认后单独寄出，详情可咨询专属顾问"
+      "desc": "支付订单满 12,000 元，并添加服务顾问即可尊享",
+      "note": "* 行李牌将在订单确认后单独寄出，详情可咨询服务顾问"
     },
     "sectionTitle": "鞋履甄选",
     "productIds": [
@@ -213,7 +213,7 @@
     ]
   },
   "tabBar": {
-    "centerText": "夏季系列",
+    "centerText": "系列",
     "items": [
       {
         "text": "首页",
@@ -252,7 +252,7 @@
         }
       },
       {
-        "text": "夏季系列",
+        "text": "系列",
         "center": true,
         "centerIcon": "/images/tab-3-centerIcon-pinterest.gif",
         "centerIconSource": "/images/tab-3-centerIcon-pinterest.gif",
@@ -396,7 +396,7 @@
         "style": {
           "backgroundColor": "transparent",
           "textColor": "#c9a97e",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 28,
           "fontWeight": 400,
           "textAlign": "center",
@@ -582,7 +582,7 @@
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 18,
           "fontWeight": 400,
           "textAlign": "center",
@@ -727,7 +727,7 @@
               "id": "slide-mshcjlje-0z1x",
               "kind": "image",
               "src": "/images/hero2.jpg",
-              "title": "LAKE MAGGIORE",
+              "title": "精选内容",
               "subtitle": "湖畔假日系列",
               "buttonText": "探索更多",
               "showContent": true,
@@ -747,7 +747,7 @@
         "style": {
           "backgroundColor": "transparent",
           "textColor": "#c9a97e",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 28,
           "fontWeight": 400,
           "textAlign": "center",
@@ -786,14 +786,14 @@
         "name": "系列说明",
         "enabled": true,
         "props": {
-          "title": "LAKE MAGGIORE",
+          "title": "精选内容",
           "text": "从湖光与建筑线条中汲取灵感，呈现松弛而克制的夏日衣橱。",
           "hotspots": []
         },
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 18,
           "fontWeight": 400,
           "textAlign": "center",
@@ -882,7 +882,7 @@
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 18,
           "fontWeight": 400,
           "textAlign": "center",
@@ -966,14 +966,14 @@
         "name": "会员中心",
         "enabled": true,
         "props": {
-          "title": "PRIVLAN",
-          "subtitle": "成为 PRIVLAN 会员 享受更多礼遇服务",
+          "title": "我的店铺",
+          "subtitle": "成为 我的店铺 会员 享受更多礼遇服务",
           "hotspots": []
         },
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 14,
           "fontWeight": 400,
           "textAlign": "center",
@@ -1011,13 +1011,13 @@
         "enabled": true,
         "props": {
           "title": "专属服务",
-          "text": "订单、收藏、礼遇与专属顾问均可在这里查看。",
+          "text": "订单、收藏、礼遇与服务顾问均可在这里查看。",
           "hotspots": []
         },
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 18,
           "fontWeight": 400,
           "textAlign": "center",
@@ -1148,7 +1148,7 @@
         "style": {
           "backgroundColor": "transparent",
           "textColor": "",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 18,
           "fontWeight": 400,
           "textAlign": "center",
@@ -1230,7 +1230,7 @@
         "name": "预约页头图",
         "enabled": true,
         "props": {
-          "kicker": "PRIVLAN APPOINTMENT",
+          "kicker": "我的店铺 APPOINTMENT",
           "title": "预约专属服务",
           "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。",
           "hotspots": []
@@ -1238,7 +1238,7 @@
         "style": {
           "backgroundColor": "#171717",
           "textColor": "#ffffff",
-          "fontFamily": "luxury-serif",
+          "fontFamily": "system",
           "fontSize": 14,
           "fontWeight": 400,
           "textAlign": "left",
@@ -1448,7 +1448,7 @@
     "size": 88,
     "right": 110,
     "bottom": 475,
-    "welcomeMessage": "您好，我是 PRIVLAN 专属服务助手。请问今天想了解什么？",
+    "welcomeMessage": "您好，我是 我的店铺 专属服务助手。请问今天想了解什么？",
     "quickPrompts": [
       "我要预约",
       "你们的价格区间是多少？",
@@ -1486,7 +1486,7 @@
         "id": "faq-4",
         "question": "版型与款式",
         "keywords": ["版型", "款式", "剪裁"],
-        "answer": "PRIVLAN 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。",
+        "answer": "我的店铺 注重克制轮廓与合体剪裁，顾问会结合身形、场合和偏好提供款式建议。",
         "enabled": true,
         "showAsPrompt": true
       },
@@ -1513,7 +1513,7 @@
     "authMode": "test"
   },
   "appointment": {
-    "kicker": "PRIVLAN APPOINTMENT",
+    "kicker": "我的店铺 APPOINTMENT",
     "title": "预约专属服务",
     "description": "选择适合你的门店、时间和顾问，我们会提前做好准备。",
     "submitText": "确认预约",

@@ -3,9 +3,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { createHandler: createAppointmentHandler } = require("../../cloudfunctions/appointmentCreate/index");
-const { createHandler: createOptionsHandler } = require("../../cloudfunctions/appointmentOptions/index");
-const { createHandler: createListHandler } = require("../../cloudfunctions/appointmentList/index");
+const { createHandler: createAppointmentHandler, createPostgresHandler: createPostgresAppointmentHandler } = require("../../cloudfunctions/appointmentCreate/index");
+const { createHandler: createOptionsHandler, createPostgresHandler: createPostgresOptionsHandler } = require("../../cloudfunctions/appointmentOptions/index");
+const { createHandler: createListHandler, createPostgresHandler: createPostgresListHandler } = require("../../cloudfunctions/appointmentList/index");
 const lockDomain = require("../../cloudfunctions/appointmentCreate/lock-domain");
 
 function record(id, fields) { return { record_id: id, fields }; }
@@ -164,4 +164,34 @@ test("cloud authentication defaults are production-safe", () => {
   assert.match(bootstrap, /env\("AUTH_MODE",\s*"wechat"\)/);
   assert.match(auth, /env\("AUTH_MODE",\s*"wechat"\)\s*!==\s*"test"/);
   assert.match(auth, /env\("TEST_AUTH_CODE"\)/);
+});
+
+test("PostgreSQL cloud adapters use cloud identity and keep successful bookings when Feishu mirroring fails", async () => {
+  const calls = []; const audits = [];
+  const core = {
+    requestId: () => "req-postgres",
+    currentOpenId: () => "openid-from-cloud",
+    env: (name, fallback = "") => name === "ATELIER_FEISHU_APPOINTMENT_MIRROR" ? "1" : fallback,
+    appointmentApi: async (pathname, body) => {
+      calls.push({ pathname, body });
+      if (pathname.endsWith("appointment-options")) return { ok: true, data: { slots: [] } };
+      if (pathname.endsWith("/list")) return { ok: true, data: [] };
+      return { ok: true, data: { number: "AT1", startAt: "2030-01-02T01:00:00.000Z", endAt: "2030-01-02T02:00:00.000Z", status: "待确认" } };
+    },
+    db: { collection: () => ({ doc: () => ({ set: async () => {} }) }), serverDate: () => new Date() },
+    hash: value => `hash-${value}`,
+    createRecord: async () => { throw new Error("Feishu unavailable"); },
+    fieldName: (_name, fallback) => fallback,
+    audit: async (event, _openid, details) => audits.push({ event, details }),
+    fail: (code, message, requestId) => ({ ok: false, code, message, requestId }),
+    handleError: (error, requestId) => ({ ok: false, code: error.code || "SERVICE_UNAVAILABLE", requestId })
+  };
+  await createPostgresOptionsHandler(core)({ publicStoreId: "store_public_a", serviceId: "svc-a", openid: "attacker" });
+  const created = await createPostgresAppointmentHandler(core)({ publicStoreId: "store_public_a", name: "客户", phone: "13800138000", serviceId: "svc-a", advisorId: "adv-a", startAt: "2030-01-02T01:00:00.000Z", idempotencyKey: "key-a", openid: "attacker" });
+  await createPostgresListHandler(core)({ publicStoreId: "store_public_a", openid: "attacker" });
+  assert.equal(created.ok, true);
+  assert.equal(calls.find(item => item.pathname.endsWith("/appointments") && !item.pathname.endsWith("/list")).body.openid, "openid-from-cloud");
+  assert.equal(calls.find(item => item.pathname.endsWith("/list")).body.openid, "openid-from-cloud");
+  assert.ok(audits.some(item => item.event === "appointment_integration_failed"));
+  assert.equal(calls.length, 3);
 });

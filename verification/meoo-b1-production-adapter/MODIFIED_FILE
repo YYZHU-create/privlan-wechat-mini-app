@@ -1,0 +1,135 @@
+const crypto = require("node:crypto");
+
+class SupabaseAdapterError extends Error {
+  constructor(code, message, status = 500) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function scopeValues(scope) {
+  const values = [scope?.tenantId, scope?.workspaceId, scope?.storeId].map(value => String(value || "").trim());
+  if (values.some(value => !value)) throw new SupabaseAdapterError("SCOPE_REQUIRED", "tenant/workspace/store scope is required", 400);
+  return values;
+}
+
+function normalizeError(error, status) {
+  if (status === 404) return new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
+  if (status === 409 || error?.code === "23505") return new SupabaseAdapterError("TAG_EXISTS", "标签已存在", 409);
+  if (error?.code === "23514") return new SupabaseAdapterError("TAG_INVALID", "标签名称不能为空", 400);
+  return new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
+}
+
+function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl = globalThis.fetch, table = "customer_tags", sessionTable = "merchant_sessions", timeoutMs = 8000, onEvent = () => {} } = {}) {
+  if (!url || !/^https:\/\//i.test(String(url)) || !serviceRoleKey || typeof fetchImpl !== "function") throw new Error("Supabase server configuration is required");
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new Error("Supabase timeout is invalid");
+  const endpoint = `${String(url).replace(/\/$/, "")}/rest/v1/${table}`;
+  const headers = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" };
+
+  async function request(path = "", options = {}, baseEndpoint = endpoint) {
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetchImpl(`${baseEndpoint}${path}`, { ...options, signal: controller.signal, headers: { ...headers, ...(options.headers || {}) } });
+    } catch (error) {
+      onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: false, errorCategory: "DATABASE_UNAVAILABLE" });
+      throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
+    } finally { clearTimeout(timer); }
+    const text = await response.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    if (!response.ok) {
+      const normalized = normalizeError(body, response.status);
+      onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
+      throw normalized;
+    }
+    onEvent({ backend: "meoo", operation: options.method || "GET", durationMs: Date.now() - startedAt, success: true, errorCategory: null });
+    return body;
+  }
+
+  async function callRpc(name, body = {}) {
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(name || ""))) throw new SupabaseAdapterError("RPC_INVALID", "database operation is invalid", 400);
+    const rpcEndpoint = `${String(url).replace(/\/$/, "")}/rest/v1/rpc/${name}`;
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetchImpl(rpcEndpoint, { method: "POST", signal: controller.signal, headers, body: JSON.stringify(body) });
+    } catch (error) {
+      onEvent({ backend: "meoo", operation: `rpc.${name}`, durationMs: Date.now() - startedAt, success: false, errorCategory: "DATABASE_UNAVAILABLE" });
+      throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
+    } finally { clearTimeout(timer); }
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch { result = null; }
+    if (!response.ok) {
+      const normalized = normalizeError(result, response.status);
+      onEvent({ backend: "meoo", operation: `rpc.${name}`, durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
+      throw normalized;
+    }
+    onEvent({ backend: "meoo", operation: `rpc.${name}`, durationMs: Date.now() - startedAt, success: true, errorCategory: null });
+    return result;
+  }
+
+  function query(scope, extra = "") {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    return `tenant_id=eq.${encodeURIComponent(tenantId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&store_id=eq.${encodeURIComponent(storeId)}${extra ? `&${extra}` : ""}`;
+  }
+
+  async function listTags(scope) {
+    const rows = await request(`?select=id,name,created_at&${query(scope)}&order=name.asc`);
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  async function createTag(scope, input = {}) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    const name = String(input.name || "").trim().slice(0, 80);
+    if (!name) throw new SupabaseAdapterError("TAG_INVALID", "标签名称不能为空", 400);
+    const rows = await request("", {
+      method: "POST",
+      headers: { Prefer: "return=representation,resolution=standard" },
+      body: JSON.stringify({ id: input.id || crypto.randomUUID(), tenant_id: tenantId, workspace_id: workspaceId, store_id: storeId, name })
+    });
+    return Array.isArray(rows) ? rows[0] : rows;
+  }
+
+  async function deleteTag(scope, tagId) {
+    const rows = await request(`?${query(scope, `id=eq.${encodeURIComponent(String(tagId))}`)}&select=id`, {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" }
+    });
+    if (!Array.isArray(rows) || !rows[0]) throw new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
+    return { id: rows[0].id, deleted: true };
+  }
+
+  async function createSession(scope, input = {}) {
+    const [tenantId, workspaceId] = scopeValues(scope);
+    if (!input.userId || !input.tokenHash || !input.csrfTokenHash) throw new SupabaseAdapterError("SESSION_INVALID", "session fields are required", 400);
+    const sessionEndpoint = `${String(url).replace(/\/$/, "")}/rest/v1/${sessionTable}`;
+    const rows = await request("", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ id: input.id || crypto.randomUUID(), user_id: input.userId, workspace_id: workspaceId, tenant_id: tenantId, token_hash: input.tokenHash, csrf_token_hash: input.csrfTokenHash, expires_at: input.expiresAt || null }) }, sessionEndpoint);
+    return Array.isArray(rows) ? rows[0] : rows;
+  }
+
+  async function findSession(scope, sessionId) {
+    const [tenantId, workspaceId] = scopeValues(scope);
+    const sessionEndpoint = `${String(url).replace(/\/$/, "")}/rest/v1/${sessionTable}`;
+    const rows = await request(`?select=id,user_id,workspace_id,tenant_id,token_hash,csrf_token_hash,expires_at&id=eq.${encodeURIComponent(String(sessionId))}&tenant_id=eq.${encodeURIComponent(tenantId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}`, {}, sessionEndpoint);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+
+  async function revokeSession(scope, sessionId) {
+    const [tenantId, workspaceId] = scopeValues(scope);
+    const sessionEndpoint = `${String(url).replace(/\/$/, "")}/rest/v1/${sessionTable}`;
+    const rows = await request(`?id=eq.${encodeURIComponent(String(sessionId))}&tenant_id=eq.${encodeURIComponent(tenantId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}`, { method: "DELETE", headers: { Prefer: "return=representation" } }, sessionEndpoint);
+    if (!Array.isArray(rows) || !rows[0]) throw new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
+    return { id: rows[0].id, revoked: true };
+  }
+
+  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, callRpc };
+}
+
+module.exports = { createSupabaseAdapter, SupabaseAdapterError };

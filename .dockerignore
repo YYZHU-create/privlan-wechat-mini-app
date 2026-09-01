@@ -1,0 +1,26 @@
+# Meoo Image Runtime deployment context
+.env
+.env.*
+!.env.example
+!.env.local.example
+.cutover-artifacts/
+
+.git
+**/node_modules
+**/*.log
+admin/.env*
+admin/.platform-master-key
+admin/.ops-bootstrap.json
+admin/saas-state.json
+admin/config-backups
+admin/media-trash
+admin/verification
+admin/test/
+admin/e2e/
+admin/qa/
+verification/
+docs/
+platform/
+docker-compose.yml
+DEPLOYMENT.md
+images/pinterest_video.mp4

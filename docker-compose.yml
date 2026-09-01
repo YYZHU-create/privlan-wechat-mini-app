@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atelier_os
+      POSTGRES_USER: atelier_os
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atelier_os -d atelier_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - atelier_postgres:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ATELIER_PORT:-3456}:3456"
+    environment:
+      NODE_ENV: production
+      PORT: 3456
+      PRIVLAN_ADMIN_HOST: 0.0.0.0
+      DATABASE_URL: postgresql://atelier_os:${POSTGRES_PASSWORD}@postgres:5432/atelier_os
+      ATELIER_AUTO_MIGRATE: "1"
+      ATELIER_VERSION: ${ATELIER_VERSION:-mvp-1.0}
+      ATELIER_LICENSE_PEPPER: ${ATELIER_LICENSE_PEPPER:?set ATELIER_LICENSE_PEPPER}
+      ATELIER_MASTER_KEY: ${ATELIER_MASTER_KEY:?set ATELIER_MASTER_KEY}
+      ATELIER_OPS_EMAIL: ${ATELIER_OPS_EMAIL:?set ATELIER_OPS_EMAIL}
+      ATELIER_OPS_PASSWORD: ${ATELIER_OPS_PASSWORD:?set ATELIER_OPS_PASSWORD}
+      ATELIER_APPOINTMENT_GATEWAY_TOKEN: ${ATELIER_APPOINTMENT_GATEWAY_TOKEN:?set ATELIER_APPOINTMENT_GATEWAY_TOKEN}
+      ATELIER_OPENID_HASH_KEY: ${ATELIER_OPENID_HASH_KEY:?set ATELIER_OPENID_HASH_KEY}
+      PRIVLAN_LEGACY_FALLBACK: "0"
+      PRIVLAN_DISABLE_GIT_SYNC: "1"
+    volumes:
+      - atelier_workspace_data:/app/admin/data
+
+volumes:
+  atelier_postgres:
+  atelier_workspace_data:

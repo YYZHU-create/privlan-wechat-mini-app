@@ -1,0 +1,753 @@
+Sprint 2 reversible source patch record.
+Each PATCH| line preserves one raw Git patch line. [CONTEXT_BLANK] represents the single-space context line used by unified patches.
+--- PATCH START ---
+PATCH|diff --git a/admin/appointment-routes.js b/admin/appointment-routes.js
+PATCH|index 945bdad..cc16c11 100644
+PATCH|--- a/admin/appointment-routes.js
+PATCH|+++ b/admin/appointment-routes.js
+PATCH|@@ -82,6 +82,21 @@ function registerMerchantAppointmentRoutes(app) {
+PATCH|   app.post("/v1/appointment-advisors", async (req,res) => { try { return ok(res,await service(req).saveAdvisor(req.merchantScope,req.body||{}),"服务人员已创建",201,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|   app.patch("/v1/appointment-advisors/:id", async (req,res) => { try { return ok(res,await service(req).saveAdvisor(req.merchantScope,req.body||{},req.params.id),"服务人员已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|   app.delete("/v1/appointment-advisors/:id", async (req,res) => { try { return ok(res,await service(req).removeAdvisor(req.merchantScope,req.params.id),"服务人员已删除",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.get("/v1/staff", async (req,res) => { try { return ok(res,await service(req).listStaff(req.merchantScope),"员工已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.post("/v1/staff", async (req,res) => { try { return ok(res,await service(req).saveStaff(req.merchantScope,req.body||{}),"员工已创建",201,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.get("/v1/staff/:id", async (req,res) => { try { return ok(res,await service(req).getStaff(req.merchantScope,req.params.id),"员工详情已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.patch("/v1/staff/:id", async (req,res) => { try { return ok(res,await service(req).saveStaff(req.merchantScope,req.body||{},req.params.id),"员工已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.put("/v1/staff/:id/assignments", async (req,res) => { try { return ok(res,await service(req).replaceStaffAssignments(req.merchantScope,req.params.id,req.body||{}),"员工门店归属已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.put("/v1/staff/:id/capabilities", async (req,res) => { try { return ok(res,await service(req).setStaffCapabilities(req.merchantScope,req.params.id,req.body||{}),"员工服务能力已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.get("/v1/staff/:id/schedules", async (req,res) => { try { return ok(res,await service(req).listStaffSchedules(req.merchantScope,req.params.id),"员工工作时间已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.put("/v1/staff/:id/schedules", async (req,res) => { try { return ok(res,await service(req).replaceStaffSchedules(req.merchantScope,req.params.id,req.body||{}),"员工工作时间已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.get("/v1/staff/:id/leaves", async (req,res) => { try { return ok(res,await service(req).listStaffLeaves(req.merchantScope,req.params.id),"员工请假记录已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.post("/v1/staff/:id/leaves", async (req,res) => { try { return ok(res,await service(req).saveStaffLeave(req.merchantScope,req.params.id,req.body||{}),"员工请假已记录",201,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.delete("/v1/staff/:id/leaves/:leaveId", async (req,res) => { try { return ok(res,await service(req).removeStaffLeave(req.merchantScope,req.params.id,req.params.leaveId),"员工请假已删除",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.get("/v1/appointment-resources", async (req,res) => { try { return ok(res,await service(req).listResources(req.merchantScope),"预约资源已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.post("/v1/appointment-resources", async (req,res) => { try { return ok(res,await service(req).saveResource(req.merchantScope,req.body||{}),"预约资源已创建",201,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.patch("/v1/appointment-resources/:id", async (req,res) => { try { return ok(res,await service(req).saveResource(req.merchantScope,req.body||{},req.params.id),"预约资源已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|+  app.put("/v1/appointment-resources/:id/assignments", async (req,res) => { try { return ok(res,await service(req).replaceResourceAssignments(req.merchantScope,req.params.id,req.body||{}),"预约资源门店归属已更新",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|   app.get("/v1/appointment-business-hours", async (req,res) => { try { return ok(res,await service(req).listHours(req.merchantScope),"营业时间已获取",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH|   app.put("/v1/appointment-business-hours", async (req,res) => { try { return ok(res,await service(req).replaceHours(req.merchantScope,req.body||{}),"营业时间已保存",200,req.requestId); } catch(error){ return fail(res,error,req.requestId); } });
+PATCH| }
+PATCH|diff --git a/admin/appointment-service.js b/admin/appointment-service.js
+PATCH|index c8af9b3..ccc44e3 100644
+PATCH|--- a/admin/appointment-service.js
+PATCH|+++ b/admin/appointment-service.js
+PATCH|@@ -46,14 +46,19 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|       service = { id: uuid() };
+PATCH|       await tx.query(`insert into appointment_services(id,tenant_id,workspace_id,store_id,name,description,duration_minutes) values($1,$2,$3,$4,'预约服务','', $5)`, [service.id, tenantId, workspaceId, storeId, durationMinutes]);
+PATCH|     }
+PATCH|-    let advisor = (await tx.query("select id from appointment_advisors where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by sort_order,id limit 1", rowScope(scope))).rows[0];
+PATCH|+    let advisor = (await tx.query("select id,staff_id,name,enabled from appointment_advisors where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by sort_order,id limit 1", rowScope(scope))).rows[0];
+PATCH|     if (!advisor) {
+PATCH|-      advisor = { id: uuid() };
+PATCH|-      await tx.query(`insert into appointment_advisors(id,tenant_id,workspace_id,store_id,name) values($1,$2,$3,$4,'默认服务人员')`, [advisor.id, tenantId, workspaceId, storeId]);
+PATCH|+      advisor = { id: uuid(), staff_id: uuid(), name: "默认服务人员", enabled: true };
+PATCH|+      await tx.query("insert into staff_members(id,tenant_id,workspace_id,display_name) values($1,$2,$3,$4)", [advisor.staff_id, tenantId, workspaceId, advisor.name]);
+PATCH|+      await tx.query("insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id) values($1,$2,$3,$4,$5)", [uuid(), tenantId, workspaceId, storeId, advisor.staff_id]);
+PATCH|+      await tx.query(`insert into appointment_advisors(id,tenant_id,workspace_id,store_id,staff_id,name) values($1,$2,$3,$4,$5,$6)`, [advisor.id, tenantId, workspaceId, storeId, advisor.staff_id, advisor.name]);
+PATCH|     }
+PATCH|     await tx.query(`insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) values($1,$2,$3,$4,$5) on conflict(advisor_id,service_id) do nothing`, [tenantId, workspaceId, storeId, advisor.id, service.id]);
+PATCH|     const count = Number((await tx.query("select count(*)::int count from appointment_business_hours where store_id=$1", [storeId])).rows[0]?.count || 0);
+PATCH|     if (!count) for (let weekday = 0; weekday < 7; weekday += 1) await tx.query(`insert into appointment_business_hours(id,tenant_id,workspace_id,store_id,weekday,start_time,end_time) values($1,$2,$3,$4,$5,'09:00','18:00')`, [uuid(), tenantId, workspaceId, storeId, weekday]);
+PATCH|+    if (advisor.staff_id) await tx.query(`insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled)
+PATCH|+      select gen_random_uuid(),$1,$2,$3,$4,h.weekday,h.start_time,h.end_time,h.enabled from appointment_business_hours h where h.tenant_id=$1 and h.workspace_id=$2 and h.store_id=$3
+PATCH|+      on conflict(store_id,staff_id,weekday,start_time,end_time) do nothing`, [tenantId, workspaceId, storeId, advisor.staff_id]);
+PATCH|     return { serviceId: service.id, advisorId: advisor.id };
+PATCH|   }
+PATCH|[CONTEXT_BLANK]
+PATCH|@@ -85,7 +90,13 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|     if (input.serviceId && !service) throw new AppointmentError(400, "INVALID_INPUT", "预约服务无效");
+PATCH|     if (!service) return { services: [], advisors: [], dates: [], slots: [], store: { publicStoreId: scope.publicStoreId, name: scope.storeName } };
+PATCH|     const mappings = (await db.query("select advisor_id from appointment_advisor_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and service_id=$4", [...rowScope(scope), service.id])).rows.map(row => row.advisor_id);
+PATCH|-    const eligibleAdvisors = advisors.filter(item => mappings.includes(item.id));
+PATCH|+    let eligibleAdvisors = advisors.filter(item => mappings.includes(item.id));
+PATCH|+    if (input.advisorId) eligibleAdvisors = eligibleAdvisors.filter(item => item.id === String(input.advisorId));
+PATCH|+    if (input.staffId) eligibleAdvisors = eligibleAdvisors.filter(item => String(item.staff_id || "") === String(input.staffId));
+PATCH|+    const eligibleStaffIds = [...new Set(eligibleAdvisors.map(item => item.staff_id).filter(Boolean))];
+PATCH|+    const staffRows = eligibleStaffIds.length ? (await db.query(`select sm.*,aa.id advisor_id,ssa.status assignment_status from staff_members sm join staff_store_assignments ssa on ssa.staff_id=sm.id and ssa.tenant_id=sm.tenant_id and ssa.workspace_id=sm.workspace_id join appointment_advisors aa on aa.staff_id=sm.id and aa.tenant_id=sm.tenant_id and aa.workspace_id=sm.workspace_id and aa.store_id=ssa.store_id where sm.tenant_id=$1 and sm.workspace_id=$2 and ssa.store_id=$3 and sm.status='active' and ssa.status='active' and aa.enabled=true and sm.id=any($4)`, [...rowScope(scope), eligibleStaffIds])).rows : [];
+PATCH|+    const activeStaffIds = new Set(staffRows.map(row => row.id));
+PATCH|+    eligibleAdvisors = eligibleAdvisors.filter(item => !item.staff_id || activeStaffIds.has(item.staff_id));
+PATCH|     const current = now().setZone(settings.timezone);
+PATCH|     const hours = (await db.query("select * from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3 and enabled=true order by weekday,start_time", rowScope(scope))).rows;
+PATCH|     const dates = [];
+PATCH|@@ -95,37 +106,63 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|     }
+PATCH|     const selectedDate = String(input.date || dates[0]?.value || "");
+PATCH|     const day = storeDay(selectedDate, settings.timezone);
+PATCH|-    if (!day.isValid || !dates.some(item => item.value === selectedDate)) return { services: services.map(serviceView), advisors: eligibleAdvisors.map(advisorView), dates, slots: [], store: { publicStoreId: scope.publicStoreId, name: scope.storeName } };
+PATCH|+    if (!day.isValid || !dates.some(item => item.value === selectedDate)) return { services: services.map(serviceView), advisors: eligibleAdvisors.map(advisorView), staff: staffRows.map(staffView), dates, slots: [], store: { publicStoreId: scope.publicStoreId, name: scope.storeName } };
+PATCH|+    let resource = null;
+PATCH|+    if (input.resourceId) {
+PATCH|+      resource = (await db.query(`select r.* from resources r join resource_store_assignments rsa on rsa.resource_id=r.id and rsa.tenant_id=r.tenant_id and rsa.workspace_id=r.workspace_id where r.id=$1 and r.tenant_id=$2 and r.workspace_id=$3 and rsa.store_id=$4 and r.status='active' and rsa.status='active'`, [String(input.resourceId), ...rowScope(scope)])).rows[0];
+PATCH|+      if (!resource) throw new AppointmentError(400, "APPOINTMENT_SCOPE_INVALID", "预约资源无效或不属于当前门店");
+PATCH|+    }
+PATCH|     const dayHours = hours.filter(item => Number(item.weekday) === storeWeekday(day));
+PATCH|     const rangeStart = day.startOf("day").toUTC().toJSDate(); const rangeEnd = day.plus({ days: 1 }).startOf("day").toUTC().toJSDate();
+PATCH|-    const existing = (await db.query(`select advisor_id,start_at,occupied_until from appointments where tenant_id=$1 and workspace_id=$2 and store_id=$3 and status=any($4) and start_at<$6 and occupied_until>$5`, [...rowScope(scope), ACTIVE_STATUSES, rangeStart, rangeEnd])).rows;
+PATCH|+    const [existingResult, scheduleResult, leaveResult] = await Promise.all([
+PATCH|+      db.query(`select advisor_id,resource_id,start_at,occupied_until from appointments where tenant_id=$1 and workspace_id=$2 and store_id=$3 and status=any($4) and start_at<$6 and occupied_until>$5`, [...rowScope(scope), ACTIVE_STATUSES, rangeStart, rangeEnd]),
+PATCH|+      eligibleStaffIds.length ? db.query(`select * from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and weekday=$4 and enabled=true and staff_id=any($5)`, [...rowScope(scope), storeWeekday(day), eligibleStaffIds]) : Promise.resolve({ rows: [] }),
+PATCH|+      eligibleStaffIds.length ? db.query(`select * from staff_leaves where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=any($4) and start_at<$6 and end_at>$5`, [...rowScope(scope), eligibleStaffIds, rangeStart, rangeEnd]) : Promise.resolve({ rows: [] })
+PATCH|+    ]);
+PATCH|+    const existing = existingResult.rows; const schedules = scheduleResult.rows; const leaves = leaveResult.rows;
+PATCH|     const buffer = service.buffer_minutes_override === null || service.buffer_minutes_override === undefined ? Number(settings.default_buffer_minutes) : Number(service.buffer_minutes_override);
+PATCH|-    const chosen = String(input.advisorId || "");
+PATCH|-    const candidates = chosen ? eligibleAdvisors.filter(item => item.id === chosen) : eligibleAdvisors;
+PATCH|     const slots = [];
+PATCH|+    const staffCanWork = (advisor, candidate, occupiedUntil) => {
+PATCH|+      if (!advisor.staff_id) return true;
+PATCH|+      const scheduled = schedules.some(item => item.staff_id === advisor.staff_id && (() => { const window = businessWindow(selectedDate, item.start_time, item.end_time, settings.timezone); return candidate >= window.start && occupiedUntil <= window.end; })());
+PATCH|+      const onLeave = leaves.some(item => item.staff_id === advisor.staff_id && overlaps(DateTime.fromJSDate(new Date(item.start_at)), DateTime.fromJSDate(new Date(item.end_at)), candidate, occupiedUntil));
+PATCH|+      return scheduled && !onLeave;
+PATCH|+    };
+PATCH|     for (const interval of dayHours) {
+PATCH|       const startText = String(interval.start_time).slice(0,5); const endText = String(interval.end_time).slice(0,5);
+PATCH|       const { start: windowStart, end: windowEnd } = businessWindow(selectedDate, startText, endText, settings.timezone);
+PATCH|       for (let candidate = windowStart; candidate.plus({ minutes: Number(service.duration_minutes) + buffer }) <= windowEnd; candidate = candidate.plus({ minutes: Number(settings.slot_interval_minutes) })) {
+PATCH|         if (candidate < current) continue;
+PATCH|         const occupiedUntil = candidate.plus({ minutes: Number(service.duration_minutes) + buffer });
+PATCH|-        const availableAdvisorIds = candidates.filter(advisor => !existing.some(item => item.advisor_id === advisor.id && overlaps(DateTime.fromJSDate(new Date(item.start_at)), DateTime.fromJSDate(new Date(item.occupied_until)), candidate, occupiedUntil))).map(item => item.id);
+PATCH|-        slots.push({ id: candidate.toUTC().toISO(), startAt: candidate.toUTC().toISO(), label: `${candidate.toFormat("HH:mm")}–${candidate.plus({ minutes: Number(service.duration_minutes) }).toFormat("HH:mm")}`, available: availableAdvisorIds.length > 0, availableAdvisorIds });
+PATCH|+        const resourceOpen = !resource || !existing.some(item => item.resource_id === resource.id && overlaps(DateTime.fromJSDate(new Date(item.start_at)), DateTime.fromJSDate(new Date(item.occupied_until)), candidate, occupiedUntil));
+PATCH|+        const available = resourceOpen ? eligibleAdvisors.filter(advisor => staffCanWork(advisor, candidate, occupiedUntil) && !existing.some(item => item.advisor_id === advisor.id && overlaps(DateTime.fromJSDate(new Date(item.start_at)), DateTime.fromJSDate(new Date(item.occupied_until)), candidate, occupiedUntil))) : [];
+PATCH|+        const availableAdvisorIds = available.map(item => item.id);
+PATCH|+        slots.push({ id: candidate.toUTC().toISO(), startAt: candidate.toUTC().toISO(), label: `${candidate.toFormat("HH:mm")}–${candidate.plus({ minutes: Number(service.duration_minutes) }).toFormat("HH:mm")}`, available: availableAdvisorIds.length > 0, availableAdvisorIds, availableStaffIds: [...new Set(available.map(item => item.staff_id).filter(Boolean))], resourceId: resource?.id || null });
+PATCH|       }
+PATCH|     }
+PATCH|-    return { store: { publicStoreId: scope.publicStoreId, name: scope.storeName }, services: services.map(serviceView), advisors: eligibleAdvisors.map(advisorView), dates, slots, durationMinutes: Number(service.duration_minutes), effectiveBufferMinutes: buffer, selectedDate };
+PATCH|+    return { store: { publicStoreId: scope.publicStoreId, name: scope.storeName }, services: services.map(serviceView), advisors: eligibleAdvisors.map(advisorView), staff: staffRows.map(staffView), dates, slots, durationMinutes: Number(service.duration_minutes), effectiveBufferMinutes: buffer, selectedDate, resource: resource ? resourceView(resource) : null };
+PATCH|   }
+PATCH|[CONTEXT_BLANK]
+PATCH|   function serviceView(row) { return { id: row.id, name: row.name, description: row.description || "", durationMinutes: Number(row.duration_minutes), bufferMinutesOverride: row.buffer_minutes_override === null ? null : Number(row.buffer_minutes_override), enabled: row.enabled, sortOrder: Number(row.sort_order) }; }
+PATCH|-  function advisorView(row) { return { id: row.id, name: row.name, enabled: row.enabled, sortOrder: Number(row.sort_order) }; }
+PATCH|+  function advisorView(row) { return { id: row.id, staffId: row.staff_id || null, name: row.name, enabled: row.enabled, sortOrder: Number(row.sort_order) }; }
+PATCH|+  function staffView(row) { return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url || "", title: row.title || "", status: row.status, publicVisible: row.public_visible, advisorId: row.advisor_id || null, assignmentStatus: row.assignment_status || null, services: row.services || [] }; }
+PATCH|+  function scheduleView(row) { return { id: row.id, storeId: row.store_id, staffId: row.staff_id, weekday: Number(row.weekday), startTime: String(row.start_time).slice(0,5), endTime: String(row.end_time).slice(0,5), enabled: row.enabled }; }
+PATCH|+  function leaveView(row) { return { id: row.id, storeId: row.store_id, staffId: row.staff_id, startAt: row.start_at, endAt: row.end_at, reason: row.reason || "" }; }
+PATCH|+  function resourceView(row) { return { id: row.id, name: row.name, kind: row.kind, status: row.status, assignmentStatus: row.assignment_status || null }; }
+PATCH|[CONTEXT_BLANK]
+PATCH|   async function validateCreate(tx, scope, input) {
+PATCH|     const settings = (await tx.query("select * from appointment_settings where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows[0];
+PATCH|     const service = (await tx.query("select * from appointment_services where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and enabled=true", [input.serviceId, ...rowScope(scope)])).rows[0];
+PATCH|-    const advisor = (await tx.query("select * from appointment_advisors where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and enabled=true", [input.advisorId, ...rowScope(scope)])).rows[0];
+PATCH|+    let advisorId = String(input.advisorId || "");
+PATCH|+    if (input.staffId) {
+PATCH|+      const mapped = (await tx.query("select id from appointment_advisors where staff_id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and enabled=true", [String(input.staffId), ...rowScope(scope)])).rows[0];
+PATCH|+      if (!mapped || (advisorId && advisorId !== mapped.id)) throw new AppointmentError(400, "APPOINTMENT_SCOPE_INVALID", "员工不属于当前门店或顾问记录不一致");
+PATCH|+      advisorId = mapped.id;
+PATCH|+    }
+PATCH|+    const advisor = advisorId ? (await tx.query("select * from appointment_advisors where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and enabled=true", [advisorId, ...rowScope(scope)])).rows[0] : null;
+PATCH|     if (!service || !advisor) throw new AppointmentError(400, "INVALID_INPUT", "预约服务或顾问无效");
+PATCH|     const related = (await tx.query("select 1 from appointment_advisor_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and advisor_id=$4 and service_id=$5", [...rowScope(scope), advisor.id, service.id])).rows[0];
+PATCH|-    if (!related) throw new AppointmentError(400, "INVALID_INPUT", "该顾问暂不提供所选服务");
+PATCH|+    if (!related) throw new AppointmentError(400, "INVALID_INPUT", "该员工暂不提供所选服务");
+PATCH|     if (!settings || !assertTimezone(settings.timezone)) throw new AppointmentError(500, "TIMEZONE_INVALID", "门店时区配置无效");
+PATCH|     const start = utcInstant(input.startAt);
+PATCH|     if (!start.isValid) throw new AppointmentError(400, "INVALID_INPUT", "预约时间无效");
+PATCH|@@ -139,7 +176,22 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|       return isSlotAligned(local, windowStart, settings.slot_interval_minutes) && occupiedUntil.setZone(settings.timezone) <= windowEnd;
+PATCH|     });
+PATCH|     if (!validWindow) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "该时间不在营业或可预约时段内");
+PATCH|-    return { settings, service, advisor, start, serviceEnd, occupiedUntil, buffer };
+PATCH|+    let staff = null;
+PATCH|+    if (advisor.staff_id) {
+PATCH|+      staff = (await tx.query(`select sm.* from staff_members sm join staff_store_assignments ssa on ssa.staff_id=sm.id and ssa.tenant_id=sm.tenant_id and ssa.workspace_id=sm.workspace_id where sm.id=$1 and sm.tenant_id=$2 and sm.workspace_id=$3 and ssa.store_id=$4 and sm.status='active' and ssa.status='active'`, [advisor.staff_id, ...rowScope(scope)])).rows[0];
+PATCH|+      if (!staff) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "该员工当前不可预约");
+PATCH|+      const schedules = (await tx.query("select * from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 and weekday=$5 and enabled=true", [...rowScope(scope), staff.id, storeWeekday(local)])).rows;
+PATCH|+      const scheduled = schedules.some(item => { const window = businessWindow(local.toISODate(), item.start_time, item.end_time, settings.timezone); return local >= window.start && occupiedUntil.setZone(settings.timezone) <= window.end; });
+PATCH|+      if (!scheduled) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "该员工当前排班不包含所选时间");
+PATCH|+      const leave = (await tx.query("select id from staff_leaves where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 and start_at<$6 and end_at>$5 limit 1", [...rowScope(scope), staff.id, occupiedUntil.toJSDate(), start.toJSDate()])).rows[0];
+PATCH|+      if (leave) throw new AppointmentError(409, "SLOT_UNAVAILABLE", "该员工在所选时间请假");
+PATCH|+    }
+PATCH|+    let resource = null;
+PATCH|+    if (input.resourceId) {
+PATCH|+      resource = (await tx.query(`select r.* from resources r join resource_store_assignments rsa on rsa.resource_id=r.id and rsa.tenant_id=r.tenant_id and rsa.workspace_id=r.workspace_id where r.id=$1 and r.tenant_id=$2 and r.workspace_id=$3 and rsa.store_id=$4 and r.status='active' and rsa.status='active'`, [String(input.resourceId), ...rowScope(scope)])).rows[0];
+PATCH|+      if (!resource) throw new AppointmentError(400, "APPOINTMENT_SCOPE_INVALID", "预约资源无效或不属于当前门店");
+PATCH|+    }
+PATCH|+    return { settings, service, advisor, staff, resource, start, serviceEnd, occupiedUntil, buffer };
+PATCH|   }
+PATCH|[CONTEXT_BLANK]
+PATCH|   async function createAppointment(input, context = {}) {
+PATCH|@@ -152,14 +204,20 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|       if (prior) return appointmentPublicView(prior, scope.storeName, true);
+PATCH|       const validated = await validateCreate(tx, scope, input);
+PATCH|       await tx.query("select id from appointment_advisors where id=$1 for update", [validated.advisor.id]);
+PATCH|+      if (validated.staff) await tx.query("select id from staff_members where id=$1 for update", [validated.staff.id]);
+PATCH|+      if (validated.resource) await tx.query("select id from resources where id=$1 for update", [validated.resource.id]);
+PATCH|       prior = (await tx.query("select * from appointments where workspace_id=$1 and idempotency_key=$2", [scope.workspaceId, idempotencyKey])).rows[0];
+PATCH|       if (prior) return appointmentPublicView(prior, scope.storeName, true);
+PATCH|       const customer = await identityService.findOrCreateCustomer(tx, scope, { openid, name, phone, source: "appointment" });
+PATCH|       const conflict = (await tx.query(`select id from appointments where tenant_id=$1 and workspace_id=$2 and store_id=$3 and advisor_id=$4 and status=any($5) and start_at<$7 and occupied_until>$6 limit 1`, [...rowScope(scope), validated.advisor.id, ACTIVE_STATUSES, validated.start.toJSDate(), validated.occupiedUntil.toJSDate()])).rows[0];
+PATCH|       if (conflict) throw new AppointmentError(409, "APPOINTMENT_CONFLICT", "该时间刚刚被预约，请选择其他时间");
+PATCH|+      if (validated.resource) {
+PATCH|+        const resourceConflict = (await tx.query(`select id from appointments where tenant_id=$1 and workspace_id=$2 and store_id=$3 and resource_id=$4 and status=any($5) and start_at<$7 and occupied_until>$6 limit 1`, [...rowScope(scope), validated.resource.id, ACTIVE_STATUSES, validated.start.toJSDate(), validated.occupiedUntil.toJSDate()])).rows[0];
+PATCH|+        if (resourceConflict) throw new AppointmentError(409, "APPOINTMENT_CONFLICT", "该预约资源在所选时间不可用");
+PATCH|+      }
+PATCH|       const appointmentId = uuid(); const appointmentNumber = `AT${validated.start.toFormat("yyLLdd")}${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+PATCH|-      const appointment = (await tx.query(`insert into appointments(id,tenant_id,workspace_id,store_id,customer_id,service_id,advisor_id,appointment_number,status,start_at,service_end_at,occupied_until,duration_minutes_snapshot,buffer_minutes_snapshot,timezone_snapshot,customer_name_snapshot,customer_phone_snapshot,service_name_snapshot,advisor_name_snapshot,notes,source,idempotency_key)
+PATCH|-        values($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'mini_program',$20) returning *`, [appointmentId, ...rowScope(scope), customer.id, validated.service.id, validated.advisor.id, appointmentNumber, validated.start.toJSDate(), validated.serviceEnd.toJSDate(), validated.occupiedUntil.toJSDate(), validated.service.duration_minutes, validated.buffer, validated.settings.timezone, name, phone, validated.service.name, validated.advisor.name, String(input.notes || "").trim().slice(0,1000), idempotencyKey])).rows[0];
+PATCH|+      const appointment = (await tx.query(`insert into appointments(id,tenant_id,workspace_id,store_id,customer_id,service_id,advisor_id,resource_id,appointment_number,status,start_at,service_end_at,occupied_until,duration_minutes_snapshot,buffer_minutes_snapshot,timezone_snapshot,customer_name_snapshot,customer_phone_snapshot,service_name_snapshot,advisor_name_snapshot,notes,source,idempotency_key)
+PATCH|+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'mini_program',$21) returning *`, [appointmentId, ...rowScope(scope), customer.id, validated.service.id, validated.advisor.id, validated.resource?.id || null, appointmentNumber, validated.start.toJSDate(), validated.serviceEnd.toJSDate(), validated.occupiedUntil.toJSDate(), validated.service.duration_minutes, validated.buffer, validated.settings.timezone, name, phone, validated.service.name, validated.advisor.name, String(input.notes || "").trim().slice(0,1000), idempotencyKey])).rows[0];
+PATCH|       await tx.query("update customers set appointment_count=appointment_count+1,last_seen_at=now(),updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [customer.id, ...rowScope(scope)]);
+PATCH|       await identityService.appendEvent(tx, scope, customer.id, "appointment_created", "appointment", "appointment", appointment.id);
+PATCH|       await audit(tx, scope, "appointment.create", "appointment", appointment.id, { source: "mini_program", status: "pending" });
+PATCH|@@ -307,7 +365,7 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|   async function listAdvisors(scope) { return (await scopedResources(scope)).advisors.map(advisorView); }
+PATCH|   async function saveAdvisor(scope, input, id = null) {
+PATCH|     assertWritable(scope); const name=String(input.name||"").trim().slice(0,80); if(!name) throw new AppointmentError(400,"APPOINTMENT_ADVISOR_INVALID","请输入服务人员姓名");
+PATCH|-    return db.transaction(async tx => { const advisorId=id||uuid(); if(id){const result=await tx.query("update appointment_advisors set name=$1,enabled=$2,sort_order=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6 and store_id=$7 returning *",[name,input.enabled!==false,int(input.sortOrder,-10000,10000,0),id,...rowScope(scope)]);if(!result.rows[0])throw new AppointmentError(404,"APPOINTMENT_ADVISOR_NOT_FOUND","服务人员不存在");}else{await tx.query("insert into appointment_advisors(id,tenant_id,workspace_id,store_id,name,enabled,sort_order) values($1,$2,$3,$4,$5,$6,$7)",[advisorId,...rowScope(scope),name,input.enabled!==false,int(input.sortOrder,-10000,10000,0)]);await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) select tenant_id,workspace_id,store_id,$1,id from appointment_services where tenant_id=$2 and workspace_id=$3 and store_id=$4 on conflict(advisor_id,service_id) do nothing",[advisorId,...rowScope(scope)]);}await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},id?"appointment.advisor.update":"appointment.advisor.create","appointment_advisor",advisorId,{enabled:input.enabled!==false});return advisorView((await tx.query("select * from appointment_advisors where id=$1",[advisorId])).rows[0]);});
+PATCH|+    return db.transaction(async tx => { const advisorId=id||uuid(); let staffId=String(input.staffId||"") || null; if(id){const result=await tx.query("update appointment_advisors set name=$1,enabled=$2,sort_order=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6 and store_id=$7 returning *",[name,input.enabled!==false,int(input.sortOrder,-10000,10000,0),id,...rowScope(scope)]);if(!result.rows[0])throw new AppointmentError(404,"APPOINTMENT_ADVISOR_NOT_FOUND","服务人员不存在");staffId=result.rows[0].staff_id||staffId;if(staffId)await tx.query("update staff_members set display_name=$1,status=$2,public_visible=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6",[name,input.enabled!==false?"active":"inactive",input.enabled!==false,staffId,scope.tenantId,scope.workspaceId]);}else{staffId=staffId||uuid();const exists=(await tx.query("select id from staff_members where id=$1 and tenant_id=$2 and workspace_id=$3",[staffId,scope.tenantId,scope.workspaceId])).rows[0];if(!exists)await tx.query("insert into staff_members(id,tenant_id,workspace_id,display_name,status,public_visible) values($1,$2,$3,$4,$5,$6)",[staffId,scope.tenantId,scope.workspaceId,name,input.enabled!==false?"active":"inactive",input.enabled!==false]);await tx.query("insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id,status) values($1,$2,$3,$4,$5,$6) on conflict(store_id,staff_id) do update set status=excluded.status,updated_at=now()",[uuid(),...rowScope(scope),staffId,input.enabled!==false?"active":"inactive"]);await tx.query("insert into appointment_advisors(id,tenant_id,workspace_id,store_id,staff_id,name,enabled,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8)",[advisorId,...rowScope(scope),staffId,name,input.enabled!==false,int(input.sortOrder,-10000,10000,0)]);await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) select tenant_id,workspace_id,store_id,$1,id from appointment_services where tenant_id=$2 and workspace_id=$3 and store_id=$4 on conflict(advisor_id,service_id) do nothing",[advisorId,...rowScope(scope)]);const hours=(await tx.query("select weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3",rowScope(scope))).rows;for(const hour of hours)await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9)",[uuid(),...rowScope(scope),staffId,hour.weekday,hour.start_time,hour.end_time,hour.enabled]);}await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},id?"appointment.advisor.update":"appointment.advisor.create","appointment_advisor",advisorId,{enabled:input.enabled!==false,staffId});return advisorView((await tx.query("select * from appointment_advisors where id=$1",[advisorId])).rows[0]);});
+PATCH|   }
+PATCH|   async function removeAdvisor(scope, id) {
+PATCH|     assertWritable(scope);
+PATCH|@@ -328,7 +386,134 @@ function createAppointmentService({ db, openIdHashKey = process.env.ATELIER_OPEN
+PATCH|     await db.transaction(async tx=>{await tx.query("delete from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3",rowScope(scope));for(const item of hours)await tx.query("insert into appointment_business_hours(id,tenant_id,workspace_id,store_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8)",[uuid(),...rowScope(scope),Number(item.weekday),item.startTime,item.endTime,item.enabled!==false]);await audit(tx,{...scope,actorType:"merchant",actorId:scope.userId},"appointment.business_hours.update","appointment_business_hours",scope.storeId,{windowCount:hours.length});});return listHours(scope);
+PATCH|   }
+PATCH|[CONTEXT_BLANK]
+PATCH|-  return { ensureDefaults, availableOptions, merchantAvailability, createAppointment, listPublicAppointments, stats, listAppointments, getAppointment, timeline, createFollowUp, updateStatus, listCustomers, getCustomer, getSettings, updateSettings, listServices, saveService, removeService, listAdvisors, saveAdvisor, removeAdvisor, listHours, replaceHours, hashOpenId, assertWritable, AppointmentError };
+PATCH|+  async function requireStaff(scope, staffId) {
+PATCH|+    const row = (await db.query(`select sm.* from staff_members sm join staff_store_assignments ssa on ssa.staff_id=sm.id and ssa.tenant_id=sm.tenant_id and ssa.workspace_id=sm.workspace_id where sm.id=$1 and sm.tenant_id=$2 and sm.workspace_id=$3 and ssa.store_id=$4`, [staffId, ...rowScope(scope)])).rows[0];
+PATCH|+    if (!row) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+PATCH|+    return row;
+PATCH|+  }
+PATCH|+  async function advisorForStaff(scope, staffId, tx = db) {
+PATCH|+    return (await tx.query("select * from appointment_advisors where staff_id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [staffId, ...rowScope(scope)])).rows[0];
+PATCH|+  }
+PATCH|+  async function listStaff(scope) {
+PATCH|+    const [rows, mappings] = await Promise.all([
+PATCH|+      db.query(`select sm.*,aa.id advisor_id,ssa.status assignment_status from staff_members sm join staff_store_assignments ssa on ssa.staff_id=sm.id and ssa.tenant_id=sm.tenant_id and ssa.workspace_id=sm.workspace_id left join appointment_advisors aa on aa.staff_id=sm.id and aa.tenant_id=sm.tenant_id and aa.workspace_id=sm.workspace_id and aa.store_id=ssa.store_id where sm.tenant_id=$1 and sm.workspace_id=$2 and ssa.store_id=$3 order by sm.status,sm.display_name`, rowScope(scope)),
+PATCH|+      db.query(`select aas.advisor_id,s.id,s.name from appointment_advisor_services aas join appointment_services s on s.id=aas.service_id where aas.tenant_id=$1 and aas.workspace_id=$2 and aas.store_id=$3`, rowScope(scope))
+PATCH|+    ]);
+PATCH|+    return rows.rows.map(row => staffView({ ...row, services: mappings.rows.filter(item => item.advisor_id === row.advisor_id).map(item => ({ id: item.id, name: item.name })) }));
+PATCH|+  }
+PATCH|+  async function listStaffSchedules(scope, staffId) {
+PATCH|+    await requireStaff(scope, staffId);
+PATCH|+    return (await db.query("select * from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 order by weekday,start_time", [...rowScope(scope), staffId])).rows.map(scheduleView);
+PATCH|+  }
+PATCH|+  async function listStaffLeaves(scope, staffId) {
+PATCH|+    await requireStaff(scope, staffId);
+PATCH|+    return (await db.query("select * from staff_leaves where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4 order by start_at desc", [...rowScope(scope), staffId])).rows.map(leaveView);
+PATCH|+  }
+PATCH|+  async function getStaff(scope, staffId) {
+PATCH|+    const item = (await listStaff(scope)).find(row => row.id === staffId);
+PATCH|+    if (!item) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+PATCH|+    item.schedules = await listStaffSchedules(scope, staffId);
+PATCH|+    item.leaves = await listStaffLeaves(scope, staffId);
+PATCH|+    return item;
+PATCH|+  }
+PATCH|+  async function saveStaff(scope, input = {}, staffId = null) {
+PATCH|+    assertWritable(scope);
+PATCH|+    const displayName = String(input.displayName || input.name || "").trim().slice(0, 80);
+PATCH|+    const title = String(input.title || "").trim().slice(0, 80);
+PATCH|+    const status = input.status === "inactive" ? "inactive" : "active";
+PATCH|+    if (!displayName) throw new AppointmentError(400, "STAFF_INVALID", "请输入员工姓名");
+PATCH|+    const id = staffId || uuid();
+PATCH|+    await db.transaction(async tx => {
+PATCH|+      if (staffId) {
+PATCH|+        const row = (await tx.query("update staff_members set display_name=$1,avatar_url=$2,title=$3,status=$4,public_visible=$5,updated_at=now() where id=$6 and tenant_id=$7 and workspace_id=$8 returning id", [displayName, String(input.avatarUrl || "").slice(0, 2000), title, status, input.publicVisible !== false, id, scope.tenantId, scope.workspaceId])).rows[0];
+PATCH|+        if (!row) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+PATCH|+        await tx.query("update appointment_advisors set name=$1,enabled=$2,updated_at=now() where staff_id=$3 and tenant_id=$4 and workspace_id=$5 and store_id=$6", [displayName, status === "active", id, ...rowScope(scope)]);
+PATCH|+      } else {
+PATCH|+        await tx.query("insert into staff_members(id,tenant_id,workspace_id,display_name,avatar_url,title,status,public_visible) values($1,$2,$3,$4,$5,$6,$7,$8)", [id, scope.tenantId, scope.workspaceId, displayName, String(input.avatarUrl || "").slice(0, 2000), title, status, input.publicVisible !== false]);
+PATCH|+        await tx.query("insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id,status) values($1,$2,$3,$4,$5,$6)", [uuid(), ...rowScope(scope), id, status]);
+PATCH|+        const advisorId = uuid();
+PATCH|+        await tx.query("insert into appointment_advisors(id,tenant_id,workspace_id,store_id,staff_id,name,enabled,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8)", [advisorId, ...rowScope(scope), id, displayName, status === "active", int(input.sortOrder, -10000, 10000, 0)]);
+PATCH|+        await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) select tenant_id,workspace_id,store_id,$1,id from appointment_services where tenant_id=$2 and workspace_id=$3 and store_id=$4 on conflict(advisor_id,service_id) do nothing", [advisorId, ...rowScope(scope)]);
+PATCH|+        const hours = (await tx.query("select weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3", rowScope(scope))).rows;
+PATCH|+        for (const hour of hours) await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9)", [uuid(), ...rowScope(scope), id, hour.weekday, hour.start_time, hour.end_time, hour.enabled]);
+PATCH|+      }
+PATCH|+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, staffId ? "staff.update" : "staff.create", "staff_member", id, { status });
+PATCH|+    });
+PATCH|+    return getStaff(scope, id);
+PATCH|+  }
+PATCH|+  async function replaceStaffAssignments(scope, staffId, input = {}) {
+PATCH|+    assertWritable(scope);
+PATCH|+    const storeIds = Array.isArray(input.storeIds) ? [...new Set(input.storeIds.map(String))] : [scope.storeId];
+PATCH|+    if (!storeIds.length) throw new AppointmentError(400, "STAFF_ASSIGNMENT_INVALID", "至少选择一个门店");
+PATCH|+    const staff = (await db.query("select * from staff_members where id=$1 and tenant_id=$2 and workspace_id=$3", [staffId, scope.tenantId, scope.workspaceId])).rows[0];
+PATCH|+    if (!staff) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+PATCH|+    const stores = (await db.query("select id from stores where tenant_id=$1 and workspace_id=$2 and id=any($3)", [scope.tenantId, scope.workspaceId, storeIds])).rows;
+PATCH|+    if (stores.length !== storeIds.length) throw new AppointmentError(403, "APPOINTMENT_SCOPE_INVALID", "门店不属于当前工作区");
+PATCH|+    await db.transaction(async tx => {
+PATCH|+      await tx.query("update staff_store_assignments set status='inactive',updated_at=now() where tenant_id=$1 and workspace_id=$2 and staff_id=$3", [scope.tenantId, scope.workspaceId, staffId]);
+PATCH|+      for (const storeId of storeIds) {
+PATCH|+        await tx.query("insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id,status) values($1,$2,$3,$4,$5,'active') on conflict(store_id,staff_id) do update set status='active',updated_at=now()", [uuid(), scope.tenantId, scope.workspaceId, storeId, staffId]);
+PATCH|+        let advisor = (await tx.query("select id from appointment_advisors where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4", [scope.tenantId, scope.workspaceId, storeId, staffId])).rows[0];
+PATCH|+        if (!advisor) {
+PATCH|+          advisor = { id: uuid() };
+PATCH|+          await tx.query("insert into appointment_advisors(id,tenant_id,workspace_id,store_id,staff_id,name,enabled) values($1,$2,$3,$4,$5,$6,$7)", [advisor.id, scope.tenantId, scope.workspaceId, storeId, staffId, staff.display_name, staff.status === "active"]);
+PATCH|+          await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) select tenant_id,workspace_id,store_id,$1,id from appointment_services where tenant_id=$2 and workspace_id=$3 and store_id=$4 on conflict(advisor_id,service_id) do nothing", [advisor.id, scope.tenantId, scope.workspaceId, storeId]);
+PATCH|+          const hours = (await tx.query("select weekday,start_time,end_time,enabled from appointment_business_hours where tenant_id=$1 and workspace_id=$2 and store_id=$3", [scope.tenantId, scope.workspaceId, storeId])).rows;
+PATCH|+          for (const hour of hours) await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict(store_id,staff_id,weekday,start_time,end_time) do nothing", [uuid(), scope.tenantId, scope.workspaceId, storeId, staffId, hour.weekday, hour.start_time, hour.end_time, hour.enabled]);
+PATCH|+        }
+PATCH|+      }
+PATCH|+      await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.assignment.update", "staff_member", staffId, { storeCount: storeIds.length });
+PATCH|+    });
+PATCH|+    return (await db.query("select store_id,status from staff_store_assignments where tenant_id=$1 and workspace_id=$2 and staff_id=$3 order by store_id", [scope.tenantId, scope.workspaceId, staffId])).rows.map(row => ({ storeId: row.store_id, status: row.status }));
+PATCH|+  }
+PATCH|+  async function setStaffCapabilities(scope, staffId, input = {}) {
+PATCH|+    assertWritable(scope); await requireStaff(scope, staffId);
+PATCH|+    const advisor = await advisorForStaff(scope, staffId); if (!advisor) throw new AppointmentError(404, "STAFF_NOT_FOUND", "员工不存在");
+PATCH|+    const serviceIds = [...new Set((Array.isArray(input.serviceIds) ? input.serviceIds : []).map(String))];
+PATCH|+    const valid = serviceIds.length ? (await db.query("select id from appointment_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and enabled=true and id=any($4)", [...rowScope(scope), serviceIds])).rows : [];
+PATCH|+    if (valid.length !== serviceIds.length) throw new AppointmentError(400, "APPOINTMENT_SCOPE_INVALID", "服务不属于当前门店");
+PATCH|+    await db.transaction(async tx => { await tx.query("delete from appointment_advisor_services where tenant_id=$1 and workspace_id=$2 and store_id=$3 and advisor_id=$4", [...rowScope(scope), advisor.id]); for (const serviceId of serviceIds) await tx.query("insert into appointment_advisor_services(tenant_id,workspace_id,store_id,advisor_id,service_id) values($1,$2,$3,$4,$5)", [...rowScope(scope), advisor.id, serviceId]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.capability.update", "staff_member", staffId, { serviceCount: serviceIds.length }); });
+PATCH|+    return getStaff(scope, staffId);
+PATCH|+  }
+PATCH|+  async function replaceStaffSchedules(scope, staffId, input = {}) {
+PATCH|+    assertWritable(scope); await requireStaff(scope, staffId);
+PATCH|+    const schedules = Array.isArray(input.schedules) ? input.schedules : [];
+PATCH|+    const validTime = value => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+PATCH|+    if (schedules.some(item => !Number.isInteger(Number(item.weekday)) || Number(item.weekday) < 0 || Number(item.weekday) > 6 || !validTime(item.startTime) || !validTime(item.endTime) || String(item.endTime) <= String(item.startTime))) throw new AppointmentError(400, "STAFF_SCHEDULE_INVALID", "员工工作时间无效");
+PATCH|+    await db.transaction(async tx => { await tx.query("delete from staff_schedules where tenant_id=$1 and workspace_id=$2 and store_id=$3 and staff_id=$4", [...rowScope(scope), staffId]); for (const item of schedules) await tx.query("insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled) values($1,$2,$3,$4,$5,$6,$7,$8,$9)", [uuid(), ...rowScope(scope), staffId, Number(item.weekday), item.startTime, item.endTime, item.enabled !== false]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.schedule.update", "staff_member", staffId, { windowCount: schedules.length }); });
+PATCH|+    return listStaffSchedules(scope, staffId);
+PATCH|+  }
+PATCH|+  async function saveStaffLeave(scope, staffId, input = {}) {
+PATCH|+    assertWritable(scope); await requireStaff(scope, staffId);
+PATCH|+    const start = utcInstant(input.startAt); const end = utcInstant(input.endAt);
+PATCH|+    if (!start.isValid || !end.isValid || end <= start) throw new AppointmentError(400, "STAFF_LEAVE_INVALID", "请假时间无效");
+PATCH|+    const id = uuid();
+PATCH|+    await db.transaction(async tx => { await tx.query("insert into staff_leaves(id,tenant_id,workspace_id,store_id,staff_id,start_at,end_at,reason) values($1,$2,$3,$4,$5,$6,$7,$8)", [id, ...rowScope(scope), staffId, start.toJSDate(), end.toJSDate(), String(input.reason || "").trim().slice(0, 500)]); await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, "staff.leave.create", "staff_leave", id, { staffId }); });
+PATCH|+    return (await listStaffLeaves(scope, staffId)).find(row => row.id === id);
+PATCH|+  }
+PATCH|+  async function removeStaffLeave(scope, staffId, id) {
+PATCH|+    assertWritable(scope); await requireStaff(scope, staffId);
+PATCH|+    const row = (await db.query("delete from staff_leaves where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4 and staff_id=$5 returning id", [id, ...rowScope(scope), staffId])).rows[0];
+PATCH|+    if (!row) throw new AppointmentError(404, "STAFF_LEAVE_NOT_FOUND", "请假记录不存在");
+PATCH|+    return { id, deleted: true };
+PATCH|+  }
+PATCH|+  async function listResources(scope) { return (await db.query(`select r.*,rsa.status assignment_status from resources r join resource_store_assignments rsa on rsa.resource_id=r.id and rsa.tenant_id=r.tenant_id and rsa.workspace_id=r.workspace_id where r.tenant_id=$1 and r.workspace_id=$2 and rsa.store_id=$3 order by r.status,r.name`, rowScope(scope))).rows.map(resourceView); }
+PATCH|+  async function saveResource(scope, input = {}, resourceId = null) {
+PATCH|+    assertWritable(scope); const name = String(input.name || "").trim().slice(0, 80); const kind = String(input.kind || "general").trim().slice(0, 80); const status = input.status === "inactive" ? "inactive" : "active";
+PATCH|+    if (!name) throw new AppointmentError(400, "RESOURCE_INVALID", "请输入资源名称");
+PATCH|+    const id = resourceId || uuid();
+PATCH|+    await db.transaction(async tx => { if (resourceId) { const row = (await tx.query("update resources set name=$1,kind=$2,status=$3,updated_at=now() where id=$4 and tenant_id=$5 and workspace_id=$6 returning id", [name, kind, status, id, scope.tenantId, scope.workspaceId])).rows[0]; if (!row) throw new AppointmentError(404, "RESOURCE_NOT_FOUND", "资源不存在"); } else { await tx.query("insert into resources(id,tenant_id,workspace_id,name,kind,status) values($1,$2,$3,$4,$5,$6)", [id, scope.tenantId, scope.workspaceId, name, kind, status]); await tx.query("insert into resource_store_assignments(id,tenant_id,workspace_id,store_id,resource_id,status) values($1,$2,$3,$4,$5,$6)", [uuid(), ...rowScope(scope), id, status]); } await audit(tx, { ...scope, actorType: "merchant", actorId: scope.userId }, resourceId ? "resource.update" : "resource.create", "resource", id, { status }); });
+PATCH|+    return (await listResources(scope)).find(row => row.id === id);
+PATCH|+  }
+PATCH|+  async function replaceResourceAssignments(scope, resourceId, input = {}) {
+PATCH|+    assertWritable(scope); const storeIds = Array.isArray(input.storeIds) ? [...new Set(input.storeIds.map(String))] : [scope.storeId];
+PATCH|+    if (!storeIds.length || storeIds.some(storeId => storeId !== scope.storeId)) throw new AppointmentError(403, "APPOINTMENT_SCOPE_INVALID", "只能管理当前门店的资源归属");
+PATCH|+    const resource = (await db.query("select id from resources where id=$1 and tenant_id=$2 and workspace_id=$3", [resourceId, scope.tenantId, scope.workspaceId])).rows[0]; if (!resource) throw new AppointmentError(404, "RESOURCE_NOT_FOUND", "资源不存在");
+PATCH|+    await db.query("insert into resource_store_assignments(id,tenant_id,workspace_id,store_id,resource_id,status) values($1,$2,$3,$4,$5,'active') on conflict(store_id,resource_id) do update set status='active',updated_at=now()", [uuid(), ...rowScope(scope), resourceId]);
+PATCH|+    return listResources(scope);
+PATCH|+  }
+PATCH|+
+PATCH|+  return { ensureDefaults, availableOptions, merchantAvailability, createAppointment, listPublicAppointments, stats, listAppointments, getAppointment, timeline, createFollowUp, updateStatus, listCustomers, getCustomer, getSettings, updateSettings, listServices, saveService, removeService, listAdvisors, saveAdvisor, removeAdvisor, listHours, replaceHours, listStaff, getStaff, saveStaff, replaceStaffAssignments, setStaffCapabilities, listStaffSchedules, replaceStaffSchedules, listStaffLeaves, saveStaffLeave, removeStaffLeave, listResources, saveResource, replaceResourceAssignments, hashOpenId, assertWritable, AppointmentError };
+PATCH| }
+PATCH|[CONTEXT_BLANK]
+PATCH| module.exports = { createAppointmentService, AppointmentError, maskPhone, publicStatus, ACTIVE_STATUSES };
+PATCH|diff --git a/admin/public/app.js b/admin/public/app.js
+PATCH|index 1453dd7..2caaf6a 100644
+PATCH|--- a/admin/public/app.js
+PATCH|+++ b/admin/public/app.js
+PATCH|@@ -126,7 +126,7 @@ createApp({
+PATCH|     const appointmentDrawer = reactive({ open: false, loading: false, item: null, timeline: [], followUpDraft: "", followUpSaving: false, error: "" });
+PATCH|     const customerDrawer = reactive({ open: false, loading: false, item: null, error: "", tab: "overview", noteDraft: "", pointsDelta: 0, pointsReason: "" });
+PATCH|     const customerAdmin = reactive({ tags: [], newTag: "", program: { enabled: false, points_enabled: false }, levels: [], newLevel: { name: "", levelOrder: 2, growthThreshold: 0, enabled: true } });
+PATCH|-    const bookingSettings = reactive({ open: false, loading: false, saving: false, section: "rules", error: "", rules: { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true }, hours: [], services: [], advisors: [] });
+PATCH|+    const bookingSettings = reactive({ open: false, loading: false, saving: false, section: "rules", error: "", rules: { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true }, hours: [], services: [], advisors: [], staff: [], staffEditor: null, leaveDraft: { startAt: "", endAt: "", reason: "" } });
+PATCH|     let historyTimer;
+PATCH|     let dragSlideIndex = -1;
+PATCH|     let tabBarCropImage = null;
+PATCH|@@ -771,7 +771,7 @@ createApp({
+PATCH|     async function createCustomerTag(){if(!customerAdmin.newTag.trim())return;try{await apiJson("/v1/customer-tags",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:customerAdmin.newTag})});customerAdmin.newTag="";await loadAppointmentWorkspace();}catch(error){appointmentWorkspace.error=error.message;}}
+PATCH|     async function saveMembershipProgram(){try{customerAdmin.program=await apiJson("/v1/membership-program",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:customerAdmin.program.enabled,pointsEnabled:customerAdmin.program.points_enabled})});toast("会员计划已保存","");}catch(error){appointmentWorkspace.error=error.message;}}
+PATCH|     async function saveMembershipLevel(item){try{const payload={name:item.name,levelOrder:Number(item.level_order??item.levelOrder),growthThreshold:Number(item.growth_threshold??item.growthThreshold),enabled:item.enabled!==false,benefits:item.benefits||{}};const saved=await apiJson(item.id?`/v1/membership-levels/${encodeURIComponent(item.id)}`:"/v1/membership-levels",{method:item.id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!item.id)Object.assign(customerAdmin.newLevel,{name:"",levelOrder:Number(saved.level_order)+1,growthThreshold:Number(saved.growth_threshold),enabled:true});await loadAppointmentWorkspace();}catch(error){appointmentWorkspace.error=error.message;}}
+PATCH|-    async function openBookingSettings() { bookingSettings.open=true;bookingSettings.loading=true;bookingSettings.error="";try{const [rules,hours,services,advisors]=await Promise.all([apiJson("/v1/appointment-settings"),apiJson("/v1/appointment-business-hours"),apiJson("/v1/appointment-services"),apiJson("/v1/appointment-advisors")]);Object.assign(bookingSettings.rules,rules);bookingSettings.hours=hours;bookingSettings.services=(services||[]).map(item=>({...item,bufferMode:item.bufferMinutesOverride===null?"inherit":"custom"}));bookingSettings.advisors=advisors;}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.loading=false;} }
+PATCH|+    async function openBookingSettings() { bookingSettings.open=true;bookingSettings.loading=true;bookingSettings.error="";bookingSettings.staffEditor=null;try{const [rules,hours,services,advisors,staff]=await Promise.all([apiJson("/v1/appointment-settings"),apiJson("/v1/appointment-business-hours"),apiJson("/v1/appointment-services"),apiJson("/v1/appointment-advisors"),apiJson("/v1/staff")]);Object.assign(bookingSettings.rules,rules);bookingSettings.hours=hours;bookingSettings.services=(services||[]).map(item=>({...item,bufferMode:item.bufferMinutesOverride===null?"inherit":"custom"}));bookingSettings.advisors=advisors;bookingSettings.staff=staff||[];}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.loading=false;} }
+PATCH|     async function saveBookingRules(){bookingSettings.saving=true;bookingSettings.error="";try{Object.assign(bookingSettings.rules,await apiJson("/v1/appointment-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(bookingSettings.rules)}));toast("预约规则已保存","");}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;} }
+PATCH|     function addBusinessWindow(weekday){bookingSettings.hours.push({weekday,startTime:"09:00",endTime:"18:00",enabled:true});}
+PATCH|     function removeBusinessWindow(index){bookingSettings.hours.splice(index,1);}
+PATCH|@@ -780,6 +780,14 @@ createApp({
+PATCH|     async function saveBookingService(item){bookingSettings.saving=true;bookingSettings.error="";try{const payload={...item,bufferMinutesOverride:item.bufferMode==="custom"?Number(item.bufferMinutesOverride||0):null};const saved=await apiJson(item.id?`/v1/appointment-services/${encodeURIComponent(item.id)}`:"/v1/appointment-services",{method:item.id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});Object.assign(item,saved,{bufferMode:saved.bufferMinutesOverride===null?"inherit":"custom"});await loadAppointmentWorkspace();toast("服务已保存",saved.name);}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;} }
+PATCH|     function addBookingAdvisor(){bookingSettings.advisors.push({id:"",name:"",enabled:true,sortOrder:bookingSettings.advisors.length});}
+PATCH|     async function saveBookingAdvisor(item){bookingSettings.saving=true;bookingSettings.error="";try{const saved=await apiJson(item.id?`/v1/appointment-advisors/${encodeURIComponent(item.id)}`:"/v1/appointment-advisors",{method:item.id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(item)});Object.assign(item,saved);await loadAppointmentWorkspace();toast("服务人员已保存",saved.name);}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;} }
+PATCH|+    async function openStaffEditor(item){bookingSettings.error="";bookingSettings.leaveDraft={startAt:"",endAt:"",reason:""};try{if(!item?.id){bookingSettings.staffEditor={id:"",displayName:"",title:"",status:"active",publicVisible:true,services:bookingSettings.services.map(service=>({id:service.id,name:service.name})),schedules:bookingSettings.hours.map(hour=>({...hour})),leaves:[]};return;}bookingSettings.staffEditor=await apiJson(`/v1/staff/${encodeURIComponent(item.id)}`);}catch(error){bookingSettings.error=error.message;}}
+PATCH|+    async function saveStaffEditor(){const item=bookingSettings.staffEditor;if(!item?.displayName?.trim())return;bookingSettings.saving=true;bookingSettings.error="";try{const saved=await apiJson(item.id?`/v1/staff/${encodeURIComponent(item.id)}`:"/v1/staff",{method:item.id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:item.displayName,title:item.title,status:item.status,publicVisible:item.publicVisible})});await apiJson(`/v1/staff/${encodeURIComponent(saved.id)}/capabilities`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({serviceIds:(item.services||[]).map(service=>service.id)})});saved.schedules=await apiJson(`/v1/staff/${encodeURIComponent(saved.id)}/schedules`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({schedules:item.schedules||[]})});bookingSettings.staff=await apiJson("/v1/staff");bookingSettings.staffEditor={...saved,services:item.services||[],leaves:await apiJson(`/v1/staff/${encodeURIComponent(saved.id)}/leaves`)};toast("员工与排班已保存",saved.displayName);}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;}}
+PATCH|+    function toggleStaffService(service){const item=bookingSettings.staffEditor;if(!item)return;item.services||=[];const index=item.services.findIndex(entry=>entry.id===service.id);if(index>=0)item.services.splice(index,1);else item.services.push({id:service.id,name:service.name});}
+PATCH|+    function staffHasService(service){return Boolean(bookingSettings.staffEditor?.services?.some(entry=>entry.id===service.id));}
+PATCH|+    function addStaffSchedule(){const item=bookingSettings.staffEditor;if(item)item.schedules.push({weekday:1,startTime:"09:00",endTime:"18:00",enabled:true});}
+PATCH|+    function removeStaffSchedule(index){bookingSettings.staffEditor?.schedules?.splice(index,1);}
+PATCH|+    async function saveStaffLeave(){const item=bookingSettings.staffEditor;if(!item?.id||!bookingSettings.leaveDraft.startAt||!bookingSettings.leaveDraft.endAt)return;bookingSettings.saving=true;try{await apiJson(`/v1/staff/${encodeURIComponent(item.id)}/leaves`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bookingSettings.leaveDraft)});item.leaves=await apiJson(`/v1/staff/${encodeURIComponent(item.id)}/leaves`);bookingSettings.leaveDraft={startAt:"",endAt:"",reason:""};toast("请假时间已记录",item.displayName);}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;}}
+PATCH|+    async function removeStaffLeave(item){const staff=bookingSettings.staffEditor;if(!staff?.id)return;bookingSettings.saving=true;try{await apiJson(`/v1/staff/${encodeURIComponent(staff.id)}/leaves/${encodeURIComponent(item.id)}`,{method:"DELETE"});staff.leaves=await apiJson(`/v1/staff/${encodeURIComponent(staff.id)}/leaves`);}catch(error){bookingSettings.error=error.message;}finally{bookingSettings.saving=false;}}
+PATCH|     function formatAppointmentTime(value){if(!value)return"—";return new Intl.DateTimeFormat("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(value));}
+PATCH|     function sourceLabel(value){return({mini_program:"微信小程序",merchant_manual:"商户录入",import:"历史导入",appointment:"预约",order:"订单"})[value]||"其他";}
+PATCH|[CONTEXT_BLANK]
+PATCH|@@ -2703,7 +2711,7 @@ createApp({
+PATCH|       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
+PATCH|       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
+PATCH|       hotspotStyle, addHotspot, removeHotspot, updateHotspotLinkType, normalizeHotspotInPlace, beginHotspotPointer, beginHotspotDraw,
+PATCH|-      loadAppointmentWorkspace, openAppointment, updateAppointmentStatus, addAppointmentFollowUp, openCustomer, addCustomerNote, adjustCustomerPoints, createCustomerTag, saveMembershipProgram, saveMembershipLevel, openBookingSettings, saveBookingRules, addBusinessWindow, removeBusinessWindow, saveBusinessHours, addBookingService, saveBookingService, addBookingAdvisor, saveBookingAdvisor, formatAppointmentTime, sourceLabel
+PATCH|+      loadAppointmentWorkspace, openAppointment, updateAppointmentStatus, addAppointmentFollowUp, openCustomer, addCustomerNote, adjustCustomerPoints, createCustomerTag, saveMembershipProgram, saveMembershipLevel, openBookingSettings, saveBookingRules, addBusinessWindow, removeBusinessWindow, saveBusinessHours, addBookingService, saveBookingService, addBookingAdvisor, saveBookingAdvisor, openStaffEditor, saveStaffEditor, toggleStaffService, staffHasService, addStaffSchedule, removeStaffSchedule, saveStaffLeave, removeStaffLeave, formatAppointmentTime, sourceLabel
+PATCH|     };
+PATCH|   },
+PATCH|[CONTEXT_BLANK]
+PATCH|@@ -3071,7 +3079,7 @@ createApp({
+PATCH|             </div>
+PATCH|             <div v-if="appointmentDrawer.open" class="drawer-backdrop" @click.self="appointmentDrawer.open=false"><aside class="appointment-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="appointment-detail-title"><header><div><span class="eyebrow">APPOINTMENT</span><h2 id="appointment-detail-title">预约详情</h2></div><button class="icon-btn" aria-label="关闭预约详情" @click="appointmentDrawer.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></header><div class="appointment-drawer-body"><div v-if="appointmentDrawer.loading" class="appointment-loading">正在读取…</div><div v-else-if="appointmentDrawer.error" class="form-error">{{ appointmentDrawer.error }}</div><template v-else-if="appointmentDrawer.item"><div class="detail-lead"><strong>{{ appointmentDrawer.item.customerName }}</strong><span class="status-chip">{{ appointmentDrawer.item.statusLabel }}</span><small>{{ appointmentDrawer.item.customerPhone || '未授权手机号' }}</small></div><dl class="appointment-detail-list"><div><dt>预约编号</dt><dd>{{ appointmentDrawer.item.number }}</dd></div><div><dt>预约时间</dt><dd>{{ formatAppointmentTime(appointmentDrawer.item.startAt) }}</dd></div><div><dt>门店</dt><dd>{{ appointmentDrawer.item.storeName || '当前门店' }}</dd></div><div><dt>服务</dt><dd>{{ appointmentDrawer.item.serviceName }}</dd></div><div><dt>服务人员</dt><dd>{{ appointmentDrawer.item.advisorName }}</dd></div><div><dt>服务时长</dt><dd>{{ appointmentDrawer.item.durationMinutes }} 分钟</dd></div><div><dt>缓冲时间</dt><dd>{{ appointmentDrawer.item.bufferMinutes }} 分钟</dd></div><div><dt>来源</dt><dd>{{ sourceLabel(appointmentDrawer.item.source) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatAppointmentTime(appointmentDrawer.item.createdAt) }}</dd></div></dl><section class="appointment-notes"><h3>备注</h3><p>{{ appointmentDrawer.item.notes || '无备注' }}</p></section><section class="appointment-timeline"><h3>操作动态</h3><div v-if="!appointmentDrawer.timeline.length" class="empty-compact">暂无动态记录</div><ul v-else class="customer-timeline"><li v-for="event in appointmentDrawer.timeline" :key="event.type + event.occurredAt + (event.resourceId || '')"><div><strong>{{ event.type }}</strong><small>{{ formatAppointmentTime(event.occurredAt) }} · {{ event.source || 'system' }}</small></div></li></ul><form class="follow-up-composer" @submit.prevent="addAppointmentFollowUp"><label for="appointment-follow-up">跟进记录</label><textarea id="appointment-follow-up" v-model.trim="appointmentDrawer.followUpDraft" maxlength="1000" placeholder="记录下一步跟进事项"></textarea><button class="btn small" type="submit" :disabled="appointmentDrawer.followUpSaving || !appointmentDrawer.followUpDraft.trim()">{{ appointmentDrawer.followUpSaving ? '保存中…' : '添加跟进' }}</button></form></section></template></div><footer v-if="appointmentDrawer.item"><button v-if="appointmentDrawer.item.status==='pending'" class="btn primary" @click="updateAppointmentStatus('confirmed')">确认预约</button><button v-if="appointmentDrawer.item.status==='confirmed'" class="btn primary" @click="updateAppointmentStatus('completed')">完成服务</button><button v-if="['pending','confirmed'].includes(appointmentDrawer.item.status)" class="btn" @click="updateAppointmentStatus('no_show')">标记未到店</button><button v-if="['pending','confirmed'].includes(appointmentDrawer.item.status)" class="btn danger" @click="updateAppointmentStatus('cancelled')">取消预约</button></footer></aside></div>
+PATCH|             <div v-if="customerDrawer.open" class="drawer-backdrop" @click.self="customerDrawer.open=false"><aside class="appointment-detail-drawer customer-360-drawer" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title"><header><div><span class="eyebrow">CUSTOMER 360</span><h2 id="customer-detail-title">客户详情</h2></div><button class="icon-btn" aria-label="关闭客户详情" @click="customerDrawer.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></header><div class="appointment-drawer-body"><div v-if="customerDrawer.loading" class="appointment-loading">正在读取…</div><div v-else-if="customerDrawer.error" class="form-error">{{ customerDrawer.error }}</div><template v-else-if="customerDrawer.item"><div class="detail-lead"><strong>{{ customerDrawer.item.name }}</strong><span class="status-chip" :class="{success:customerDrawer.item.membership?.status==='active'}">{{ customerDrawer.item.membership?.status==='active'?'会员':customerDrawer.item.orderCount>0?'顾客':'已识别用户' }}</span><small>{{ customerDrawer.item.phoneMasked || '未授权手机号' }} · {{ sourceLabel(customerDrawer.item.source) }}</small></div><div class="customer-metrics"><span><strong>{{ customerDrawer.item.orderCount }}</strong><small>订单</small></span><span><strong>{{ customerDrawer.item.appointmentCount }}</strong><small>预约</small></span><span><strong>{{ customerDrawer.item.points }}</strong><small>积分</small></span></div><nav class="settings-tabs customer-360-tabs"><button v-for="item in [{id:'overview',name:'概览'},{id:'orders',name:'订单'},{id:'appointments',name:'预约'},{id:'membership',name:'会员'},{id:'events',name:'动态'},{id:'notes',name:'备注'}]" :key="item.id" type="button" :class="{active:customerDrawer.tab===item.id}" @click="customerDrawer.tab=item.id">{{ item.name }}</button></nav><section v-if="customerDrawer.tab==='overview'" class="customer-history"><h3>身份概览</h3><dl class="appointment-detail-list"><div><dt>Customer ID</dt><dd>{{ customerDrawer.item.id }}</dd></div><div><dt>首次进入</dt><dd>{{ formatAppointmentTime(customerDrawer.item.firstSeenAt) }}</dd></div><div><dt>最近活跃</dt><dd>{{ formatAppointmentTime(customerDrawer.item.lastSeenAt) }}</dd></div><div><dt>累计消费</dt><dd>¥{{ (customerDrawer.item.totalSpendFen/100).toFixed(2) }}</dd></div></dl><div class="tag-row"><span v-for="tag in customerDrawer.item.tags" :key="tag.id" class="status-chip">{{ tag.name }}</span></div></section><section v-else-if="customerDrawer.tab==='orders'" class="customer-history"><h3>订单</h3><div v-if="!customerDrawer.item.orders.length" class="empty-compact">暂无关联订单</div><div v-for="item in customerDrawer.item.orders" :key="item.id"><strong>{{ item.orderNo }}</strong><small>¥{{ (item.amountFen/100).toFixed(2) }} · {{ item.status }}</small></div></section><section v-else-if="customerDrawer.tab==='appointments'" class="customer-history"><h3>预约</h3><button v-for="item in customerDrawer.item.appointments" :key="item.id" type="button" @click="customerDrawer.open=false;openAppointment(item)"><span><strong>{{ formatAppointmentTime(item.startAt) }}</strong><small>{{ item.serviceName }} · {{ item.advisorName }}</small></span><span class="status-chip">{{ item.statusLabel }}</span></button></section><section v-else-if="customerDrawer.tab==='membership'" class="customer-history"><h3>会员与积分</h3><p>{{ customerDrawer.item.membership?.level_name || '尚未加入会员' }} · 当前积分 {{ customerDrawer.item.points }}</p><div class="filter-row"><input v-model.number="customerDrawer.pointsDelta" type="number" placeholder="积分增减"><input v-model.trim="customerDrawer.pointsReason" type="text" placeholder="调整原因"><button class="btn primary small" type="button" @click="adjustCustomerPoints">确认调整</button></div></section><section v-else-if="customerDrawer.tab==='events'" class="customer-history"><h3>动态</h3><div v-if="!(customerDrawer.item.timeline || customerDrawer.item.events || []).length" class="empty-compact">暂无动态记录</div><ul v-else class="customer-timeline"><li v-for="item in (customerDrawer.item.timeline || customerDrawer.item.events)" :key="item.type+item.occurredAt+(item.resourceId || '')"><div><strong>{{ item.type }}</strong><small>{{ formatAppointmentTime(item.occurredAt) }} · {{ item.source || 'system' }}</small></div></li></ul></section><section v-else class="customer-history"><h3>备注</h3><form class="note-composer" @submit.prevent="addCustomerNote"><textarea v-model.trim="customerDrawer.noteDraft" maxlength="5000" placeholder="添加仅商户可见的备注"></textarea><button class="btn primary small" type="submit">添加备注</button></form><div v-for="item in customerDrawer.item.notes" :key="item.id"><p>{{ item.content }}</p><small>{{ formatAppointmentTime(item.createdAt) }}</small></div></section></template></div></aside></div>
+PATCH|-            <div v-if="bookingSettings.open" class="drawer-backdrop" @click.self="bookingSettings.open=false"><aside class="booking-settings-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-settings-title"><header><div><span class="eyebrow">BOOKING</span><h2 id="booking-settings-title">预约设置</h2></div><button class="icon-btn" aria-label="关闭预约设置" @click="bookingSettings.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></header><nav class="settings-tabs"><button v-for="item in [{id:'rules',name:'预约规则'},{id:'hours',name:'营业时间'},{id:'services',name:'服务'},{id:'advisors',name:'服务人员'}]" :key="item.id" type="button" :class="{active:bookingSettings.section===item.id}" @click="bookingSettings.section=item.id">{{ item.name }}</button></nav><div class="booking-settings-body"><div v-if="bookingSettings.loading" class="appointment-loading">正在读取设置…</div><p v-if="bookingSettings.error" class="form-error">{{ bookingSettings.error }}</p><form v-if="!bookingSettings.loading&&bookingSettings.section==='rules'" class="booking-rules" @submit.prevent="saveBookingRules"><label>可预约时间间隔<select v-model.number="bookingSettings.rules.slotIntervalMinutes"><option v-for="value in [10,15,20,30,45,60,90,120,150,180,210,240,270,300]" :key="value" :value="value">{{ value }} 分钟</option></select></label><label>默认缓冲时间<select v-model.number="bookingSettings.rules.defaultBufferMinutes"><option v-for="value in 30" :key="value" :value="value">{{ value }} 分钟</option></select></label><label>最远可预约天数<input v-model.number="bookingSettings.rules.maxAdvanceDays" type="number" min="1" max="365"></label><label>时区<input v-model.trim="bookingSettings.rules.timezone" type="text"></label><label class="toggle-row"><span>接受新预约</span><button type="button" class="switch" :class="{on:bookingSettings.rules.bookingEnabled}" role="switch" :aria-checked="bookingSettings.rules.bookingEnabled" @click="bookingSettings.rules.bookingEnabled=!bookingSettings.rules.bookingEnabled"></button></label><button class="btn primary" type="submit" :disabled="bookingSettings.saving">保存预约规则</button></form><div v-if="!bookingSettings.loading&&bookingSettings.section==='hours'" class="business-hours-editor"><section v-for="day in [0,1,2,3,4,5,6]" :key="day"><header><strong>{{ ['周日','周一','周二','周三','周四','周五','周六'][day] }}</strong><button class="icon-btn small" type="button" title="添加营业时段" @click="addBusinessWindow(day)"><iconify-icon class="icon" icon="ph:plus"></iconify-icon></button></header><div v-for="(item,index) in bookingSettings.hours" v-show="item.weekday===day" :key="item.id||day+'-'+index" class="business-window"><input v-model="item.startTime" type="time" aria-label="开始时间"><span>至</span><input v-model="item.endTime" type="time" aria-label="结束时间"><button class="icon-btn danger" type="button" aria-label="删除时段" @click="removeBusinessWindow(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></section><button class="btn primary" type="button" :disabled="bookingSettings.saving" @click="saveBusinessHours">保存营业时间</button></div><div v-if="!bookingSettings.loading&&bookingSettings.section==='services'" class="booking-resource-list"><button class="btn" type="button" @click="addBookingService"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新增服务</button><article v-for="item in bookingSettings.services" :key="item.id||'new-service'" class="booking-resource"><label>服务名称<input v-model.trim="item.name" type="text"></label><label>服务时长<input v-model.number="item.durationMinutes" type="number" min="5" max="1440" step="5"></label><label>缓冲时间<select v-model="item.bufferMode"><option value="inherit">使用店铺默认值</option><option value="custom">单独设置</option></select></label><label v-if="item.bufferMode==='custom'">分钟<input v-model.number="item.bufferMinutesOverride" type="number" min="0" max="480" step="5"></label><label class="toggle-row"><span>启用服务</span><button type="button" class="switch" :class="{on:item.enabled}" @click="item.enabled=!item.enabled"></button></label><button class="btn primary" type="button" @click="saveBookingService(item)">保存服务</button></article></div><div v-if="!bookingSettings.loading&&bookingSettings.section==='advisors'" class="booking-resource-list"><button class="btn" type="button" @click="addBookingAdvisor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新增服务人员</button><article v-for="item in bookingSettings.advisors" :key="item.id||'new-advisor'" class="booking-resource"><label>姓名<input v-model.trim="item.name" type="text"></label><label class="toggle-row"><span>可接受预约</span><button type="button" class="switch" :class="{on:item.enabled}" @click="item.enabled=!item.enabled"></button></label><button class="btn primary" type="button" @click="saveBookingAdvisor(item)">保存服务人员</button></article></div></div></aside></div>
+PATCH|+            <div v-if="bookingSettings.open" class="drawer-backdrop" @click.self="bookingSettings.open=false"><aside class="booking-settings-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-settings-title"><header><div><span class="eyebrow">BOOKING</span><h2 id="booking-settings-title">预约设置</h2></div><button class="icon-btn" aria-label="关闭预约设置" @click="bookingSettings.open=false"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></header><nav class="settings-tabs"><button v-for="item in [{id:'rules',name:'预约规则'},{id:'hours',name:'营业时间'},{id:'services',name:'服务'},{id:'advisors',name:'服务人员'},{id:'staff',name:'员工与排班'}]" :key="item.id" type="button" :class="{active:bookingSettings.section===item.id}" @click="bookingSettings.section=item.id">{{ item.name }}</button></nav><div class="booking-settings-body"><div v-if="bookingSettings.loading" class="appointment-loading">正在读取设置…</div><p v-if="bookingSettings.error" class="form-error">{{ bookingSettings.error }}</p><form v-if="!bookingSettings.loading&&bookingSettings.section==='rules'" class="booking-rules" @submit.prevent="saveBookingRules"><label>可预约时间间隔<select v-model.number="bookingSettings.rules.slotIntervalMinutes"><option v-for="value in [10,15,20,30,45,60,90,120,150,180,210,240,270,300]" :key="value" :value="value">{{ value }} 分钟</option></select></label><label>默认缓冲时间<select v-model.number="bookingSettings.rules.defaultBufferMinutes"><option v-for="value in 30" :key="value" :value="value">{{ value }} 分钟</option></select></label><label>最远可预约天数<input v-model.number="bookingSettings.rules.maxAdvanceDays" type="number" min="1" max="365"></label><label>时区<input v-model.trim="bookingSettings.rules.timezone" type="text"></label><label class="toggle-row"><span>接受新预约</span><button type="button" class="switch" :class="{on:bookingSettings.rules.bookingEnabled}" role="switch" :aria-checked="bookingSettings.rules.bookingEnabled" @click="bookingSettings.rules.bookingEnabled=!bookingSettings.rules.bookingEnabled"></button></label><button class="btn primary" type="submit" :disabled="bookingSettings.saving">保存预约规则</button></form><div v-if="!bookingSettings.loading&&bookingSettings.section==='hours'" class="business-hours-editor"><section v-for="day in [0,1,2,3,4,5,6]" :key="day"><header><strong>{{ ['周日','周一','周二','周三','周四','周五','周六'][day] }}</strong><button class="icon-btn small" type="button" title="添加营业时段" @click="addBusinessWindow(day)"><iconify-icon class="icon" icon="ph:plus"></iconify-icon></button></header><div v-for="(item,index) in bookingSettings.hours" v-show="item.weekday===day" :key="item.id||day+'-'+index" class="business-window"><input v-model="item.startTime" type="time" aria-label="开始时间"><span>至</span><input v-model="item.endTime" type="time" aria-label="结束时间"><button class="icon-btn danger" type="button" aria-label="删除时段" @click="removeBusinessWindow(index)"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></section><button class="btn primary" type="button" :disabled="bookingSettings.saving" @click="saveBusinessHours">保存营业时间</button></div><div v-if="!bookingSettings.loading&&bookingSettings.section==='services'" class="booking-resource-list"><button class="btn" type="button" @click="addBookingService"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新增服务</button><article v-for="item in bookingSettings.services" :key="item.id||'new-service'" class="booking-resource"><label>服务名称<input v-model.trim="item.name" type="text"></label><label>服务时长<input v-model.number="item.durationMinutes" type="number" min="5" max="1440" step="5"></label><label>缓冲时间<select v-model="item.bufferMode"><option value="inherit">使用店铺默认值</option><option value="custom">单独设置</option></select></label><label v-if="item.bufferMode==='custom'">分钟<input v-model.number="item.bufferMinutesOverride" type="number" min="0" max="480" step="5"></label><label class="toggle-row"><span>启用服务</span><button type="button" class="switch" :class="{on:item.enabled}" @click="item.enabled=!item.enabled"></button></label><button class="btn primary" type="button" @click="saveBookingService(item)">保存服务</button></article></div><div v-if="!bookingSettings.loading&&bookingSettings.section==='advisors'" class="booking-resource-list"><button class="btn" type="button" @click="addBookingAdvisor"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新增服务人员</button><article v-for="item in bookingSettings.advisors" :key="item.id||'new-advisor'" class="booking-resource"><label>姓名<input v-model.trim="item.name" type="text"></label><label class="toggle-row"><span>可接受预约</span><button type="button" class="switch" :class="{on:item.enabled}" @click="item.enabled=!item.enabled"></button></label><button class="btn primary" type="button" @click="saveBookingAdvisor(item)">保存服务人员</button></article></div><div v-if="!bookingSettings.loading&&bookingSettings.section==='staff'" class="staff-scheduling"><section class="staff-list-panel"><div class="staff-panel-head"><div><strong>员工与排班</strong><small>员工 → 服务 → 门店 → 工作时间 → 请假</small></div><button class="btn small" type="button" @click="openStaffEditor()"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新增员工</button></div><button v-for="item in bookingSettings.staff" :key="item.id" type="button" class="staff-row" :class="{active:bookingSettings.staffEditor?.id===item.id}" @click="openStaffEditor(item)"><span class="customer-avatar">{{ item.displayName.slice(0,1) }}</span><span><strong>{{ item.displayName }}</strong><small>{{ item.title || '服务人员' }} · {{ item.services.map(service=>service.name).join('、') || '未配置服务' }}</small></span><span class="status-chip" :class="{success:item.status==='active'}">{{ item.status==='active'?'可预约':'已停用' }}</span></button><div v-if="!bookingSettings.staff.length" class="empty-compact">暂无员工，添加后可配置服务和工作时间。</div></section><section v-if="bookingSettings.staffEditor" class="staff-editor-panel"><div class="staff-panel-head"><div><strong>{{ bookingSettings.staffEditor.id?'编辑员工':'新增员工' }}</strong><small>当前门店的服务能力、工作时间和请假记录。</small></div><button type="button" class="icon-btn" aria-label="关闭员工编辑" @click="bookingSettings.staffEditor=null"><iconify-icon class="icon" icon="ph:x"></iconify-icon></button></div><div class="staff-form-grid"><label>姓名<input v-model.trim="bookingSettings.staffEditor.displayName" maxlength="80" type="text"></label><label>职位<input v-model.trim="bookingSettings.staffEditor.title" maxlength="80" type="text" placeholder="例如：造型顾问"></label><label>状态<select v-model="bookingSettings.staffEditor.status"><option value="active">可预约</option><option value="inactive">停用</option></select></label><label class="toggle-row"><span>顾客端可见</span><button type="button" class="switch" :class="{on:bookingSettings.staffEditor.publicVisible}" @click="bookingSettings.staffEditor.publicVisible=!bookingSettings.staffEditor.publicVisible"></button></label></div><section class="staff-subsection"><h3>服务能力</h3><div class="check-grid"><label v-for="service in bookingSettings.services" :key="service.id"><input type="checkbox" :checked="staffHasService(service)" @change="toggleStaffService(service)"><span>{{ service.name }}</span></label></div></section><section class="staff-subsection"><div class="staff-panel-head"><h3>工作时间</h3><button class="btn small" type="button" @click="addStaffSchedule"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加时段</button></div><div v-if="!bookingSettings.staffEditor.schedules?.length" class="empty-compact">未设置工作时间，该员工不会出现在可预约时段。</div><div v-for="(item,index) in bookingSettings.staffEditor.schedules" :key="item.id||index" class="staff-schedule-row"><select v-model.number="item.weekday" aria-label="工作日"><option v-for="(name,day) in ['周日','周一','周二','周三','周四','周五','周六']" :key="day" :value="day">{{ name }}</option></select><input v-model="item.startTime" type="time" aria-label="开始时间"><span>至</span><input v-model="item.endTime" type="time" aria-label="结束时间"><button class="btn small danger" type="button" @click="removeStaffSchedule(index)">删除</button></div></section><section v-if="bookingSettings.staffEditor.id" class="staff-subsection"><h3>请假</h3><div class="leave-form"><input v-model="bookingSettings.leaveDraft.startAt" type="datetime-local" aria-label="请假开始"><input v-model="bookingSettings.leaveDraft.endAt" type="datetime-local" aria-label="请假结束"><input v-model.trim="bookingSettings.leaveDraft.reason" type="text" maxlength="500" placeholder="原因（可选）"><button class="btn small" type="button" :disabled="bookingSettings.saving" @click="saveStaffLeave">记录请假</button></div><div v-for="item in bookingSettings.staffEditor.leaves" :key="item.id" class="leave-row"><span><strong>{{ formatAppointmentTime(item.startAt) }} — {{ formatAppointmentTime(item.endAt) }}</strong><small>{{ item.reason || '未填写原因' }}</small></span><button class="btn small danger" type="button" @click="removeStaffLeave(item)">删除</button></div></section><div class="staff-editor-actions"><button class="btn primary" type="button" :disabled="bookingSettings.saving || !bookingSettings.staffEditor.displayName?.trim()" @click="saveStaffEditor">{{ bookingSettings.saving?'保存中…':'保存员工与排班' }}</button></div></section></div></div></aside></div>
+PATCH|           </section>
+PATCH|[CONTEXT_BLANK]
+PATCH|           <section v-else-if="currentView === 'marketing'" class="management">
+PATCH|diff --git a/admin/public/styles.css b/admin/public/styles.css
+PATCH|index 04466fa..c3aa050 100644
+PATCH|--- a/admin/public/styles.css
+PATCH|+++ b/admin/public/styles.css
+PATCH|@@ -2131,11 +2131,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
+PATCH| .booking-rules { max-width: 560px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }.booking-rules > label, .booking-resource > label { display: grid; gap: 6px; color: #535650; font-size: 12px; }.booking-rules input, .booking-rules select, .booking-resource input, .booking-resource select, .business-window input { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid #cfd2cc; border-radius: 5px; background: #fff; color: var(--ui-ink); box-sizing: border-box; }.booking-rules .toggle-row, .booking-rules > .btn { grid-column: 1/-1; }
+PATCH| .business-hours-editor { display: grid; gap: 14px; }.business-hours-editor > section { padding-bottom: 14px; border-bottom: 1px solid var(--ui-line); }.business-hours-editor > section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }.business-window { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) 36px; align-items: center; gap: 8px; margin-top: 8px; }.business-window .icon-btn { width: 36px; height: 36px; }
+PATCH| .booking-resource-list { display: grid; gap: 12px; }.booking-resource-list > .btn { justify-self: start; }.booking-resource { display: grid; grid-template-columns: minmax(170px,1.5fr) minmax(110px,.7fr) minmax(150px,1fr) minmax(110px,.7fr); align-items: end; gap: 12px; padding: 16px; border: 1px solid var(--ui-line); border-radius: 6px; background: #fff; }.booking-resource .toggle-row { min-height: 40px; margin: 0; }.booking-resource > .btn { min-height: 40px; }
+PATCH|+.staff-scheduling { display: grid; grid-template-columns: minmax(230px,.72fr) minmax(0,1.28fr); gap: 16px; align-items: start; }.staff-list-panel, .staff-editor-panel { padding: 16px; border: 1px solid var(--ui-line); border-radius: 8px; background: #fff; }.staff-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }.staff-panel-head strong, .staff-panel-head h3 { display: block; margin: 0; font-size: 14px; }.staff-panel-head small { display: block; margin-top: 4px; color: var(--ui-muted); font-size: 12px; line-height: 1.45; }.staff-row { width: 100%; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 11px 4px; border: 0; border-top: 1px solid var(--ui-line); background: transparent; color: var(--ui-ink); text-align: left; cursor: pointer; }.staff-row:hover, .staff-row.active { background: #f3f5f1; }.staff-row strong, .staff-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.staff-row small { margin-top: 3px; color: var(--ui-muted); font-size: 11px; }.staff-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }.staff-form-grid > label { display: grid; gap: 6px; color: #535650; font-size: 12px; }.staff-form-grid input, .staff-form-grid select, .leave-form input, .staff-schedule-row input, .staff-schedule-row select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid #cfd2cc; border-radius: 5px; background: #fff; color: var(--ui-ink); box-sizing: border-box; }.staff-subsection { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--ui-line); }.staff-subsection h3 { margin: 0 0 10px; font-size: 13px; }.check-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; }.check-grid label { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; color: #41443e; font-size: 12px; }.staff-schedule-row { display: grid; grid-template-columns: 96px minmax(0,1fr) auto minmax(0,1fr) 38px; align-items: center; gap: 8px; margin-top: 8px; }.staff-schedule-row .icon-btn, .leave-row .icon-btn { width: 38px; height: 38px; }.leave-form { display: grid; grid-template-columns: 1fr 1fr minmax(120px,1fr) auto; align-items: end; gap: 8px; }.leave-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ui-line); }.leave-row strong, .leave-row small { display: block; font-size: 12px; }.leave-row small { margin-top: 3px; color: var(--ui-muted); }.staff-editor-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+PATCH|[CONTEXT_BLANK]
+PATCH| @media (max-width: 900px) {
+PATCH|   .appointment-toolbar { display: grid; }.appointment-toolbar .filter-row { justify-content: stretch; }.appointment-toolbar .filter-row > * { flex: 1 1 140px; }
+PATCH|   .appointment-row { grid-template-columns: minmax(0,1fr) auto 18px; gap: 8px 12px; }.appointment-row > span:nth-child(2), .appointment-row > span:nth-child(3) { grid-column: 1; }.appointment-row > .status-chip { grid-column: 2; grid-row: 1; }.appointment-row > .icon { grid-column: 3; grid-row: 1/4; }.customer-row { grid-template-columns: 40px minmax(0,1fr) auto 18px; }.customer-row > span:nth-child(3) { grid-column: 2; }.customer-row > .status-chip { grid-column: 3; grid-row: 1; }.customer-row > .icon { grid-column: 4; grid-row: 1/3; }
+PATCH|-  .booking-resource { grid-template-columns: 1fr 1fr; }
+PATCH|+  .booking-resource { grid-template-columns: 1fr 1fr; }.staff-scheduling { grid-template-columns: 1fr; }.leave-form { grid-template-columns: 1fr 1fr; }
+PATCH| }
+PATCH| @media (max-width: 560px) {
+PATCH|   .appointment-stats { grid-template-columns: 1fr 1fr; }.appointment-stats .stat-card { min-height: 88px; }
+PATCH|@@ -2144,7 +2145,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
+PATCH|   .appointment-detail-drawer, .booking-settings-drawer { width: 100vw; }
+PATCH|   .appointment-drawer-body, .booking-settings-body { padding: 16px; }.appointment-detail-drawer > header, .booking-settings-drawer > header { padding: 14px 16px; }
+PATCH|   .appointment-detail-drawer > footer { display: grid; grid-template-columns: 1fr 1fr; padding: 12px 16px; }.appointment-detail-drawer > footer .btn { width: 100%; }
+PATCH|-  .customer-metrics { grid-template-columns: 1fr; }.booking-rules, .booking-resource { grid-template-columns: 1fr; }.booking-rules > label, .booking-rules .toggle-row, .booking-rules > .btn { grid-column: 1; }
+PATCH|+  .customer-metrics { grid-template-columns: 1fr; }.booking-rules, .booking-resource, .staff-form-grid, .leave-form { grid-template-columns: 1fr; }.booking-rules > label, .booking-rules .toggle-row, .booking-rules > .btn { grid-column: 1; }.staff-schedule-row { grid-template-columns: 84px minmax(0,1fr) auto minmax(0,1fr) 36px; gap: 6px; }.staff-list-panel, .staff-editor-panel { padding: 14px; }
+PATCH| }
+PATCH|[CONTEXT_BLANK]
+PATCH| /* Preview-only editor command bar. The global topbar remains unchanged elsewhere. */
+PATCH|diff --git a/admin/qa/sprint2-browser-smoke.js b/admin/qa/sprint2-browser-smoke.js
+PATCH|new file mode 100644
+PATCH|index 0000000..f0ea37e
+PATCH|--- /dev/null
+PATCH|+++ b/admin/qa/sprint2-browser-smoke.js
+PATCH|@@ -0,0 +1,57 @@
+PATCH|+const assert = require("node:assert/strict");
+PATCH|+const crypto = require("node:crypto");
+PATCH|+const fs = require("node:fs");
+PATCH|+const net = require("node:net");
+PATCH|+const os = require("node:os");
+PATCH|+const path = require("node:path");
+PATCH|+const { spawn } = require("node:child_process");
+PATCH|+const { chromium } = require("@playwright/test");
+PATCH|+
+PATCH|+const adminRoot = path.resolve(__dirname, "..");
+PATCH|+const outputRoot = path.resolve(adminRoot, "..", "verification", "sprint2-operation-engine", "browser-uat");
+PATCH|+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-sprint2-browser-"));
+PATCH|+function port() { return new Promise((resolve, reject) => { const server = net.createServer(); server.once("error", reject); server.listen(0, "127.0.0.1", () => { const value = server.address().port; server.close(error => error ? reject(error) : resolve(value)); }); }); }
+PATCH|+function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+PATCH|+async function waitForHealth(url) { for (let attempt = 0; attempt < 100; attempt += 1) { try { const response = await fetch(`${url}/health`); if (response.ok) return; } catch (error) {} await wait(100); } throw new Error("local browser test server did not become healthy"); }
+PATCH|+async function main() {
+PATCH|+  fs.mkdirSync(outputRoot, { recursive: true });
+PATCH|+  const serverPort = await port(); const baseURL = `http://127.0.0.1:${serverPort}`;
+PATCH|+  const runtimeKeys = { licensePepper: crypto.randomBytes(32).toString("base64url"), masterKey: crypto.randomBytes(32).toString("base64"), openIdHashKey: crypto.randomBytes(32).toString("base64url"), gatewayToken: crypto.randomBytes(32).toString("base64url") };
+PATCH|+  const child = spawn(process.execPath, ["server.js"], { cwd: adminRoot, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: "test", PORT: String(serverPort), PRIVLAN_ADMIN_HOST: "127.0.0.1", ATELIER_TEST_DATABASE: "portable", ATELIER_LICENSE_PEPPER: runtimeKeys.licensePepper, ATELIER_MASTER_KEY: runtimeKeys.masterKey, ATELIER_OPENID_HASH_KEY: runtimeKeys.openIdHashKey, ATELIER_APPOINTMENT_GATEWAY_TOKEN: runtimeKeys.gatewayToken, PRIVLAN_ROOT: tempRoot, PRIVLAN_CONFIG_PATH: path.join(tempRoot, "config.json"), PRIVLAN_CONFIG_BACKUP_DIR: path.join(tempRoot, "backups"), PRIVLAN_IMAGES_DIR: path.join(tempRoot, "images"), PRIVLAN_FONTS_DIR: path.join(tempRoot, "fonts"), PRIVLAN_MEDIA_FOLDERS_PATH: path.join(tempRoot, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(tempRoot, "trash"), PRIVLAN_DISABLE_GIT_SYNC: "1" } });
+PATCH|+  const failures = []; child.stderr.on("data", value => failures.push(String(value)));
+PATCH|+  try {
+PATCH|+    await waitForHealth(baseURL);
+PATCH|+    const browser = await chromium.launch();
+PATCH|+    try {
+PATCH|+      for (const viewport of [{ name: "1366", width: 1366, height: 768 }, { name: "430", width: 430, height: 932, isMobile: true }]) {
+PATCH|+        const context = await browser.newContext({ baseURL, viewport: { width: viewport.width, height: viewport.height }, isMobile: Boolean(viewport.isMobile) });
+PATCH|+        const page = await context.newPage(); const errors = [];
+PATCH|+        page.on("console", message => { if (message.type() === "error" && !/favicon|401 \(Unauthorized\)/i.test(message.text())) errors.push(message.text()); });
+PATCH|+        page.on("pageerror", error => errors.push(error.message));
+PATCH|+        await page.goto("/");
+PATCH|+        const registration = await page.evaluate(async (login) => {
+PATCH|+          const response = await fetch("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, password: crypto.randomUUID() + "A9", storeName: "排班浏览验证店", template: "blank" }) });
+PATCH|+          return { status: response.status, body: await response.json() };
+PATCH|+        }, `browser-${crypto.randomUUID()}@example.test`);
+PATCH|+        assert.equal(registration.status, 201);
+PATCH|+        await page.goto("/?view=appointments");
+PATCH|+        await page.locator(".app-shell").waitFor({ state: "visible", timeout: 20_000 });
+PATCH|+        await page.getByRole("button", { name: "预约设置" }).click();
+PATCH|+        await page.getByRole("button", { name: "员工与排班" }).click();
+PATCH|+        await page.getByText("员工与排班", { exact: true }).last().waitFor({ state: "visible" });
+PATCH|+        const staff = page.locator(".staff-row").first(); await staff.click();
+PATCH|+        await page.locator(".staff-editor-panel").waitFor({ state: "visible" });
+PATCH|+        await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-staff-schedule.png`), fullPage: true });
+PATCH|+        const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
+PATCH|+        assert.ok(overflow.width <= overflow.viewport + 2, `${viewport.name} horizontal overflow`);
+PATCH|+        assert.deepEqual(errors, []);
+PATCH|+        await context.close();
+PATCH|+      }
+PATCH|+    } finally { await browser.close(); }
+PATCH|+    console.log("browser-smoke=PASS");
+PATCH|+  } finally {
+PATCH|+    child.kill();
+PATCH|+    fs.rmSync(tempRoot, { recursive: true, force: true });
+PATCH|+  }
+PATCH|+}
+PATCH|+main().catch(error => { console.error(error.stack || error.message); process.exit(1); });
+PATCH|diff --git a/admin/test/appointment-postgres-integration.test.js b/admin/test/appointment-postgres-integration.test.js
+PATCH|index 1ce10b2..de2c0ce 100644
+PATCH|--- a/admin/test/appointment-postgres-integration.test.js
+PATCH|+++ b/admin/test/appointment-postgres-integration.test.js
+PATCH|@@ -7,7 +7,7 @@ const { createAppointmentService } = require("../appointment-service");
+PATCH|[CONTEXT_BLANK]
+PATCH| const connectionString = process.env.ATELIER_REAL_POSTGRES_URL || "";
+PATCH|[CONTEXT_BLANK]
+PATCH|-test("real PostgreSQL serializes same-advisor booking while allowing different advisors", { skip: !connectionString }, async () => {
+PATCH|+test("real PostgreSQL serializes staff and resource bookings while preserving Sprint 1 behavior", { skip: !connectionString }, async () => {
+PATCH|   const db = await createPostgresDatabase(connectionString, { max: 8 });
+PATCH|   let account = null;
+PATCH|   let foreignAccount = null;
+PATCH|@@ -22,7 +22,10 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
+PATCH|     const service = createAppointmentService({ db, openIdHashKey: hashKey });
+PATCH|     await service.updateSettings(scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 15, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true });
+PATCH|     const services = await service.listServices(scope); const advisors = await service.listAdvisors(scope);
+PATCH|+    assert.ok(advisors[0].staffId);
+PATCH|     const secondAdvisor = await service.saveAdvisor(scope, { name: "并发顾问 B", enabled: true });
+PATCH|+    assert.ok(secondAdvisor.staffId);
+PATCH|+    const resource = await service.saveResource(scope, { name: "真实 PostgreSQL 试衣间", kind: "fitting_room" });
+PATCH|     const start = DateTime.now().setZone("Asia/Shanghai").plus({ days: 2 }).startOf("day").plus({ hours: 10 }).toUTC().toISO();
+PATCH|     const input = (openid, advisorId, idempotencyKey, offsetMinutes = 0) => ({
+PATCH|       publicStoreId: account.workspace.publicStoreId,
+PATCH|@@ -50,6 +53,11 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
+PATCH|     assert.equal(differentAdvisors.length, 2);
+PATCH|     assert.notEqual(differentAdvisors[0].number, differentAdvisors[1].number);
+PATCH|[CONTEXT_BLANK]
+PATCH|+    await service.createAppointment({ ...input("openid-resource-1", advisors[0].id, "real-resource-1", 240), staffId: advisors[0].staffId, resourceId: resource.id });
+PATCH|+    await assert.rejects(() => service.createAppointment({ ...input("openid-resource-2", secondAdvisor.id, "real-resource-2", 240), staffId: secondAdvisor.staffId, resourceId: resource.id }), error => error.code === "APPOINTMENT_CONFLICT");
+PATCH|+    const resourceAvailability = await service.merchantAvailability(scope, { storeId: scope.storeId, serviceId: services[0].id, resourceId: resource.id, date: DateTime.fromISO(start).setZone("Asia/Shanghai").toISODate() });
+PATCH|+    assert.equal(resourceAvailability.slots.find(item => item.startAt === DateTime.fromISO(start).plus({ minutes: 240 }).toUTC().toISO()).available, false);
+PATCH|+
+PATCH|     const firstAppointment = (await db.query("select id,customer_id from appointments where idempotency_key=$1", ["real-same-1"])).rows[0];
+PATCH|     assert.ok(firstAppointment?.customer_id);
+PATCH|     const touched = await saas.customerService.touchMiniProgramCustomer(scope, { openid: "openid-real-1" });
+PATCH|@@ -91,7 +99,7 @@ test("real PostgreSQL serializes same-advisor booking while allowing different a
+PATCH|     for (const cleanupAccount of [foreignAccount, account].filter(Boolean)) {
+PATCH|       const tenantId = cleanupAccount.workspace.tenantId; const workspaceId = cleanupAccount.workspace.id; const userId = cleanupAccount.user.id;
+PATCH|       await db.transaction(async tx => {
+PATCH|-        for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "membership_levels", "membership_programs", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
+PATCH|+        for (const table of ["customer_points_ledger", "customer_points_accounts", "customer_memberships", "membership_levels", "membership_programs", "customer_tag_links", "customer_notes", "customer_events", "appointments", "orders", "appointment_import_runs", "appointment_advisor_services", "appointment_business_hours", "staff_leaves", "staff_schedules", "resource_store_assignments", "staff_store_assignments", "appointment_services", "appointment_advisors", "resources", "staff_members", "appointment_settings", "customers"]) await tx.query(`delete from ${table} where workspace_id=$1`, [workspaceId]);
+PATCH|         await tx.query("delete from audit_events where workspace_id=$1", [workspaceId]);
+PATCH|         await tx.query("delete from merchant_sessions where workspace_id=$1", [workspaceId]);
+PATCH|         await tx.query("delete from subscriptions where workspace_id=$1", [workspaceId]);
+PATCH|diff --git a/admin/test/operation-engine-sprint2.test.js b/admin/test/operation-engine-sprint2.test.js
+PATCH|new file mode 100644
+PATCH|index 0000000..6f718e6
+PATCH|--- /dev/null
+PATCH|+++ b/admin/test/operation-engine-sprint2.test.js
+PATCH|@@ -0,0 +1,86 @@
+PATCH|+const test = require("node:test");
+PATCH|+const assert = require("node:assert/strict");
+PATCH|+const crypto = require("node:crypto");
+PATCH|+const { DateTime } = require("luxon");
+PATCH|+const { createPortableTestDatabase } = require("../database");
+PATCH|+const { createSaasService } = require("../saas-service");
+PATCH|+const { createAppointmentService } = require("../appointment-service");
+PATCH|+const fs = require("node:fs");
+PATCH|+const path = require("node:path");
+PATCH|+
+PATCH|+process.env.NODE_ENV = "test";
+PATCH|+const OPENID_KEY = "sprint2-operation-openid-key-at-least-32-bytes";
+PATCH|+
+PATCH|+async function fixture(name = "Operation Engine 店") {
+PATCH|+  const db = await createPortableTestDatabase();
+PATCH|+  const saas = createSaasService({ db, licensePepper: "sprint2-operation-license-key-at-least-32" });
+PATCH|+  const registration = await saas.register({ login: `${Date.now()}-${Math.random()}@example.test`, password: `test-${crypto.randomUUID()}`, storeName: name, template: "blank" });
+PATCH|+  await db.query("update subscriptions set status='active',expires_at=$1 where workspace_id=$2", [new Date("2031-01-01T00:00:00Z"), registration.workspace.id]);
+PATCH|+  const scope = { tenantId: registration.workspace.tenantId, workspaceId: registration.workspace.id, storeId: registration.workspace.storeId, userId: registration.user.id, subscription: { status: "active" } };
+PATCH|+  const service = createAppointmentService({ db, openIdHashKey: OPENID_KEY, now: () => DateTime.fromISO("2030-01-01T00:00:00Z") });
+PATCH|+  await service.updateSettings(scope, { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true });
+PATCH|+  const services = await service.listServices(scope);
+PATCH|+  await service.saveService(scope, { ...services[0], durationMinutes: 60, bufferMinutesOverride: 0 }, services[0].id);
+PATCH|+  const store = (await db.query("select * from stores where id=$1", [scope.storeId])).rows[0];
+PATCH|+  return { db, saas, service, scope, store, serviceRow: (await service.listServices(scope))[0] };
+PATCH|+}
+PATCH|+function booking(base, overrides = {}) { return { publicStoreId: base.store.public_store_id, openid: "sprint2-openid-a", customerName: "Operation 客户", customerPhone: "13800138000", serviceId: base.serviceRow.id, startAt: "2030-01-02T01:00:00.000Z", idempotencyKey: `sprint2-${crypto.randomUUID()}`, ...overrides }; }
+PATCH|+
+PATCH|+test("Operation Engine maps legacy advisors, applies schedule, leave, capability and scoped Staff APIs", async () => {
+PATCH|+  const base = await fixture();
+PATCH|+  try {
+PATCH|+    const legacy = (await base.service.listAdvisors(base.scope))[0];
+PATCH|+    assert.ok(legacy.staffId);
+PATCH|+    const initialStaff = await base.service.listStaff(base.scope);
+PATCH|+    assert.equal(initialStaff.length, 1);
+PATCH|+    assert.equal(initialStaff[0].id, legacy.staffId);
+PATCH|+    const staff = await base.service.saveStaff(base.scope, { displayName: "第二位员工", title: "造型顾问" });
+PATCH|+    assert.ok(staff.advisorId);
+PATCH|+    await base.service.setStaffCapabilities(base.scope, staff.id, { serviceIds: [] });
+PATCH|+    const unavailable = await base.service.merchantAvailability(base.scope, { storeId: base.scope.storeId, serviceId: base.serviceRow.id, staffId: staff.id, date: "2030-01-02" });
+PATCH|+    assert.equal(unavailable.slots.some(slot => slot.available), false);
+PATCH|+    await base.service.setStaffCapabilities(base.scope, staff.id, { serviceIds: [base.serviceRow.id] });
+PATCH|+    await base.service.replaceStaffSchedules(base.scope, staff.id, { schedules: [{ weekday: 3, startTime: "10:00", endTime: "12:00", enabled: true }] });
+PATCH|+    const scheduled = await base.service.merchantAvailability(base.scope, { storeId: base.scope.storeId, serviceId: base.serviceRow.id, staffId: staff.id, date: "2030-01-02" });
+PATCH|+    assert.equal(scheduled.slots.find(slot => slot.startAt === "2030-01-02T01:00:00.000Z").available, false);
+PATCH|+    assert.equal(scheduled.slots.find(slot => slot.startAt === "2030-01-02T02:00:00.000Z").available, true);
+PATCH|+    const leave = await base.service.saveStaffLeave(base.scope, staff.id, { startAt: "2030-01-02T02:00:00.000Z", endAt: "2030-01-02T03:00:00.000Z", reason: "培训" });
+PATCH|+    assert.ok(leave.id);
+PATCH|+    const leaveAvailability = await base.service.merchantAvailability(base.scope, { storeId: base.scope.storeId, serviceId: base.serviceRow.id, staffId: staff.id, date: "2030-01-02" });
+PATCH|+    assert.equal(leaveAvailability.slots.find(slot => slot.startAt === "2030-01-02T02:00:00.000Z").available, false);
+PATCH|+    await base.service.removeStaffLeave(base.scope, staff.id, leave.id);
+PATCH|+    assert.equal((await base.service.listStaffLeaves(base.scope, staff.id)).length, 0);
+PATCH|+    await assert.rejects(() => base.service.getStaff({ ...base.scope, tenantId: crypto.randomUUID() }, staff.id), error => error.code === "STAFF_NOT_FOUND");
+PATCH|+  } finally { await base.db.close(); }
+PATCH|+});
+PATCH|+
+PATCH|+test("Operation Engine supports multi-store staff assignment and optional resource conflicts", async () => {
+PATCH|+  const base = await fixture();
+PATCH|+  try {
+PATCH|+    const primary = (await base.service.listStaff(base.scope))[0];
+PATCH|+    const otherStoreId = crypto.randomUUID();
+PATCH|+    await base.db.query("insert into stores(id,tenant_id,workspace_id,name,channel_mode,status,public_store_id) values($1,$2,$3,'第二门店','shared','draft',$4)", [otherStoreId, base.scope.tenantId, base.scope.workspaceId, `store_public_${crypto.randomBytes(12).toString("hex")}`]);
+PATCH|+    await base.db.transaction(tx => base.service.ensureDefaults(tx, { ...base.scope, storeId: otherStoreId }, 60));
+PATCH|+    const assignments = await base.service.replaceStaffAssignments(base.scope, primary.id, { storeIds: [base.scope.storeId, otherStoreId] });
+PATCH|+    assert.equal(assignments.filter(item => item.status === "active").length, 2);
+PATCH|+    const secondScope = { ...base.scope, storeId: otherStoreId };
+PATCH|+    assert.equal((await base.service.listStaff(secondScope)).some(item => item.id === primary.id), true);
+PATCH|+    const staffTwo = await base.service.saveStaff(base.scope, { displayName: "资源并发员工" });
+PATCH|+    const resource = await base.service.saveResource(base.scope, { name: "试衣间 A", kind: "fitting_room" });
+PATCH|+    const first = await base.service.createAppointment(booking(base, { openid: "resource-a", customerPhone: "13900139000", staffId: primary.id, resourceId: resource.id, idempotencyKey: "resource-first" }));
+PATCH|+    assert.equal(first.status, "待确认");
+PATCH|+    await assert.rejects(() => base.service.createAppointment(booking(base, { openid: "resource-b", customerPhone: "13700137000", staffId: staffTwo.id, resourceId: resource.id, idempotencyKey: "resource-conflict" })), error => error.code === "APPOINTMENT_CONFLICT");
+PATCH|+    const options = await base.service.merchantAvailability(base.scope, { storeId: base.scope.storeId, serviceId: base.serviceRow.id, resourceId: resource.id, date: "2030-01-02" });
+PATCH|+    assert.equal(options.slots.find(slot => slot.startAt === "2030-01-02T01:00:00.000Z").available, false);
+PATCH|+  } finally { await base.db.close(); }
+PATCH|+});
+PATCH|+
+PATCH|+test("Merchant staff scheduling UI and scoped operation endpoints are connected", () => {
+PATCH|+  const ui = fs.readFileSync(path.resolve(__dirname, "../public/app.js"), "utf8");
+PATCH|+  const routes = fs.readFileSync(path.resolve(__dirname, "../appointment-routes.js"), "utf8");
+PATCH|+  assert.match(ui, /员工与排班/);
+PATCH|+  assert.match(ui, /员工 → 服务 → 门店 → 工作时间 → 请假/);
+PATCH|+  assert.match(ui, /openStaffEditor/);
+PATCH|+  assert.match(ui, /saveStaffLeave/);
+PATCH|+  for (const endpoint of ["/v1/staff", "/v1/staff/:id/capabilities", "/v1/staff/:id/schedules", "/v1/staff/:id/leaves", "/v1/appointment-resources"]) assert.equal(routes.includes(endpoint), true);
+PATCH|+});
+PATCH|diff --git a/platform/migrations/007_operation_engine_foundation.sql b/platform/migrations/007_operation_engine_foundation.sql
+PATCH|new file mode 100644
+PATCH|index 0000000..d5bff16
+PATCH|--- /dev/null
+PATCH|+++ b/platform/migrations/007_operation_engine_foundation.sql
+PATCH|@@ -0,0 +1,127 @@
+PATCH|+-- Merchant OS Sprint 2: store-scoped operation engine foundation.
+PATCH|+create table if not exists staff_members (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  user_id uuid,
+PATCH|+  display_name text not null,
+PATCH|+  avatar_url text not null default '',
+PATCH|+  title text not null default '',
+PATCH|+  status text not null default 'active' check(status in ('active','inactive')),
+PATCH|+  public_visible boolean not null default true,
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id),
+PATCH|+  foreign key(user_id) references users(id)
+PATCH|+);
+PATCH|+create unique index if not exists staff_members_scope_id_idx on staff_members(tenant_id,workspace_id,id);
+PATCH|+create index if not exists staff_members_workspace_status_idx on staff_members(workspace_id,status,display_name);
+PATCH|+
+PATCH|+create table if not exists staff_store_assignments (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  store_id uuid not null,
+PATCH|+  staff_id uuid not null,
+PATCH|+  status text not null default 'active' check(status in ('active','inactive')),
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,staff_id) references staff_members(tenant_id,workspace_id,id),
+PATCH|+  unique(store_id,staff_id)
+PATCH|+);
+PATCH|+create unique index if not exists staff_store_assignments_scope_id_idx on staff_store_assignments(tenant_id,workspace_id,store_id,staff_id);
+PATCH|+create index if not exists staff_store_assignments_staff_idx on staff_store_assignments(workspace_id,staff_id,status);
+PATCH|+
+PATCH|+create table if not exists staff_schedules (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  store_id uuid not null,
+PATCH|+  staff_id uuid not null,
+PATCH|+  weekday integer not null check(weekday between 0 and 6),
+PATCH|+  start_time time not null,
+PATCH|+  end_time time not null,
+PATCH|+  enabled boolean not null default true,
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  check(end_time > start_time),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,staff_id) references staff_members(tenant_id,workspace_id,id),
+PATCH|+  unique(store_id,staff_id,weekday,start_time,end_time)
+PATCH|+);
+PATCH|+create index if not exists staff_schedules_availability_idx on staff_schedules(tenant_id,workspace_id,store_id,staff_id,weekday,enabled);
+PATCH|+
+PATCH|+create table if not exists staff_leaves (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  store_id uuid not null,
+PATCH|+  staff_id uuid not null,
+PATCH|+  start_at timestamptz not null,
+PATCH|+  end_at timestamptz not null,
+PATCH|+  reason text not null default '',
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  check(end_at > start_at),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,staff_id) references staff_members(tenant_id,workspace_id,id)
+PATCH|+);
+PATCH|+create index if not exists staff_leaves_overlap_idx on staff_leaves(tenant_id,workspace_id,store_id,staff_id,start_at,end_at);
+PATCH|+
+PATCH|+create table if not exists resources (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  name text not null,
+PATCH|+  kind text not null default 'general',
+PATCH|+  status text not null default 'active' check(status in ('active','inactive')),
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id)
+PATCH|+);
+PATCH|+create unique index if not exists resources_scope_id_idx on resources(tenant_id,workspace_id,id);
+PATCH|+create index if not exists resources_workspace_status_idx on resources(workspace_id,status,name);
+PATCH|+
+PATCH|+create table if not exists resource_store_assignments (
+PATCH|+  id uuid primary key,
+PATCH|+  tenant_id uuid not null,
+PATCH|+  workspace_id uuid not null,
+PATCH|+  store_id uuid not null,
+PATCH|+  resource_id uuid not null,
+PATCH|+  status text not null default 'active' check(status in ('active','inactive')),
+PATCH|+  created_at timestamptz not null default now(),
+PATCH|+  updated_at timestamptz not null default now(),
+PATCH|+  foreign key(tenant_id,workspace_id) references workspaces(tenant_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,store_id) references stores(tenant_id,workspace_id,id),
+PATCH|+  foreign key(tenant_id,workspace_id,resource_id) references resources(tenant_id,workspace_id,id),
+PATCH|+  unique(store_id,resource_id)
+PATCH|+);
+PATCH|+create unique index if not exists resource_store_assignments_scope_id_idx on resource_store_assignments(tenant_id,workspace_id,store_id,resource_id);
+PATCH|+
+PATCH|+alter table appointment_advisors add column if not exists staff_id uuid;
+PATCH|+alter table appointments add column if not exists resource_id uuid;
+PATCH|+
+PATCH|+-- Each legacy advisor remains the store-specific compatibility record for one Staff member.
+PATCH|+update appointment_advisors set staff_id=gen_random_uuid() where staff_id is null;
+PATCH|+insert into staff_members(id,tenant_id,workspace_id,display_name,status,public_visible,created_at,updated_at)
+PATCH|+select a.staff_id,a.tenant_id,a.workspace_id,a.name,case when a.enabled then 'active' else 'inactive' end,a.enabled,a.created_at,a.updated_at
+PATCH|+from appointment_advisors a
+PATCH|+on conflict(id) do nothing;
+PATCH|+insert into staff_store_assignments(id,tenant_id,workspace_id,store_id,staff_id,status)
+PATCH|+select gen_random_uuid(),a.tenant_id,a.workspace_id,a.store_id,a.staff_id,case when a.enabled then 'active' else 'inactive' end
+PATCH|+from appointment_advisors a
+PATCH|+on conflict(store_id,staff_id) do nothing;
+PATCH|+insert into staff_schedules(id,tenant_id,workspace_id,store_id,staff_id,weekday,start_time,end_time,enabled)
+PATCH|+select gen_random_uuid(),a.tenant_id,a.workspace_id,a.store_id,a.staff_id,h.weekday,h.start_time,h.end_time,h.enabled
+PATCH|+from appointment_advisors a
+PATCH|+join appointment_business_hours h on h.tenant_id=a.tenant_id and h.workspace_id=a.workspace_id and h.store_id=a.store_id
+PATCH|+on conflict(store_id,staff_id,weekday,start_time,end_time) do nothing;
+PATCH|+
+PATCH|+alter table appointment_advisors add constraint appointment_advisors_staff_scope_fk foreign key(tenant_id,workspace_id,staff_id) references staff_members(tenant_id,workspace_id,id);
+PATCH|+alter table appointments add constraint appointments_resource_scope_fk foreign key(tenant_id,workspace_id,resource_id) references resources(tenant_id,workspace_id,id);
+PATCH|+create unique index if not exists appointment_advisors_scope_staff_idx on appointment_advisors(tenant_id,workspace_id,store_id,staff_id);
+PATCH|+create index if not exists appointments_resource_overlap_idx on appointments(tenant_id,workspace_id,store_id,resource_id,start_at,occupied_until) where resource_id is not null;
+--- PATCH END ---

@@ -1,0 +1,6 @@
+branch=codex/atelier-os-saas-mvp
+field=merchant_password_minimum
+value=8
+baseline_value=10
+baseline_commit=a8a3aca83532297e2c35fc072c34b57fc40546ab
+diff_sha256=151EE1FAB94B1052E2C491A0ABB399C7E9A053E6F7B56A0043F689505E3B12F6

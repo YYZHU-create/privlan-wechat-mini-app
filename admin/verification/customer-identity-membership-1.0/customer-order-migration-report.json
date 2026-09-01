@@ -1,0 +1,11 @@
+{
+  "mode": "dry-run",
+  "generatedAt": "2026-08-18T09:12:07.719Z",
+  "totalOrders": 0,
+  "linkedOrders": 0,
+  "linkableOrders": 0,
+  "unlinkedOrders": 0,
+  "ambiguousOrders": 0,
+  "appliedOrders": 0,
+  "unresolved": []
+}

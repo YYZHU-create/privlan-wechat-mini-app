@@ -1,0 +1,10 @@
+CHANGED_BRANCH=codex/merchant-os-sprint-2
+CHANGED_FIELD=Appointment settings defaults/upsert and Editor appointment-service API preview
+MODIFIED_FILE_1=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\appointment-service.js
+MODIFIED_FILE_2=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\public\app.js
+MODIFIED_FILE_3=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\test\appointment-saas.test.js
+MODIFIED_FILE_4=C:\Users\Administrator\WorkBuddy\2026-08-23-merchant-os-sprint-2\admin\test\editor-panel-redesign.test.js
+APPOINTMENT_SERVICE_SHA256=275A16A8277D2B082DE20EAA8F2A85EE36F63E07BAC77AAAB852B9635390D4E5
+APP_SHA256=9986A954FE6BF2E3CA9A62901C21B6F1A257049EFCDC9E1C48901A8C82DB3D6C
+APPOINTMENT_TEST_SHA256=95A9B167F06C4AAF71DDAD4B3DD49ADF87ACBB315BBABA330E31B3A4E0751C19
+EDITOR_TEST_SHA256=3478704B4093E9C53F7CBE4118CB0A1E6C1FE708D5D4344649A127DB0BB97858

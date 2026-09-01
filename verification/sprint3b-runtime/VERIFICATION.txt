@@ -1,0 +1,60 @@
+SPRINT 3B WORKFLOW INTEGRATION BLOCKER-FIX VERIFICATION
+
+TARGET: C:\Users\Administrator\WorkBuddy\2026-08-24-merchant-os-sprint-3a
+BRANCH: codex/merchant-os-sprint-3a
+BASE_COMMIT: e498d92bed2fe056845b5e886205948efe7f5462
+
+CHANGED BRANCH/FIELD:
+- Integration adapter validates appointment existence and tenant/workspace/store/customer scope before runtime.
+- Invalid aggregate deliveries finish as failed inbox records with workflow.integration.failed audit.
+- customer_events integration contract fields are protected by additive migration 010; unrelated metadata remains mutable.
+- Concurrent consumers poll/reconcile workflow_event_consumptions and converge on one terminal workflow instance result.
+- Default appointment.completed mapping is wired through createSaasService into the server default path.
+
+BASELINE
+Command: node --test test/workflow-runtime.test.js
+Input: Sprint 3A worktree at BASE_COMMIT
+Literal output/result: tests 6; pass 6; fail 0; skipped 0; exit 0.
+Command: node --test test/appointment-saas.test.js test/customer-identity.test.js test/operation-engine-sprint2.test.js test/merchant-auth.test.js test/tenant-isolation.test.js
+Input: Sprint 3A worktree at BASE_COMMIT
+Literal output/result: tests 25; pass 25; fail 0; skipped 0; exit 0.
+
+MODIFIED FOCUSED
+Command: node --check admin/workflow-integration-service.js; node --check admin/workflow-integration-mappings.js; node --check admin/saas-service.js
+Input: modified worktree
+Literal output/result: no output; exit 0.
+Command: node --test test/workflow-integration.test.js
+Input: modified worktree
+Literal output/result: tests 6; pass 6; fail 0; skipped 0; exit 0.
+Coverage: default production mapping, duplicate consumers, 10-way concurrent delivery convergence, nonexistent appointment, cross-tenant appointment, cross-workspace appointment, contract-field immutability, unrelated metadata mutability, scope denial.
+Command: npm test
+Input: modified worktree with confirmed staging PostgreSQL environment
+Literal output/result: tests 109; pass 109; fail 0; skipped 0; exit 0.
+Command: node admin/verify-sprint3b-staging.js
+Input: protected staging-postgres.env; database atelier_os_staging; current_user atelier_staging
+Literal output/result: DATABASE_IDENTITY_MATCH=PASS database=atelier_os_staging current_user=atelier_staging; MIGRATION_010_APPLIED=PASS; MIGRATION_010_STRUCTURE=PASS; DATA_COUNTS_STABLE=PASS; exit 0.
+Command: final read-only count query
+Input: atelier_os_staging after npm test
+Literal output/result: DATABASE_IDENTITY_MATCH=PASS; MIGRATION_STATUS=APPLIED; DATA_COUNTS={"users":10,"memberships":9,"tenants":9,"workspaces":9,"merchant_sessions":103,"customers":15,"appointments":2,"staff_members":11,"audit_events":169,"customer_events":25,"workflow_definitions":0,"workflow_versions":0,"workflow_instances":0,"workflow_tasks":0,"workflow_events":0,"workflow_event_consumptions":0}; exit 0.
+Interpretation: protected SaaS/business counts are unchanged from the release baseline (users 10, memberships 9, tenants 9, workspaces 9, merchant_sessions 103, customers 15, appointments 2, staff_members 11); audit_events increased by two expected merchant login/logout audit rows from the authenticated staging regression path.
+
+STATIC
+Command: node --check on all 8 changed JavaScript files; git diff --check; regex secret scan for connection URLs/private keys/AWS keys
+Input: modified worktree
+Literal output/result: SYNTAX=PASS; SECRET_SCAN=PASS; GIT_DIFF_CHECK=PASS; exit 0.
+Command: migration transaction-control scan
+Input: platform/migrations/010_workflow_event_contract_immutability.sql
+Literal output/result: MIGRATION_EXECUTION=NOT_RUN_DURING_DOC_CHECK; exit 0.
+Migration execution occurred only via the explicit staging verification command above.
+
+ROLLBACK
+Command: construct detached clone from BASE_COMMIT; copy modified Sprint 3B files and verification DIFF_FILE/ROLLBACK.sh; execute bash verification/sprint3b-runtime/ROLLBACK.sh; git status --short --untracked-files=all
+Input: separate rollback copy
+Literal output/result: ROLLBACK_STATUS=PASS; clean status; exit 0.
+Restored behavior/status: separate copy returned to BASE_COMMIT with clean Git status; source worktree remains modified and uncommitted.
+
+ARTIFACTS
+- verification/sprint3b-runtime/MODIFIED_FILE
+- verification/sprint3b-runtime/DIFF_FILE
+- verification/sprint3b-runtime/VERIFICATION.txt
+- verification/sprint3b-runtime/ROLLBACK.sh (executable mode 100755)

@@ -1,0 +1,4 @@
+Target-only rehearsal operation (no application source changed):
+ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_workspace_required_check;
+ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_scope_fk;
+Application/provider changes are limited to the AppointmentService hash handoff, Meoo repository error mapping, and the versioned Meoo Appointment RPC provider extension.

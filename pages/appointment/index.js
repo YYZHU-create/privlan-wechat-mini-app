@@ -1,6 +1,9 @@
 const api = require("../../utils/service-api");
 const appointmentConfig = require("../../utils/appointment-config");
 const serviceConfig = require("../../utils/service-config");
+const appointmentRuntime = require("../../utils/appointment-runtime");
+
+function idempotencyKey() { return `mp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}-${Math.random().toString(36).slice(2,10)}`; }
 
 Page({
   data: {
@@ -10,7 +13,7 @@ Page({
     submitting: false,
     loadError: "",
     services: [], stores: [], dates: [], slots: [], advisors: [],
-    form: { name: "", phone: "", serviceId: "", storeId: "", date: "", slotId: "", advisorId: "", notes: "" },
+    form: { name: "", phone: "", serviceId: "", storeId: "", date: "", slotId: "", advisorId: "", notes: "" }, pendingIdempotencyKey: "",
     errors: {},
     success: null
   },
@@ -20,7 +23,7 @@ Page({
   async loadOptions(extra = {}) {
     this.setData({ loading: true, loadError: "" });
     const form = this.data.form;
-    const result = await api.loadAppointmentOptions({ storeId: form.storeId, date: form.date, serviceId: form.serviceId, advisorId: form.advisorId, ...extra });
+    const result = await api.loadAppointmentOptions({ publicStoreId: appointmentRuntime.publicStoreId, date: form.date, serviceId: form.serviceId, advisorId: form.advisorId, ...extra });
     if (!result.ok) {
       this.setData({ loading: false, loadError: result.message || "可预约信息读取失败，请稍后重试" });
       return;
@@ -28,13 +31,14 @@ Page({
     const data = result.data || {};
     const nextForm = { ...form };
     if (!nextForm.serviceId && data.services?.[0]) nextForm.serviceId = data.services[0].id;
-    if (!nextForm.storeId && data.stores?.[0]) nextForm.storeId = data.stores[0].id;
+    const stores = data.stores || (data.store ? [{ id: data.store.publicStoreId, ...data.store }] : []);
+    if (!nextForm.storeId && stores[0]) nextForm.storeId = stores[0].id;
     if (!nextForm.date && data.dates?.[0]) nextForm.date = data.dates[0].value;
     if (!nextForm.advisorId && !appointmentConfig.fields.advisor) nextForm.advisorId = data.advisors?.[0]?.id || "unassigned";
     if (nextForm.slotId && !data.slots?.some(item => item.id === nextForm.slotId && item.available !== false)) nextForm.slotId = "";
     this.setData({
       loading: false,
-      services: data.services || [], stores: data.stores || [], dates: data.dates || [],
+      services: data.services || [], stores, dates: data.dates || [],
       slots: data.slots || [], advisors: data.advisors || [], form: nextForm
     });
     if ((!form.storeId && nextForm.storeId) || (!form.date && nextForm.date)) this.loadOptions({ storeId: nextForm.storeId, date: nextForm.date, serviceId: nextForm.serviceId });
@@ -79,14 +83,17 @@ Page({
   async submitAppointment() {
     if (!this.validate() || this.data.submitting) return;
     this.setData({ submitting: true });
-    const result = await api.createAppointment({ ...this.data.form, sessionToken: getApp().globalData.customerSessionToken || "" });
+    const selectedSlot = this.data.slots.find(item => item.id === this.data.form.slotId);
+    const key = this.data.pendingIdempotencyKey || idempotencyKey();
+    this.setData({ pendingIdempotencyKey: key });
+    const result = await api.createAppointment({ ...this.data.form, publicStoreId: appointmentRuntime.publicStoreId, startAt: selectedSlot?.startAt || this.data.form.slotId, idempotencyKey: key });
     this.setData({ submitting: false });
     if (!result.ok) {
       wx.showModal({ title: "预约未提交", content: `${result.message || "请稍后重试"}\n请求编号：${result.requestId || "-"}`, showCancel: false });
       if (result.code === "SLOT_UNAVAILABLE") this.loadOptions();
       return;
     }
-    this.setData({ success: result.data });
+    this.setData({ success: result.data, pendingIdempotencyKey: "" });
     const appointments = wx.getStorageSync("privlanAppointments");
     wx.setStorageSync("privlanAppointments", [{ ...result.data, status: "待确认", savedAt: new Date().toISOString() }, ...(Array.isArray(appointments) ? appointments.filter(item => item.number !== result.data.number) : [])].slice(0, 50));
     wx.vibrateShort?.({ type: "light" });

@@ -1,0 +1,83 @@
+ATELIER OS Customer Identity & Membership Platform 1.0
+VERIFICATION DATE: 2026-08-18 (Asia/Shanghai)
+
+CHANGED BRANCH / FIELDS
+Branch: codex/atelier-os-saas-mvp
+Baseline commit: 6407dd5590b817fdf20f779e5dd679a936e35fc1
+Baseline tree: 2fb753639f14611de39a73be0b4892b82bd912c9
+Primary changed fields/relations: customers.name nullable; customers.phone nullable; customers.display_name; customers.status; customers.first_seen_at; customers.last_seen_at; customers.order_count; customers.total_spend_fen; customers.appointment_count; orders.workspace_id; orders.customer_id; customer_events; customer_tags; customer_notes; customer_memberships; customer_points_accounts; customer_points_ledger.
+Original platform/schema.sql blob: 8099f0a63131fbc3e9b618f3fb5a38a1f038a969
+Modified staged platform/schema.sql blob: 32584e3a6eb4facfe873ddcf242a94da8757a8f3
+
+FOUR ARTIFACT PATHS
+MODIFIED_FILE: C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\MODIFIED_FILE
+DIFF_FILE: C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\DIFF_FILE
+VERIFICATION.txt: C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\VERIFICATION.txt
+ROLLBACK.sh: C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\ROLLBACK.sh
+
+ARTIFACT SHA-256
+MODIFIED_FILE: 629E69D991AF796C5A1D8E629C55DE9C2C94C45EA472AD9E71408B69A57AC452
+DIFF_FILE: 5EB754EE3A8B7898988C252F2CE44773FD3D4610B5AD96458B1CA9A66079B8ED
+ROLLBACK.sh: F900FAE0711E236A8F8D8D1B14FB1310EAC8A1AACA2628D07A87933EEC8951D9
+
+BASELINE
+Command: npm test
+Working directory/input: C:\Users\Administrator\AppData\Local\Temp\atelier-customer-rollback-6407dd5\admin at detached HEAD 6407dd5590b817fdf20f779e5dd679a936e35fc1; node_modules junction points to the source repository dependency tree for dependency resolution.
+Literal output/result:
+tests 63
+suites 0
+pass 62
+fail 0
+cancelled 0
+skipped 1
+todo 0
+duration_ms 13432.3556
+Exit status: 0
+
+MODIFIED
+Apply command: git -C C:\Users\Administrator\AppData\Local\Temp\atelier-customer-rollback-6407dd5 apply --unidiff-zero --index C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\DIFF_FILE
+Apply input: DIFF_FILE SHA-256 5EB754EE3A8B7898988C252F2CE44773FD3D4610B5AD96458B1CA9A66079B8ED
+Syntax command: node --check admin/customer-service.js && node --check admin/appointment-service.js && node --check admin/appointment-routes.js && node --check admin/public/app.js && node --check cloudfunctions/customerTouch/index.js && node --check cloudfunctions/customerTouch/common.js
+Syntax literal output/result: no stdout; every parser check succeeded.
+Syntax exit status: 0
+Test command: npm test
+Test working directory/input: C:\Users\Administrator\AppData\Local\Temp\atelier-customer-rollback-6407dd5\admin after applying DIFF_FILE.
+Literal output/result:
+tests 70
+suites 0
+pass 69
+fail 0
+cancelled 0
+skipped 1
+todo 0
+duration_ms 16061.2086
+Exit status: 0
+
+DATABASE / UI OBSERVED RESULTS
+PostgreSQL migration result: {"migration":"005_customer_identity_membership","customerTables":3}
+Legacy order dry-run result: {"mode":"dry-run","totalOrders":0,"linkedOrders":0,"linkableOrders":0,"unlinkedOrders":0,"ambiguousOrders":0,"appliedOrders":0,"unresolved":[]}
+Playwright result: Customer Center UI checks passed: navigation, filters, Customer 360 tabs, tags, membership settings, 1920/1366/1024/430.
+Live service result: GET /health -> 200, {"app":"atelier-os","database":"ok","version":"development"}; GET /?view=customers -> 200.
+
+ROLLBACK
+Command: "C:\Program Files\Git\bin\bash.exe" "C:\Users\Administrator\WorkBuddy\2026-08-03-15-55-21\luxe-mall-demo\admin\verification\customer-identity-membership-1.0\ROLLBACK.sh" "C:\Users\Administrator\AppData\Local\Temp\atelier-customer-rollback-6407dd5"
+Input: detached verification worktree containing the applied DIFF_FILE.
+Literal output/result:
+ROLLBACK_OK: restored tracked files to HEAD
+Exit status: 0
+Restored test command: npm test
+Restored test working directory/input: C:\Users\Administrator\AppData\Local\Temp\atelier-customer-rollback-6407dd5\admin after rollback.
+Literal output/result:
+tests 63
+suites 0
+pass 62
+fail 0
+cancelled 0
+skipped 1
+todo 0
+duration_ms 13423.1778
+Exit status: 0
+Restored behavior/status: baseline test count and pass/fail/skip state restored; git status --short returned no entries (CLEAN); HEAD remained 6407dd5590b817fdf20f779e5dd679a936e35fc1.
+
+PRESERVATION
+The source worktree remains modified with the Customer Identity implementation. Existing unrelated configuration, AI, appointment-runtime, page, screenshot, and video deletion changes remain unstaged and are not included in DIFF_FILE.

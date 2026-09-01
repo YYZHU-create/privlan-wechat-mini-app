@@ -9,8 +9,23 @@ const crypto = require("crypto");
 const { execSync, execFileSync } = require("child_process");
 const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
+const { createDatabaseFromEnv } = require("./database");
+const { createSaasService } = require("./saas-service");
+const { createSupabaseAdapter, createMeooAuthRepository } = require("./meoo-supabase-adapter");
+const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
+const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
+const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
+const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
+const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
+const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
+const { resolveRuntimeIdentity } = require("./runtime-identity");
+const { buildPreviewPackage, formatBytes } = require("./preview-package");
+
+validateProductionEnvironment(process.env);
+const DATABASE_BACKEND = validateDatabaseBackend(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
+const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
 const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
 const CONFIG_BACKUP_DIR = path.resolve(process.env.PRIVLAN_CONFIG_BACKUP_DIR || path.join(__dirname, "config-backups"));
 const IMAGES_DIR = path.resolve(process.env.PRIVLAN_IMAGES_DIR || path.join(ROOT, "images"));
@@ -24,8 +39,11 @@ const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
 const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
+const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || DATABASE_BACKEND === "meoo" || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
+const LEGACY_LOCAL_MODE = !SAAS_DATABASE_ENABLED;
 const TRASH_DIR = path.resolve(process.env.PRIVLAN_MEDIA_TRASH_DIR || path.join(__dirname, "media-trash"));
 const TRASH_MANIFEST_PATH = path.join(TRASH_DIR, "manifest.json");
+const ATELIER_DATA_ROOT = path.resolve(process.env.ATELIER_DATA_ROOT || path.join(__dirname, "data"));
 const OPS_BOOTSTRAP_PATH = path.resolve(process.env.PRIVLAN_OPS_BOOTSTRAP_PATH || path.join(__dirname, ".ops-bootstrap.json"));
 let previewBuildCount = 0;
 const aiUsage = { inputTokens: 0, outputTokens: 0, requests: 0, fallbackRequests: 0, errors: 0 };
@@ -37,6 +55,21 @@ fs.mkdirSync(TRASH_DIR, { recursive: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
+const databasePromise = createDatabaseFromEnv();
+const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
+const meooAuthRepository = DATABASE_BACKEND === "meoo" ? createMeooAuthRepository() : null;
+const saasServicePromise = databasePromise.then(database => database ? createSaasService({
+  db: database,
+  tagRepository: meooAdapter,
+  appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null,
+  customerRepository: meooAdapter ? createMeooCustomerRepository({ adapter: meooAdapter }) : null,
+  customerWriteRepository: meooAdapter ? createMeooCustomerWriteRepository({ adapter: meooAdapter }) : null,
+  appointmentWriteRepository: meooAdapter ? createMeooAppointmentWriteRepository({ adapter: meooAdapter }) : null,
+  appointmentReadRepository: meooAdapter ? createMeooAppointmentReadRepository({ adapter: meooAdapter }) : null,
+  authRepository: database?.authRepository || meooAuthRepository,
+  configRepository: meooAdapter
+}) : null);
+const getSaasService = () => saasServicePromise;
 
 app.disable("x-powered-by");
 app.use((req, res, next) => {
@@ -66,7 +99,7 @@ app.use("/api", (req, res, next) => {
       return res.status(403).json({ error: "请求来源无效" });
     }
   }
-  if (!localHost && !validAdminToken(req)) return res.status(401).json({ error: "需要后台访问令牌" });
+  if (!SAAS_DATABASE_ENABLED && !localHost && !validAdminToken(req)) return res.status(401).json({ error: "需要后台访问令牌" });
   if (["GET", "HEAD"].includes(req.method)) return next();
   const client = req.ip || req.socket.remoteAddress || "local";
   const now = Date.now();
@@ -87,7 +120,7 @@ app.use("/v1", (req, res, next) => {
       return res.status(403).json({ ok: false, error: "请求来源无效" });
     }
   }
-  if (!localHost && !validAdminToken(req)) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
+  if (!SAAS_DATABASE_ENABLED && !localHost && !validAdminToken(req)) return res.status(401).json({ ok: false, error: "需要商户后台访问令牌" });
   if (["GET", "HEAD"].includes(req.method)) return next();
   const client = `v1:${req.ip || req.socket.remoteAddress || "local"}`;
   const now = Date.now();
@@ -106,6 +139,23 @@ app.use("/ops/v1", (req, res, next) => {
 app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
+registerAppointmentGatewayRoutes(app, getSaasService);
+registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY });
+registerOpsAuthRoutes(app, getSaasService);
+
+app.get("/health", async (req, res) => {
+  try {
+    const database = await databasePromise;
+    if (!database) {
+      const status = process.env.NODE_ENV === "production" ? 503 : 200;
+      return res.status(status).json({ app: "atelier-os", database: "not_configured", version: process.env.ATELIER_VERSION || "development" });
+    }
+    await database.health();
+    return res.json({ app: "atelier-os", database: "ok", version: process.env.ATELIER_VERSION || "development" });
+  } catch (error) {
+    return res.status(503).json({ app: "atelier-os", database: "unavailable", version: process.env.ATELIER_VERSION || "development" });
+  }
+});
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
 app.use("/mp-fonts", express.static(FONTS_DIR));
@@ -175,6 +225,7 @@ function parseCookies(req) {
 }
 
 function ensureLocalOperator() {
+  if (!LEGACY_LOCAL_MODE) return;
   const state = readSaasState();
   const email = String(process.env.ATELIER_OPS_EMAIL || "ops-admin@localhost").trim().toLowerCase();
   let password = String(process.env.ATELIER_OPS_PASSWORD || "");
@@ -224,8 +275,11 @@ function operatorSession(req) {
   return session;
 }
 
-function requireOperator(req, res, next) {
-  const session = operatorSession(req);
+async function requireOperator(req, res, next) {
+  const service = await getSaasService();
+  const session = service
+    ? await service.resolveOperatorSession(parseCookies(req).atelier_ops_session || String(req.get("x-atelier-ops-session") || ""))
+    : operatorSession(req);
   if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 ATELIER OS 运营后台" });
   req.operator = session;
   next();
@@ -612,91 +666,15 @@ function listSystemFonts() {
   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }
 
-function optimizePreviewJpeg(sourcePath, targetPath) {
-  execFileSync("powershell.exe", [
-    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "preview-image.ps1"),
-    sourcePath, targetPath, String(PREVIEW_IMAGE_MAX_EDGE), String(PREVIEW_IMAGE_QUALITY)
-  ], { windowsHide: true, stdio: "pipe" });
-}
-
-function referencedPreviewImages(projectRoot) {
-  const references = new Set();
-  const supportedTextFiles = new Set([".js", ".json", ".wxml", ".wxss"]);
-  const pending = [projectRoot];
-
-  while (pending.length) {
-    const directory = pending.pop();
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const filePath = path.join(directory, entry.name);
-      const relative = path.relative(projectRoot, filePath);
-      if (relative === "images" || relative.startsWith(`images${path.sep}`)) continue;
-      if (entry.isDirectory()) {
-        pending.push(filePath);
-        continue;
-      }
-      if (!entry.isFile() || !supportedTextFiles.has(path.extname(entry.name).toLowerCase())) continue;
-      const content = fs.readFileSync(filePath, "utf8");
-      for (const match of content.matchAll(/\/images\/([A-Za-z0-9._-]+)/g)) references.add(match[1]);
-    }
-  }
-  return references;
-}
-
-function prunePreviewImages(previewRoot) {
-  const previewImagesDir = path.join(previewRoot, "images");
-  if (!fs.existsSync(previewImagesDir)) return;
-  const referenced = referencedPreviewImages(previewRoot);
-  for (const entry of fs.readdirSync(previewImagesDir, { withFileTypes: true })) {
-    if (entry.isFile() && !referenced.has(entry.name)) fs.rmSync(path.join(previewImagesDir, entry.name), { force: true });
-  }
-}
-
-function directorySize(directory) {
-  let total = 0;
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const filePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) total += directorySize(filePath);
-    else if (entry.isFile()) total += fs.statSync(filePath).size;
-  }
-  return total;
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 function buildPreviewProject() {
   previewBuildCount += 1;
   const previewRoot = `${PREVIEW_ROOT_BASE}-${Date.now()}-${process.pid}-${previewBuildCount}`;
-  fs.cpSync(ROOT, previewRoot, {
-    recursive: true,
-    filter(source) {
-      const relative = path.relative(ROOT, source);
-      return relative !== "admin" && !relative.startsWith(`admin${path.sep}`) && relative !== ".git" && !relative.startsWith(`.git${path.sep}`);
-    }
+  return buildPreviewPackage({
+    projectRoot: ROOT,
+    previewRoot,
+    imageMaxEdge: PREVIEW_IMAGE_MAX_EDGE,
+    imageQuality: PREVIEW_IMAGE_QUALITY
   });
-
-  const previewImagesDir = path.join(previewRoot, "images");
-  prunePreviewImages(previewRoot);
-  if (fs.existsSync(previewImagesDir)) {
-    for (const entry of fs.readdirSync(previewImagesDir)) {
-      const imagePath = path.join(previewImagesDir, entry);
-      const ext = path.extname(entry).toLowerCase();
-      if (fs.statSync(imagePath).isFile() && fs.statSync(imagePath).size > 5 * 1024 * 1024) {
-        throw new Error(`素材 /images/${entry} 体积为 ${formatBytes(fs.statSync(imagePath).size)}，不适合直接加入小程序包。该素材应迁移至 CDN/COS 后再用于正式发布。`);
-      }
-      if (fs.statSync(imagePath).isFile() && [".jpg", ".jpeg"].includes(ext)) {
-        const optimizedPath = `${imagePath}.preview`;
-        optimizePreviewJpeg(imagePath, optimizedPath);
-        if (fs.existsSync(optimizedPath)) {
-          fs.rmSync(imagePath, { force: true });
-          fs.renameSync(optimizedPath, imagePath);
-        }
-      }
-    }
-  }
-  return previewRoot;
 }
 
 function migrateCenterTabCrop(cfg) {
@@ -770,6 +748,7 @@ app.get("/api/platform/bootstrap", (req, res) => {
     res.json({
       ok: true,
       workspace: state.workspace,
+      ...(RUNTIME_IDENTITY.visible ? { runtimeIdentity: RUNTIME_IDENTITY } : {}),
       plans: state.plans,
       publishJobs: jobs.slice(0, 20),
       ai: publicAiStatus(),
@@ -1039,6 +1018,15 @@ app.use("/ops/v1", (req, res, next) => {
   next();
 });
 app.use("/ops/v1", requireOperator);
+registerOpsSaasRoutes(app, getSaasService);
+
+// In SaaS mode PostgreSQL is the only operator data source. Anything not
+// explicitly registered above is intentionally unavailable instead of falling
+// through to the legacy JSON control plane below.
+app.use("/ops/v1", (req, res, next) => {
+  if (LEGACY_LOCAL_MODE) return next();
+  return res.status(404).json({ ok: false, code: "OPS_FEATURE_NOT_AVAILABLE", error: "该运营功能尚未开放" });
+});
 
 app.get("/ops/v1/session", (req, res) => {
   res.json({ ok: true, data: { id: req.operator.userId, email: req.operator.email, name: req.operator.name, role: req.operator.role } });
@@ -1559,8 +1547,20 @@ app.get("/api/presets", (req, res) => {
 });
 
 // ---- Sync API ----
-app.post("/api/sync", (req, res) => {
+app.post("/api/sync", async (req, res) => {
   try {
+    if (SAAS_DATABASE_ENABLED && req.saasService) {
+      req.saasService.assertWritable(req.merchantScope);
+      const source = req.body && Object.keys(req.body).length > 0 ? req.body : null;
+      const cfg = source || null;
+      const document = cfg || (await req.saasService.readConfig(req.merchantScope)).document;
+      migrateCenterTabCrop(document);
+      const synced = { ...document, _lastSync: new Date().toISOString() };
+      const result = require("./sync")(synced, ROOT, { publicStoreId: req.merchantScope.workspace.publicStoreId || "" });
+      const warnings = packageAssetWarnings(synced);
+      const saved = await req.saasService.writeConfig(req.merchantScope, synced);
+      return res.json({ ok: true, ...result, warnings, lastSync: synced._lastSync, version: `v${synced._lastSync.replace(/[-:TZ.]/g, "").slice(0, 14)}`, configVersion: saved.version, publishJob: null, git: null });
+    }
     const sync = require("./sync");
     let cfg;
     if (req.body && Object.keys(req.body).length > 0) {
@@ -1570,7 +1570,7 @@ app.post("/api/sync", (req, res) => {
       cfg = readConfig();
     }
     migrateCenterTabCrop(cfg);
-    const result = sync(cfg, ROOT);
+    const result = sync(cfg, ROOT, { publicStoreId: req.merchantScope?.workspace?.publicStoreId || "" });
     const warnings = packageAssetWarnings(cfg);
     cfg._lastSync = new Date().toISOString();
     writeConfig(cfg);
@@ -1594,6 +1594,7 @@ app.post("/api/sync", (req, res) => {
 // ---- Preview API ----
 app.post("/api/preview", (req, res) => {
   try {
+    if (SAAS_DATABASE_ENABLED && !req.saasService) return res.status(401).json({ ok: false, error: "请先登录" });
     const cliPath = findWechatDevtoolsCli();
     if (!cliPath) {
       return res.status(503).json({
@@ -1601,11 +1602,13 @@ app.post("/api/preview", (req, res) => {
       });
     }
     const cliDir = path.dirname(cliPath);
-    const previewProject = buildPreviewProject();
-    const previewPackageSize = directorySize(previewProject);
-    if (previewPackageSize > PREVIEW_PACKAGE_MAX_BYTES) {
-      const error = new Error(`预览包体积为 ${formatBytes(previewPackageSize)}，超过微信开发版二维码的 2 MB 限制。请压缩或移除未使用的图片、GIF 和字体后重试。`);
-      error.details = `previewProject=${previewProject}`;
+    const previewPackage = buildPreviewProject();
+    const { previewRoot: previewProject, report: previewReport } = previewPackage;
+    if (previewReport.mainPackageBytes > PREVIEW_PACKAGE_MAX_BYTES) {
+      const largestFiles = previewReport.largestRuntimeFiles.slice(0, 5)
+        .map(file => `${file.path} (${formatBytes(file.bytes)})`).join("、");
+      const error = new Error(`预览主包体积为 ${formatBytes(previewReport.mainPackageBytes)}，超过微信开发版二维码的 2 MB 限制。最大引用运行时文件：${largestFiles || "无"}。`);
+      error.details = JSON.stringify({ previewProject, previewReport });
       throw error;
     }
     const tempQrPath = path.join(path.dirname(PREVIEW_QR_PATH), `preview-qr-${Date.now()}-${process.pid}.png`);
@@ -1620,7 +1623,7 @@ app.post("/api/preview", (req, res) => {
     fs.renameSync(tempQrPath, PREVIEW_QR_PATH);
     if (!fs.existsSync(PREVIEW_QR_PATH)) throw new Error("微信开发者工具没有生成预览二维码");
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}` });
+    res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}`, previewReport });
   } catch (e) {
     res.status(502).json({ ok: false, error: e.message, details: e.details || "", stderr: e.stderr ? e.stderr.toString() : "" });
   }

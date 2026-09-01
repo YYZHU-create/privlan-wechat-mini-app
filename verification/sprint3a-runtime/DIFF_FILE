@@ -1,0 +1,17 @@
+Sprint 3A runtime implementation diff summary:
+
+- Added migration 008 with five workflow_* tables and scoped indexes.
+- Added matching workflow definitions to platform/schema.sql.
+- Added workflow runtime orchestration and authenticated execution routes.
+- Reused saas-service audit_events writer.
+- Added lifecycle, idempotency, cancellation, audit, and scope tests.
+- No ALTER TABLE statements and no changes to protected SaaS/business tables.
+
+Hardening release diff summary:
+
+- The partial idempotency index is scoped by tenant_id, workspace_id, and idempotency_key; runtime insertion uses ON CONFLICT to return the existing instance.
+- workflow_instances.next_event_sequence allocates event sequence numbers through one atomic UPDATE.
+- Composite foreign keys bind Workflow rows to the owning tenant/workspace, instance definition, version, task, and event relationships.
+- A PostgreSQL trigger rejects UPDATE or DELETE of a published workflow version.
+- merchant-http uses a per-test ATELIER_DATA_ROOT to prevent Windows EPERM collisions between test servers.
+- docs/architecture/ATELIER_OS_ARCHITECTURE_BASELINE.md records the Sprint 1, Sprint 2, and Sprint 3A architecture without changing runtime behavior.

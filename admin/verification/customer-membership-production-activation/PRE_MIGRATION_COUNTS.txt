@@ -1,0 +1,4 @@
+MIGRATION=005_customer_identity_membership
+PRE_MIGRATION_COUNTS=tenants=0;workspaces=0;stores=0;customers=0;appointments=0;orders=0
+POST_MIGRATION_COUNTS=tenants=0;workspaces=0;stores=0;customers=0;appointments=0;orders=0
+POST_TEST_CLEANUP_COUNTS=tenants=0;workspaces=0;stores=0;customers=0;appointments=0;orders=0

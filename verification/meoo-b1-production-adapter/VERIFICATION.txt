@@ -1,0 +1,31 @@
+ATELIER OS x MEOO B1 Production Adapter Integration
+
+WORKTREE=C:\Users\Administrator\WorkBuddy\2026-08-30-meoo-b1-production-adapter
+BRANCH=codex/meoo-b1-production-adapter
+BASE_HEAD=9b697de7966a2cd472180e4e451188090a9978ee
+
+CHANGED_BRANCH=database backend selection and domain adapters
+CHANGED_FIELDS=explicit native/meoo selector; Customer Tag repository injection; AppointmentService repository-to-RPC dispatch; Meoo timeout/error/metrics hooks
+MODIFIED_FILE=verification/meoo-b1-production-adapter/MODIFIED_FILE
+DIFF_FILE=verification/meoo-b1-production-adapter/DIFF_FILE
+ROLLBACK=verification/meoo-b1-production-adapter/ROLLBACK.sh
+
+BASELINE_COMMAND=node --test test/customer-identity.test.js
+BASELINE_RESULT=6 passed, 0 failed, exit 0
+MODIFIED_COMMAND=node --test test/meoo-production-adapter.test.js test/meoo-supabase-adapter.test.js test/meoo-appointment-concurrency.test.js
+MODIFIED_RESULT=19 passed, 0 failed, exit 0
+NATIVE_COMMAND=ATELIER_DB_BACKEND=native npm test
+NATIVE_RESULT=128 passed, 0 failed, 1 pre-existing PostgreSQL skip, exit 0
+MEOO_COMMAND=ATELIER_DB_BACKEND=meoo node --test test/meoo-production-adapter.test.js test/meoo-supabase-adapter.test.js
+MEOO_RESULT=18 passed, 0 failed, exit 0
+LIVE_APPOINTMENT_RESULT=real AppointmentService -> Meoo repository -> RPC concurrency and forced rollback passed, exit 0
+AUTH_SCHEMA_RESULT=synthetic UUID/scrypt-hash/token-hash/csrf-hash/timestamptz schema probe passed and was removed, exit 0
+SESSION_ADAPTER_RESULT=synthetic merchant session create/read/revoke scope contract passed, exit 0
+ROLLBACK_COMMAND=sh verification/meoo-b1-production-adapter/ROLLBACK.sh <copy> <backup>
+ROLLBACK_RESULT=temporary copy restored with matching SHA-256, exit 0
+
+SOURCE_DATABASE_MUTATED=NO
+REAL_DATA_MIGRATION=NO
+SUPABASE_AUTH_ADOPTED=NO
+PRODUCTION_DEPLOY=NO
+PUSH=NOT_RUN

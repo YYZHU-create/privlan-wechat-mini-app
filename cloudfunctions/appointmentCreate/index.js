@@ -146,4 +146,40 @@ function createHandler(core) {
 }
 
 exports.createHandler = createHandler;
-exports.main = event => createHandler(require("./common"))(event);
+
+function createPostgresHandler(core) {
+  return async event => {
+    const requestId = core.requestId(); const openid = core.currentOpenId();
+    if (!openid) return core.fail("AUTH_REQUIRED", "请先在微信中登录", requestId);
+    try {
+      const response = await core.appointmentApi("/v1/miniprogram/appointments", {
+        publicStoreId: String(event.publicStoreId || ""), openid,
+        customerName: String(event.name || ""), customerPhone: String(event.phone || ""),
+        serviceId: String(event.serviceId || ""), advisorId: String(event.advisorId || ""),
+        startAt: String(event.startAt || event.slotId || ""), notes: String(event.notes || ""), idempotencyKey: String(event.idempotencyKey || "")
+      });
+      if (!response?.ok) return response;
+      const item = response.data || {};
+      try {
+        await core.db.collection("privlan_appointment_records").doc(core.hash(item.number).slice(0,32)).set({ data: { ...item, openId: openid, startAt: Date.parse(item.startAt), endAt: Date.parse(item.endAt), status: item.status || "待确认", createdAt: core.db.serverDate() } });
+      } catch (error) { await core.audit("appointment_notification_mirror_failed", openid, { requestId, appointmentNumber: item.number, code: error.code || "MIRROR_FAILED" }); }
+      if (core.env("ATELIER_FEISHU_APPOINTMENT_MIRROR") === "1") {
+        try {
+          await core.createRecord("FEISHU_APPOINTMENTS_TABLE_ID", {
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_NUMBER", "预约编号")]: item.number,
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_NAME", "姓名")]: String(event.name || ""),
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_PHONE", "手机号")]: String(event.phone || ""),
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_START_AT", "开始时间")]: Date.parse(item.startAt),
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_END_AT", "结束时间")]: Date.parse(item.endAt),
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_STATUS", "状态")]: "待确认",
+            [core.fieldName("FEISHU_FIELD_APPOINTMENT_SOURCE", "来源")]: "ATELIER OS"
+          });
+        } catch (error) { await core.audit("appointment_integration_failed", openid, { requestId, appointmentNumber: item.number, integration: "feishu", code: error.code || "SYNC_FAILED" }); }
+      }
+      return response;
+    } catch (error) { return core.handleError(error, requestId); }
+  };
+}
+
+exports.createPostgresHandler = createPostgresHandler;
+exports.main = event => { const core=require("./common"); return core.env("ATELIER_APPOINTMENT_BACKEND","postgres") === "feishu" ? createHandler(core)(event) : createPostgresHandler(core)(event); };

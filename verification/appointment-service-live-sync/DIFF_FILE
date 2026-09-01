@@ -1,0 +1,101 @@
+diff --git "baseline/app.js" admin/public/app.js
+index 3eb599a..15b98c1 100644
+--- "baseline/app.js"
++++ admin/public/app.js
+@@ -122,6 +122,7 @@ createApp({
+     const faqEditor = reactive({ open: false, index: -1, question: "", keywordsText: "", answer: "", enabled: true, showAsPrompt: true, error: "" });
+     const knowledgeSourceEditor = reactive({ open: false, type: "faq", title: "", content: "", error: "" });
+     const appointmentWorkspace = reactive({ loading: false, error: "", servicesLoading: false, servicesError: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
++    const editorAppointmentServices = ref([]);
+     if (requestedView === "membership") appointmentWorkspace.customerSection = "membership";
+     const appointmentDrawer = reactive({ open: false, loading: false, item: null, timeline: [], followUpDraft: "", followUpSaving: false, error: "" });
+     const customerDrawer = reactive({ open: false, loading: false, item: null, error: "", tab: "overview", noteDraft: "", pointsDelta: 0, pointsReason: "" });
+@@ -757,19 +758,32 @@ createApp({
+         const [stats, customerStats, appointments, customerResult, services, advisors, tags, program, levels] = await Promise.all([
+           apiJson("/v1/appointments/stats"), apiJson("/v1/customers/stats"), apiJson(`/v1/appointments${appointmentQuery ? `?${appointmentQuery}` : ""}`), apiJson(`/v1/customers?${customerQuery}`), apiJson("/v1/appointment-services"), apiJson("/v1/appointment-advisors"), apiJson("/v1/customer-tags"), apiJson("/v1/membership-program"), apiJson("/v1/membership-levels")
+         ]);
+-        Object.assign(appointmentWorkspace.stats, stats || {}); Object.assign(appointmentWorkspace.customerStats, customerStats || {}); appointmentWorkspace.appointments = appointments || []; appointmentWorkspace.customers = customerResult?.items || []; appointmentWorkspace.customerTotal = Number(customerResult?.total || 0); appointmentWorkspace.services = services || []; appointmentWorkspace.advisors = advisors || []; customerAdmin.tags=tags||[]; customerAdmin.program=program||{enabled:false,points_enabled:false}; customerAdmin.levels=levels||[];
++        Object.assign(appointmentWorkspace.stats, stats || {}); Object.assign(appointmentWorkspace.customerStats, customerStats || {}); appointmentWorkspace.appointments = appointments || []; appointmentWorkspace.customers = customerResult?.items || []; appointmentWorkspace.customerTotal = Number(customerResult?.total || 0); appointmentWorkspace.services = services || []; editorAppointmentServices.value = services || []; appointmentWorkspace.advisors = advisors || []; customerAdmin.tags=tags||[]; customerAdmin.program=program||{enabled:false,points_enabled:false}; customerAdmin.levels=levels||[];
+       } catch (error) { appointmentWorkspace.error = error.message; }
+       finally { appointmentWorkspace.loading = false; }
+     }
+
++    let appointmentServicesRequest = null;
+     async function loadAppointmentServices() {
++      if (appointmentServicesRequest) return appointmentServicesRequest;
+       appointmentWorkspace.servicesLoading = true;
+       appointmentWorkspace.servicesError = "";
+-      try { appointmentWorkspace.services = await apiJson("/v1/appointment-services") || []; }
+-      catch (error) { appointmentWorkspace.servicesError = error.message || "服务读取失败"; }
+-      finally { appointmentWorkspace.servicesLoading = false; }
++      appointmentServicesRequest = (async () => {
++        try {
++          const services = await apiJson("/v1/appointment-services");
++          editorAppointmentServices.value = Array.isArray(services) ? services : [];
++          return editorAppointmentServices.value;
++        } catch (error) {
++          appointmentWorkspace.servicesError = error.message || "服务读取失败";
++          return editorAppointmentServices.value;
++        } finally {
++          appointmentWorkspace.servicesLoading = false;
++          appointmentServicesRequest = null;
++        }
++      })();
++      return appointmentServicesRequest;
+     }
+-    const previewAppointmentServices = computed(() => appointmentWorkspace.services.filter(item => item.enabled !== false));
++    const previewAppointmentServices = computed(() => editorAppointmentServices.value.filter(item => item.enabled !== false));
+
+     async function openAppointment(item) { appointmentDrawer.open = true; appointmentDrawer.loading = true; appointmentDrawer.error = ""; appointmentDrawer.item = null; appointmentDrawer.timeline = []; appointmentDrawer.followUpDraft = ""; try { const id = encodeURIComponent(item.id); const [appointment, timeline] = await Promise.all([apiJson(`/v1/appointments/${id}`), apiJson(`/v1/appointments/${id}/timeline`)]); appointmentDrawer.item = appointment; appointmentDrawer.timeline = timeline || []; } catch(error){ appointmentDrawer.error=error.message; } finally { appointmentDrawer.loading=false; } }
+     async function updateAppointmentStatus(status) { if(!appointmentDrawer.item)return; appointmentDrawer.loading=true;try{appointmentDrawer.item=await apiJson(`/v1/appointments/${encodeURIComponent(appointmentDrawer.item.id)}/status`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await loadAppointmentWorkspace();toast("预约状态已更新",appointmentDrawer.item.statusLabel);}catch(error){appointmentDrawer.error=error.message;}finally{appointmentDrawer.loading=false;} }
+@@ -890,7 +904,9 @@ createApp({
+         const result = await response.json().catch(() => ({}));
+         if (!response.ok || !result.ok) throw new Error(result.message || result.error || "登录失败");
+         auth.password = ""; auth.session = result.data; auth.loading = false;
+-        await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); loadCart();
++        await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]);
++        if (currentView.value === "editor") await loadAppointmentServices();
++        loadCart();
+       } catch (error) { auth.error = error.message; }
+       finally { auth.sending = false; }
+     }
+@@ -1609,6 +1625,7 @@ createApp({
+       selectedId.value = sections.value[0]?.id || null;
+       selectedSlideIndex.value = 0;
+       inspectorTab.value = "content";
++      if (id === "appointment") loadAppointmentServices();
+     }
+
+     function navigatePreview(target) {
+@@ -2684,6 +2701,12 @@ createApp({
+       if (accountMenu.open && !event.target.closest?.(".merchant-account")) closeAccountMenu({ restoreFocus: false });
+     });
+
++    function refreshEditorAppointmentServices() {
++      if (currentView.value === "editor" && document.visibilityState !== "hidden") loadAppointmentServices();
++    }
++    window.addEventListener("focus", refreshEditorAppointmentServices);
++    document.addEventListener("visibilitychange", refreshEditorAppointmentServices);
++
+     window.addEventListener("keydown", event => {
+       if (changePassword.open && event.key === "Escape") {
+         event.preventDefault();
+
+diff --git "baseline/editor-panel-redesign.test.js" admin/test/editor-panel-redesign.test.js
+index ff4467f..9b6edf6 100644
+--- "baseline/editor-panel-redesign.test.js"
++++ admin/test/editor-panel-redesign.test.js
+@@ -65,6 +65,13 @@ test("new-page dialog header centers its title, description and close control",
+ test("appointment preview reads enabled services from the merchant API", () => {
+   assert.match(appSource, /async function loadAppointmentServices\(\)/);
+   assert.match(appSource, /apiJson\("\/v1\/appointment-services"\)/);
++  assert.match(appSource, /const editorAppointmentServices = ref\(\[\]\)/);
++  assert.match(appSource, /editorAppointmentServices\.value = Array\.isArray\(services\) \? services : \[\]/);
++  assert.match(appSource, /computed\(\(\) => editorAppointmentServices\.value\.filter/);
++  assert.match(appSource, /if \(currentView\.value === "editor"\) await loadAppointmentServices\(\)/);
++  assert.match(appSource, /if \(id === "appointment"\) loadAppointmentServices\(\)/);
++  assert.match(appSource, /window\.addEventListener\("focus", refreshEditorAppointmentServices\)/);
++  assert.match(appSource, /document\.addEventListener\("visibilitychange", refreshEditorAppointmentServices\)/);
+   assert.match(appSource, /v-for="service in previewAppointmentServices"/);
+   assert.match(appSource, /\{\{ service\.name \}\}/);
+   const preview = appSource.match(/section\.type === 'appointment-form'[\s\S]*?section\.type === 'appointment-note'/)?.[0] || "";

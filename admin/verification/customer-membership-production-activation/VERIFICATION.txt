@@ -1,0 +1,61 @@
+ATELIER OS Customer Identity & Membership 1.0 Staging Activation
+DATE=2026-08-20 Asia/Shanghai
+MODE=STAGING_CLONE_LOCAL_POSTGRES
+
+STAGING
+DATABASE_ENV=staging
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=5432
+DATABASE_NAME=atelier_os_staging
+DATABASE_USER=atelier_staging
+PRODUCTION_CONNECTED=NO
+CUSTOMER_TOUCH_DEPLOY=NOT_RUN
+REAL_WECHAT_E2E=PENDING
+
+GATES
+STAGING_DB=PASS
+BACKUP=PASS
+MIGRATION_005_STAGING=PASS
+REAL_POSTGRES=PASS
+CUSTOMER_IDENTITY_PG=PASS
+APPOINTMENT_REGRESSION_PG=PASS
+MEMBERSHIP_PG=PASS
+POINTS_LEDGER_PG=PASS
+TENANT_ISOLATION_PG=PASS
+ORDER_LINK_REPORT=PASS
+FK_VALIDATE_READY=YES
+PRODUCTION_GATE_READY=NO
+
+MIGRATION
+001=PASS
+002=PASS
+003=PASS
+004=PASS
+005=PASS
+SCHEMA_MIGRATIONS=5 rows (001..005)
+TRANSACTION_CONTROL=PASS (runner-owned transaction; 005 has no BEGIN/COMMIT)
+
+COUNTS
+PRE_MIGRATION=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+POST_MIGRATION=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+POST_TEST_CLEANUP=tenants=0, workspaces=0, stores=0, customers=0, appointments=0, orders=0
+
+CONSTRAINTS
+WORKSPACE_REQUIRED=VALIDATED
+CUSTOMER_SCOPE_FK=VALIDATED
+ORPHAN_COUNT=0
+CROSS_TENANT_MISMATCH=0
+WORKSPACE_MISMATCH=0
+STORE_MISMATCH=0
+
+BACKUP
+BACKUP_TYPE=pg_dump_custom
+BACKUP_PATH=C:\Users\Administrator\AppData\Local\AtelierOS\Backups\atelier-os-staging-final-20260820-131115.dump
+RESTORE_TEST=PASS (temporary atelier_os_staging_restore_test created, restored, checked, and dropped)
+
+TESTS
+COMMAND=Set ATELIER_REAL_POSTGRES_URL from protected staging secret; cd admin; npm test
+RESULT=71 tests, 71 pass, 0 fail, 0 skipped, exit 0
+
+PRIVACY
+No password, token, connection string, OpenID, hash, phone, notes, or customer PII recorded.

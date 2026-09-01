@@ -1,0 +1,14 @@
+Sprint 1 Merchant OS modified-file inventory
+
+Path | SHA256 | Git status
+admin/appointment-routes.js | BDC440FD4226E8F3A7B10BDE43D1AD0A5F9004FD79C5B56E29878470959214DD | M admin/appointment-routes.js
+admin/appointment-service.js | DF30C12DE54D6BEA5F3B44504389436F8FC9AA03215D2C7FBCB188AB17C72862 | M admin/appointment-service.js
+admin/customer-service.js | D083E1005BA38301E02A4BC2974718408DC757329800D52978EE658908ECE787 | M admin/customer-service.js
+admin/merchant-routes.js | 09854E328C4F8281C820819300319FB4765CA6EC286BA6F05FD898AA8A0D7872 | M admin/merchant-routes.js
+admin/public/app.js | 1D6D0F678795FC95FA2DE2BB7897ED4F693745BBD41D789A725CEF58DF0474BB | M admin/public/app.js
+admin/public/styles.css | 85DC0891755D79EE09410D0A448D9406F2A90959DCA327F4B27FE48E4B887BD0 | M admin/public/styles.css
+admin/saas-service.js | 5F7E11B755B18A82E84EF20EFAF16A662755BA6F050CFAF5A65757F95AA64BEF | M admin/saas-service.js
+admin/test/appointment-postgres-integration.test.js | 3F03BD1E6F215C8EFC5D95E70911F02AA4F435EF11C210BA6F55A7A520DF9FBB | M admin/test/appointment-postgres-integration.test.js
+admin/test/merchant-http.test.js | C26BED262573C408B460262F378962F06FECC46EE41891BB9CCB47B9A4B4DAB1 | M admin/test/merchant-http.test.js
+admin/e2e/sprint1-final-gate.spec.js | 073D3BBAF72B8B95B139E9BF9FCE38D0CEC4378179AB94F15D2F3C242979F575 | ?? admin/e2e/sprint1-final-gate.spec.js
+admin/test/merchant-os-sprint1.test.js | 1F094A264EB36E531BD0CD20C710D1E9C29E0257B4F125E0B0B2FF46AB871416 | ?? admin/test/merchant-os-sprint1.test.js

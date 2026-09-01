@@ -1,0 +1,64 @@
+ATELIER OS appointment rule controls verification
+
+Branch: codex/atelier-os-saas-mvp
+Changed field: appointment_rule_controls
+Changed value: no_minimum_advance;slot_interval_max=300;default_buffer_minutes=1..30
+Baseline value: min_advance_minutes=120;slot_interval_max=120;default_buffer_minutes=0..480
+Baseline commit: 0820e09e86965ab1169f82175554fc6e68fb6711
+
+Artifacts:
+- MODIFIED_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/MODIFIED_FILE
+- DIFF_FILE: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/DIFF_FILE
+- VERIFICATION.txt: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/VERIFICATION.txt
+- ROLLBACK.sh: C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/ROLLBACK.sh
+
+Hashes:
+- Baseline repository app.js SHA-256: eeda43bc9a8a642371a4302699e0a803789a4a36f18b3856e34d70fff8876196
+- Baseline CRLF checkout app.js SHA-256: 4070fc001718f75e5228e3845d3644a1576ddf8e2fc5084b9920967bf6dfc794
+- Modified task-only index app.js SHA-256: ef5433221d12d5ff424d4117a6d6888c3e3caec6e3c450cea541ebee520982a6
+- Modified CRLF checkout app.js SHA-256: ff837452bf4a1ed67a3c6424e050bd397257f98d716c4750608dd1c92d22ef1e
+- DIFF_FILE SHA-256: 045b1f345a8cfcbda6fb3637dd0c3fd6c22993bf405bdda5070517561740a4d3
+- DIFF_FILE bytes: 38280
+
+BASELINE
+Command: cd C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin; node --test test/appointment-saas.test.js test/merchant-http.test.js
+Input: baseline commit 0820e09e86965ab1169f82175554fc6e68fb6711 before appointment rule control changes
+Literal output/result: tests 14; pass 14; fail 0; cancelled 0; skipped 0; todo 0
+Exit status: 0
+
+MODIFIED
+Command: git worktree add --detach TARGET 0820e09e86965ab1169f82175554fc6e68fb6711; git -C TARGET apply C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/DIFF_FILE; cd TARGET/admin; node --test test/appointment-saas.test.js test/merchant-http.test.js
+Input: TARGET=C:/Users/Administrator/AppData/Local/Temp/atelier-rule-final-f15c662ce1974f12991ee9701f94552b; DIFF_FILE SHA-256=045b1f345a8cfcbda6fb3637dd0c3fd6c22993bf405bdda5070517561740a4d3; modified app.js SHA-256=ff837452bf4a1ed67a3c6424e050bd397257f98d716c4750608dd1c92d22ef1e
+Literal output/result: tests 15; pass 15; fail 0; cancelled 0; skipped 0; todo 0; MODIFIED_TEST_EXIT=0
+Exit status: 0
+
+ROLLBACK
+Command: bash C:/Users/Administrator/WorkBuddy/2026-08-03-15-55-21/luxe-mall-demo/admin/verification/appointment-rule-controls/ROLLBACK.sh TARGET; git -C TARGET diff --exit-code
+Input: TARGET=C:/Users/Administrator/AppData/Local/Temp/atelier-rule-final-f15c662ce1974f12991ee9701f94552b; original app.js SHA-256=4070fc001718f75e5228e3845d3644a1576ddf8e2fc5084b9920967bf6dfc794
+Literal output/result: ROLLBACK_APPLIED target=/tmp/atelier-rule-final-f15c662ce1974f12991ee9701f94552b; ROLLBACK_EXIT=0; RESTORED_APP_SHA256=4070fc001718f75e5228e3845d3644a1576ddf8e2fc5084b9920967bf6dfc794; HASH_MATCH=True; MIGRATION_004_EXISTS=False; ROLLBACK_DIFF_EXIT=0; TRACKED_STATUS=; FINAL_TARGET_REMOVED=C:/Users/Administrator/AppData/Local/Temp/atelier-rule-final-f15c662ce1974f12991ee9701f94552b
+Exit status: 0
+Restored behavior/status: TARGET returned to baseline appointment controls, migration 004 was removed, app.js matched the physical pre-change copy, and the independent worktree had zero tracked diff. The main worktree remains modified.
+
+CURRENT VERIFICATION
+Command: cd admin; npm test
+Literal output/result: tests 63; pass 62; fail 0; cancelled 0; skipped 1; todo 0
+Exit status: 0
+
+Command: cd admin; node --test test/appointment-postgres-integration.test.js with ATELIER_REAL_POSTGRES_URL loaded from local runtime secrets
+Literal output/result: tests 1; pass 1; fail 0; cancelled 0; skipped 0; todo 0
+Exit status: 0
+
+Command: node admin/verification/appointment-ui-check.js with gateway and operator credentials loaded from local runtime secrets and Playwright loaded from the Codex workspace runtime
+Literal output/result: Appointment UI checks passed: rule controls, lists, appointment/customer drawers, hours, services, advisors at 1366x768, 1920x1080, 430x932
+Exit status: 0
+
+Command: restart %LOCALAPPDATA%/AtelierOS/start-atelier-os.ps1; GET http://127.0.0.1:40001/health; query schema_migrations, information_schema.columns and pg_constraint
+Input: local PostgreSQL configured by runtime-secrets.json; no secret values printed
+Literal output/result: HTTP=200 BODY={"app":"atelier-os","database":"ok","version":"development"}; migrations=["001_saas_mvp","002_workspace_resources","003_appointments","004_appointment_rule_controls"]; defaults={"default_buffer_minutes":"1","min_advance_minutes":"0","slot_interval_minutes":"30"}; constraints={"default_buffer_minutes":"1..30","slot_interval_minutes":"5..300 and divisible by 5"}
+Exit status: 0
+
+Behavior verified:
+- The appointment settings Drawer contains no lead-time field or text.
+- Slot interval options include 300 minutes and the service accepts values through 300 in five-minute increments.
+- Store default buffer is a select with exactly 1 through 30 minutes; service-level explicit zero remains supported.
+- Slot options and appointment creation reject only past times, not an additional configured lead time.
