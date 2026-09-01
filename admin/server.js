@@ -154,8 +154,15 @@ app.use("/v1", (req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/ops", express.static(path.join(__dirname, "ops-public")));
-app.use("/ops/v1", (req, res, next) => {
-  if (!localHost && !process.env.ATELIER_OPS_PASSWORD) return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });
+app.use("/ops/v1", async (req, res, next) => {
+  if (!localHost && !process.env.ATELIER_OPS_PASSWORD) {
+    try {
+      const service = await getSaasService();
+      if (!service || !(await service.operatorAuthConfigured())) return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });
+    } catch (error) {
+      return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });
+    }
+  }
   next();
 });
 app.use(["/api/media/upload"], express.json({ limit: "110mb" }));

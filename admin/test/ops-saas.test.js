@@ -12,6 +12,7 @@ test("operator sessions, license management and manual extension are database-ba
   try {
     const account = await service.register({ login: "managed@example.com", password: "managed-password", storeName: "Managed Store", template: "blank" });
     const operator = await service.operatorLogin("operator@example.com", "operator-secure-password", { requestId: "ops_login" });
+    assert.equal(await service.operatorAuthConfigured(), true);
     assert.equal((await service.resolveOperatorSession(operator.token)).role, "super_admin");
     const health = await service.operatorHealth();
     assert.equal(health.database, "ok");

@@ -402,6 +402,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     return row;
   }
 
+  async function operatorAuthConfigured() {
+    const row = (await db.query("select count(*)::int count from operator_users where status='active'")).rows[0];
+    return Number(row?.count || 0) > 0;
+  }
+
   async function operatorLogin(emailValue, password, context = {}) {
     await ensureOperatorFromEnv();
     const email = normalizeLogin(emailValue); const user = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
@@ -447,7 +452,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   const operatorLaunchService = createOperatorLaunchService({ db, audit });
   const marketingService = createMarketingService({ db, audit, meooRepository: meooLaunchRepository });
   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
-  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorAuthConfigured, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };
