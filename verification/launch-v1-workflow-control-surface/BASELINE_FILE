@@ -156,52 +156,10 @@ function createWorkflowService({ db, audit }) {
     });
   }
 
-  async function listDefinitions(scope) {
-    const scoped = scopeOf(scope);
-    const rows = (await db.query(`select d.id,d.workflow_key,d.name,d.status,d.created_by,d.created_at,d.updated_at,
-        v.id version_id,v.version,v.status version_status,v.definition_json,
-        (select count(*)::int from workflow_instances i where i.definition_id=d.id and i.tenant_id=d.tenant_id and i.workspace_id=d.workspace_id) instance_count
-      from workflow_definitions d
-      left join lateral (
-        select id,version,status,definition_json from workflow_versions
-        where definition_id=d.id and tenant_id=d.tenant_id and workspace_id=d.workspace_id
-        order by version desc limit 1
-      ) v on true
-      where d.tenant_id=$1 and d.workspace_id=$2
-      order by d.created_at desc,d.id`, [scoped.tenantId, scoped.workspaceId])).rows;
-    return rows.map(row => ({
-      id: row.id,
-      workflowKey: row.workflow_key,
-      name: row.name,
-      status: row.status,
-      createdBy: row.created_by,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      latestVersionId: row.version_id,
-      latestVersion: row.version == null ? null : Number(row.version),
-      latestVersionStatus: row.version_status || null,
-      taskCount: Array.isArray(row.definition_json?.tasks) ? row.definition_json.tasks.length : 0,
-      instanceCount: Number(row.instance_count || 0)
-    }));
-  }
-
-  async function setDefinitionStatus(scope, workflowKey, status, context = {}) {
-    const scoped = { ...scopeOf(scope), requestId: context.requestId };
-    const key = String(workflowKey || "").trim();
-    const nextStatus = String(status || "").trim();
-    if (!key || !["active", "archived"].includes(nextStatus)) throw new WorkflowError(400, "WORKFLOW_STATUS_INVALID", "Workflow 状态无效");
-    return db.transaction(async tx => {
-      const row = (await tx.query(`update workflow_definitions set status=$1,updated_at=now()
-        where workflow_key=$2 and tenant_id=$3 and workspace_id=$4 returning id,workflow_key,name,status,updated_at`, [nextStatus, key, scoped.tenantId, scoped.workspaceId])).rows[0];
-      if (!row) throw new WorkflowError(404, "WORKFLOW_DEFINITION_NOT_FOUND", "Workflow 定义不存在");
-      await audit(tx, scoped, `workflow.definition.${nextStatus}`, "workflow_definition", row.id, { workflowKey: row.workflow_key, status: row.status });
-      return { id: row.id, workflowKey: row.workflow_key, name: row.name, status: row.status, updatedAt: row.updated_at };
-    });
-  }
   async function getInstance(scope, instanceId) { return loadInstance(scopeOf(scope), String(instanceId || "")); }
   async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }
 
-  return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, WorkflowError };
+  return { registerDefinition, startInstance, completeTask, cancelInstance, getInstance, listEvents, WorkflowError };
 }
 
 module.exports = { createWorkflowService, WorkflowError };

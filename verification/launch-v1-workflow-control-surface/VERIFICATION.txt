@@ -1,0 +1,45 @@
+=== LAUNCH V1 WORKFLOW CONTROL SURFACE VERIFICATION ===
+DATE=2026-09-01
+TARGET_PROJECT_ID=asmhysidbg5g
+CHANGED_BRANCH=main
+CHANGED_FIELDS=workflow definition listing; authenticated workflow status transitions; workflow definition control routes; workflow audit events
+
+BASELINE_COMMAND=cd admin; npm test (before workflow control surface changes)
+BASELINE_INPUT=merged B1 main at 7d4cfb1
+BASELINE_LITERAL_OUTPUT=tests 185; pass 184; fail 0; skipped 1; fail 0
+BASELINE_EXIT_STATUS=0
+
+MODIFIED_COMMAND=node --test admin/test/workflow-runtime.test.js
+MODIFIED_INPUT=workflow service listDefinitions/setDefinitionStatus plus GET/POST/PATCH definition routes and focused tests
+MODIFIED_LITERAL_OUTPUT=tests 8; pass 8; fail 0; skipped 0
+MODIFIED_EXIT_STATUS=0
+
+STATIC_COMMAND=node --check admin/workflow-service.js; node --check admin/workflow-routes.js; git diff --check; focused secret scan
+STATIC_LITERAL_OUTPUT=NODE_SYNTAX=PASS; GIT_DIFF_CHECK=PASS; SECRET_SCAN=PASS
+STATIC_EXIT_STATUS=0
+
+ROLLBACK_COMMAND=PowerShell scriptblock execution of ROLLBACK.sh against disposable rollback-test-copy
+ROLLBACK_INPUT=modified workflow-service copy with TEMP_MUTATION=1
+ROLLBACK_LITERAL_OUTPUT=ROLLBACK_RESULT=PASS; BASELINE_SHA256=C87E25C8A943069E758DC8EC7705FE92BCCDDD0CCFD8557F3E6A688554E8FA70; RESTORED_COPY_SHA256=C87E25C8A943069E758DC8EC7705FE92BCCDDD0CCFD8557F3E6A688554E8FA70
+ROLLBACK_EXIT_STATUS=0
+RESTORED_BEHAVIOR=disposable workflow-service copy restored byte-for-byte
+RESTORED_STATUS=active main source retains workflow control surface
+
+ACCEPTANCE
+WORKFLOW_DEFINITION_LIST=PASS
+WORKFLOW_STATUS_ARCHIVE_RESTORE=PASS
+WORKFLOW_STATUS_AUDIT=PASS
+WORKFLOW_STATUS_SCOPE=PASS
+WORKFLOW_HTTP_CONTROL_ROUTES=PASS
+MIGRATION_011=NOT_APPLIED
+PRODUCTION_DATA_MIGRATION=NO
+
+ARTIFACT_MODIFIED_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-workflow-control-surface\MODIFIED_FILE
+ARTIFACT_DIFF_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-workflow-control-surface\DIFF_FILE
+ARTIFACT_VERIFICATION_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-workflow-control-surface\VERIFICATION.txt
+ARTIFACT_ROLLBACK_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-workflow-control-surface\ROLLBACK.sh
+
+REGRESSION_COMMAND=cd admin; npm test
+REGRESSION_INPUT=main with workflow control surface batch
+REGRESSION_LITERAL_OUTPUT=tests 187; pass 186; fail 0; skipped 1
+REGRESSION_EXIT_STATUS=0

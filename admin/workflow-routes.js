@@ -17,6 +17,20 @@ function registerWorkflowRoutes(app) {
     }
     return workflow;
   }
+  app.get("/v1/workflow-definitions", async (req, res) => {
+    try { const workflow = requiredService(req, res); if (!workflow) return; return success(res, await workflow.listDefinitions(req.merchantScope), "Workflow 定义已获取", 200, req.requestId); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+
+  app.post("/v1/workflow-definitions", async (req, res) => {
+    try { const workflow = requiredService(req, res); if (!workflow) return; const result = await workflow.registerDefinition(req.merchantScope, req.body || {}, { requestId: req.requestId }); return success(res, result, "Workflow 定义已创建", 201, req.requestId); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+
+  app.patch("/v1/workflow-definitions/:workflowKey", async (req, res) => {
+    try { const workflow = requiredService(req, res); if (!workflow) return; const result = await workflow.setDefinitionStatus(req.merchantScope, req.params.workflowKey, req.body?.status, { requestId: req.requestId }); return success(res, result, "Workflow 状态已更新", 200, req.requestId); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
   app.post("/v1/workflow-instances", async (req, res) => {
     try {
       const workflow = requiredService(req, res); if (!workflow) return;

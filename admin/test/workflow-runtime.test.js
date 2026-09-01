@@ -128,6 +128,41 @@ test("Workflow Runtime cancels only running instances and records cancellation",
   } finally { await base.db.close(); }
 });
 
+test("Workflow definitions are listable and can be archived within the authenticated scope", async () => {
+  const base = await fixture("Workflow controls");
+  try {
+    const listed = await base.workflow.listDefinitions(base.scope);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].workflowKey, "customer-onboarding");
+    assert.equal(listed[0].latestVersion, 1);
+    assert.equal(listed[0].taskCount, 2);
+    const archived = await base.workflow.setDefinitionStatus(base.scope, "customer-onboarding", "archived", { requestId: "workflow-archive-test" });
+    assert.equal(archived.status, "archived");
+    await assert.rejects(() => base.workflow.startInstance(base.scope, { workflowKey: "customer-onboarding", idempotencyKey: "archived-start" }), error => error.code === "WORKFLOW_DEFINITION_NOT_FOUND");
+    const restored = await base.workflow.setDefinitionStatus(base.scope, "customer-onboarding", "active", { requestId: "workflow-restore-test" });
+    assert.equal(restored.status, "active");
+    const audit = (await base.db.query("select action from audit_events where resource_id=$1 order by created_at", [base.definition.definitionId])).rows.map(row => row.action);
+    assert.ok(audit.includes("workflow.definition.archived"));
+    assert.ok(audit.includes("workflow.definition.active"));
+  } finally { await base.db.close(); }
+});
+test("Workflow definition control routes expose scoped list and status mutation", async () => {
+  const base = await fixture("Workflow control routes");
+  const app = express(); app.use(express.json());
+  app.use((req, res, next) => { req.saasService = base.saas; req.merchantScope = base.scope; req.requestId = "workflow-control-http"; next(); });
+  registerWorkflowRoutes(app);
+  const server = http.createServer(app);
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  try {
+    const list = await fetch(`http://127.0.0.1:${address.port}/v1/workflow-definitions`);
+    assert.equal(list.status, 200);
+    assert.equal((await list.json()).data[0].workflowKey, "customer-onboarding");
+    const patch = await fetch(`http://127.0.0.1:${address.port}/v1/workflow-definitions/customer-onboarding`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "archived" }) });
+    assert.equal(patch.status, 200);
+    assert.equal((await patch.json()).data.status, "archived");
+  } finally { await new Promise(resolve => server.close(resolve)); await base.db.close(); }
+});
 test("Workflow Runtime routes execute through the authenticated merchant scope", async () => {
   const base = await fixture();
   const app = express();
