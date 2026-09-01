@@ -156,6 +156,7 @@ test("Meoo Image Runtime scripts bind the application and exclude local secret c
   const dockerignore = fs.readFileSync(path.join(root, ".dockerignore"), "utf8");
   assert.match(setup, /pnpm install --prod --frozen-lockfile/);
   assert.match(start, /ATELIER_DB_BACKEND=.*meoo/);
+  assert.match(start, /if \[ -z "\$\{ATELIER_GIT_SHA:-\}" \] && \[ -f "\$ROOT\/\.release-sha" \]/);
   assert.match(start, /unset DATABASE_URL/);
   assert.match(start, /PRIVLAN_ADMIN_HOST=.*0\.0\.0\.0/);
   assert.match(start, /PORT=.*9000/);
