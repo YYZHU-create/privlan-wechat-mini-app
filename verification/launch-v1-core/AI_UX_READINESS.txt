@@ -1,0 +1,11 @@
+=== LAUNCH V1 AI + UX INTEGRATION READINESS ===
+AI_BRANCH=codex/ai-template-generator-v1
+AI_SHA=e731b1a99ebdc13a640516d27bb0baaa68faad4f
+AI_MIGRATION_011_STATUS=RESERVED_UNCOMMITTED_IN_ISOLATED_WORKTREE
+SCHEMA_CONFLICTS=012 avoids 011 collision; AI 011 tables are additive and require ordered integration review
+CODE_CONFLICTS=admin/public/app.js and admin/merchant-routes.js overlap; sequential integration required
+CAPABILITY_REGISTRY_STATUS=WORKFLOW_CATALOG_PRESENT; AI capabilities not integrated
+SAFE_INTEGRATION_PLAN=review AI migration 011 and merge after explicit schema/code conflict resolution; preserve 012 as current Launch V1 migration
+NEW_CRITICAL_DEFECTS=0 observed in focused tests
+NEW_HIGH_PRIORITY_DEFECTS=0 observed in focused tests
+CROSS_MODULE_UX_REMAINING=marketing UI is summary-first; creation/edit dialogs for audience/offer/campaign remain next integration increment
