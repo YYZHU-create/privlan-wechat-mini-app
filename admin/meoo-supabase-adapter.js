@@ -18,6 +18,8 @@ function normalizeError(error, status, context = {}) {
   if (status === 404) return new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
   if (status === 409 || error?.code === "23505") {
     if (context.table === "customer_tags") return new SupabaseAdapterError("TAG_EXISTS", "标签已存在", 409);
+    if (error?.code === "23503") return new SupabaseAdapterError("RESOURCE_CONFLICT_FOREIGN_KEY", "resource conflict", 409);
+    if (error?.code === "23505") return new SupabaseAdapterError("RESOURCE_CONFLICT_UNIQUE", "resource conflict", 409);
     return new SupabaseAdapterError("RESOURCE_CONFLICT", "resource conflict", 409);
   }
   if (error?.code === "23514") return new SupabaseAdapterError("TAG_INVALID", "标签名称不能为空", 400);
