@@ -4,8 +4,6 @@
 !.env.example
 !.env.local.example
 .cutover-artifacts/
-
-.git
 **/node_modules
 **/*.log
 admin/.env*
