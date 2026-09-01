@@ -1,0 +1,144 @@
+diff --git a/admin/saas-service.js b/admin/saas-service.js
+index 613c435..604e09a 100644
+--- a/admin/saas-service.js
++++ b/admin/saas-service.js
+@@ -7,6 +7,7 @@ const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = re
+ const { createWorkflowService } = require("./workflow-service");
+ const { createWorkflowIntegrationService } = require("./workflow-integration-service");
+ const { DEFAULT_WORKFLOW_MAPPINGS } = require("./workflow-integration-mappings");
++const { createMembershipLaunchService, createOperatorLaunchService, createMarketingService } = require("./launch-v1-services");
+ 
+ class ServiceError extends Error {
+   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+@@ -116,11 +117,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+       return { sessionId: row.session_id, userId: row.user_id, tenantId: row.tenant_id, workspaceId: row.workspace_id, storeId: row.store_id, role: row.role, csrfTokenHash: row.csrf_token_hash, user: publicUser(row), workspace: { id: row.workspace_id, tenantId: row.tenant_id, storeId: row.store_id, publicStoreId: row.public_store_id, name: row.workspace_name, storeName: row.store_name }, subscription: { id: row.subscription_id, planId: row.subscription_plan_id || row.plan_id, status: expired ? "expired" : row.subscription_status, startedAt: row.started_at, expiresAt: row.subscription_expires_at } };
+     }
+     const result = await db.query(`select s.id session_id,s.user_id,s.workspace_id,s.csrf_token_hash,s.expires_at,
+-      u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
++      u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,t.status tenant_status,w.name workspace_name,w.plan_id,
+       st.id store_id,st.name store_name,st.public_store_id,m.role,sub.id subscription_id,sub.status subscription_status,
+       sub.plan_id subscription_plan_id,sub.started_at,sub.expires_at
+       from merchant_sessions s join users u on u.id=s.user_id join memberships m on m.user_id=u.id and m.workspace_id=s.workspace_id
+-      join workspaces w on w.id=s.workspace_id join stores st on st.workspace_id=w.id
++      join workspaces w on w.id=s.workspace_id join tenants t on t.id=w.tenant_id join stores st on st.workspace_id=w.id
+       left join subscriptions sub on sub.workspace_id=w.id
+       where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`, [sha256(token)]);
+     const row = result.rows[0];
+@@ -235,6 +236,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+ 
+   function assertWritable(scope) {
+     const subscription = scope?.subscription;
++    if (scope?.tenantStatus === "suspended") throw new ServiceError(403, "TENANT_SUSPENDED", "租户已暂停，请联系运营人员恢复");
+     if (!subscription || subscription.status !== "active") throw new ServiceError(403, "SUBSCRIPTION_REQUIRED", "订阅已到期，请兑换后继续使用");
+   }
+ 
+@@ -441,8 +443,15 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+   }
+ 
+   const workflowService = createWorkflowService({ db, audit });
++  const membershipLaunchService = createMembershipLaunchService({ db, customerService, audit });
++  const operatorLaunchService = createOperatorLaunchService({ db, audit });
++  const marketingService = createMarketingService({ db, audit });
+   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
+-  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
++  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+ }
+ 
+ module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };
++
++
++
++
+diff --git a/admin/server.js b/admin/server.js
+index 8e135a9..d75ab5d 100644
+--- a/admin/server.js
++++ b/admin/server.js
+@@ -17,6 +17,7 @@ const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = re
+ const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
+ const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
+ const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
++const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
+ const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
+ const { resolveRuntimeIdentity } = require("./runtime-identity");
+ const { buildPreviewPackage, formatBytes } = require("./preview-package");
+@@ -141,6 +142,7 @@ app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
+ app.use(express.json({ limit: "2mb" }));
+ registerAppointmentGatewayRoutes(app, getSaasService);
+ registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY });
++registerLaunchV1Routes(app);
+ registerOpsAuthRoutes(app, getSaasService);
+ 
+ app.get("/health", async (req, res) => {
+@@ -1645,3 +1647,4 @@ const server = app.listen(PORT, HOST, () => {
+ });
+ 
+ module.exports = { app, server };
++
+diff --git a/admin/workflow-routes.js b/admin/workflow-routes.js
+index 7330d69..a9e6d3c 100644
+--- a/admin/workflow-routes.js
++++ b/admin/workflow-routes.js
+@@ -17,7 +17,8 @@ function registerWorkflowRoutes(app) {
+     }
+     return workflow;
+   }
+-  app.get("/v1/workflow-definitions", async (req, res) => {
++  app.get("/v1/workflow-capabilities", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.listCapabilities(req.merchantScope),"Workflow 能力已获取",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });
++  app.get("/v1/workflow-runs", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.listRuns(req.merchantScope,{limit:req.query.limit}),"Workflow 运行记录已获取",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });  app.get("/v1/workflow-definitions", async (req, res) => {
+     try { const workflow = requiredService(req, res); if (!workflow) return; return success(res, await workflow.listDefinitions(req.merchantScope), "Workflow 定义已获取", 200, req.requestId); }
+     catch (error) { return failure(res, error, req.requestId); }
+   });
+@@ -54,10 +55,12 @@ function registerWorkflowRoutes(app) {
+     catch (error) { return failure(res, error, req.requestId); }
+   });
+ 
+-  app.post("/v1/workflow-instances/:id/cancel", async (req, res) => {
++  app.post("/v1/workflow-instances/:id/tasks/:taskKey/fail", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.failTask(req.merchantScope,req.params.id,req.params.taskKey,req.body?.reason,{requestId:req.requestId}),"Workflow 任务已标记失败",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });
++  app.post("/v1/workflow-instances/:id/tasks/:taskKey/retry", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.retryTask(req.merchantScope,req.params.id,req.params.taskKey,{requestId:req.requestId}),"Workflow 任务已重试",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });  app.post("/v1/workflow-instances/:id/cancel", async (req, res) => {
+     try { const workflow = requiredService(req, res); if (!workflow) return; return success(res, await workflow.cancelInstance(req.merchantScope, req.params.id, { requestId: req.requestId }), "Workflow 实例已取消", 200, req.requestId); }
+     catch (error) { return failure(res, error, req.requestId); }
+   });
+ }
+ 
+ module.exports = { registerWorkflowRoutes };
++
+diff --git a/admin/workflow-service.js b/admin/workflow-service.js
+index 2df925b..1f30d37 100644
+--- a/admin/workflow-service.js
++++ b/admin/workflow-service.js
+@@ -199,9 +199,33 @@ function createWorkflowService({ db, audit }) {
+     });
+   }
+   async function getInstance(scope, instanceId) { return loadInstance(scopeOf(scope), String(instanceId || "")); }
+-  async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }
++  async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }  const CAPABILITY_CATALOG = Object.freeze([
++    { id: "condition.customer_status", displayName: "客户状态条件", inputSchema: { status: "string" }, availability: "runtime" },
++    { id: "condition.membership_level", displayName: "会员等级条件", inputSchema: { levelId: "uuid" }, availability: "runtime" },
++    { id: "action.issue_coupon", displayName: "发放优惠", inputSchema: { offerId: "uuid", customerId: "uuid" }, availability: "marketing" },
++    { id: "action.membership_level_changed", displayName: "会员等级变更", inputSchema: { customerId: "uuid" }, availability: "membership" },
++    { id: "action.appointment_completed", displayName: "预约完成", inputSchema: { appointmentId: "uuid" }, availability: "appointment" }
++  ]);
++  async function listCapabilities(scope) { scopeOf(scope); return CAPABILITY_CATALOG; }
++  async function listRuns(scope, options = {}) {
++    const scoped = scopeOf(scope); const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
++    const rows = (await db.query(`select i.id,i.status,i.context,i.started_at,i.completed_at,i.updated_at,d.workflow_key,
++      (select max(e.created_at) from workflow_events e where e.instance_id=i.id) last_event_at,
++      (select count(*)::int from workflow_tasks t where t.instance_id=i.id and t.status='failed') failed_tasks
++      from workflow_instances i join workflow_definitions d on d.id=i.definition_id and d.tenant_id=i.tenant_id and d.workspace_id=i.workspace_id
++      where i.tenant_id=$1 and i.workspace_id=$2 order by i.updated_at desc limit $3`, [scoped.tenantId, scoped.workspaceId, limit])).rows;
++    return rows.map(r => ({ id:r.id, workflowKey:r.workflow_key, status:r.status, context:r.context, startedAt:r.started_at, completedAt:r.completed_at, updatedAt:r.updated_at, lastEventAt:r.last_event_at, failedTasks:Number(r.failed_tasks||0) }));
++  }
++  async function failTask(scope, instanceId, taskKey, reason, context = {}) {
++    const scoped = { ...scopeOf(scope), requestId: context.requestId }; const message = String(reason || "执行失败").slice(0, 500);
++    return db.transaction(async tx => { const task=(await tx.query("select id,status,retry_count,retry_limit from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0]; if(!task) throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在"); if(task.status!=="pending") throw new WorkflowError(409,"WORKFLOW_TASK_NOT_PENDING","Workflow 任务当前不可失败"); const next=Number(task.retry_count||0)+1; await tx.query("update workflow_tasks set status='failed',retry_count=$1,last_error=$2,completed_at=now() where id=$3",[next,message,task.id]); await tx.query("update workflow_instances set status='failed',updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3",[instanceId,scoped.tenantId,scoped.workspaceId]); await event(tx,scoped,instanceId,task.id,"task.failed",{taskKey:String(taskKey),reason:message,retryCount:next,retryLimit:Number(task.retry_limit||3)}); return loadInstance(scoped,instanceId,tx); });
++  }
++  async function retryTask(scope, instanceId, taskKey, context = {}) {
++    const scoped={...scopeOf(scope),requestId:context.requestId}; return db.transaction(async tx=>{const task=(await tx.query("select id,status,retry_count,retry_limit,last_error from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0];if(!task)throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在");if(task.status!=="failed")throw new WorkflowError(409,"WORKFLOW_TASK_NOT_FAILED","Workflow 任务当前不可重试");if(Number(task.retry_count||0)>=Number(task.retry_limit||3))throw new WorkflowError(409,"WORKFLOW_RETRY_EXHAUSTED","已达到重试上限");await tx.query("update workflow_tasks set status='pending',completed_at=null where id=$1",[task.id]);await tx.query("update workflow_instances set status='running',updated_at=now() where id=$1",[instanceId]);await event(tx,scoped,instanceId,task.id,"task.retrying",{taskKey:String(taskKey),retryCount:Number(task.retry_count||0)});return loadInstance(scoped,instanceId,tx);});
++  }
+ 
+-  return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, WorkflowError };
++  return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, listCapabilities, listRuns, failTask, retryTask, WorkflowError };
+ }
+ 
+ module.exports = { createWorkflowService, WorkflowError };
++

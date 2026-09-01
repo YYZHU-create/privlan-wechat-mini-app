@@ -17,6 +17,7 @@ const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = re
 const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
+const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
 const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
@@ -141,6 +142,7 @@ app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
 registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY });
+registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 
 app.get("/health", async (req, res) => {

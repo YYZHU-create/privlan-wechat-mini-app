@@ -1,0 +1,8 @@
+BASELINE_COMMAND=node --test admin/test/database-migration.test.js
+BASELINE_RESULT=3 passed, 0 failed, exit 0
+MODIFIED_COMMAND=node --test admin/test/launch-v1.test.js
+MODIFIED_RESULT=4 passed, 0 failed, exit 0
+ROLLBACK_COMMAND=sh verification/launch-v1-core/ROLLBACK.sh
+ROLLBACK_RESULT=script validated, exit 0
+RESTORED_BEHAVIOR=baseline migration suite remains passing after Launch V1 changes
+CHANGED_BRANCH=membership/operator/workflow/marketing Launch V1

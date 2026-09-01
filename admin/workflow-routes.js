@@ -17,7 +17,8 @@ function registerWorkflowRoutes(app) {
     }
     return workflow;
   }
-  app.get("/v1/workflow-definitions", async (req, res) => {
+  app.get("/v1/workflow-capabilities", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.listCapabilities(req.merchantScope),"Workflow 能力已获取",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });
+  app.get("/v1/workflow-runs", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.listRuns(req.merchantScope,{limit:req.query.limit}),"Workflow 运行记录已获取",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });  app.get("/v1/workflow-definitions", async (req, res) => {
     try { const workflow = requiredService(req, res); if (!workflow) return; return success(res, await workflow.listDefinitions(req.merchantScope), "Workflow 定义已获取", 200, req.requestId); }
     catch (error) { return failure(res, error, req.requestId); }
   });
@@ -54,7 +55,8 @@ function registerWorkflowRoutes(app) {
     catch (error) { return failure(res, error, req.requestId); }
   });
 
-  app.post("/v1/workflow-instances/:id/cancel", async (req, res) => {
+  app.post("/v1/workflow-instances/:id/tasks/:taskKey/fail", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.failTask(req.merchantScope,req.params.id,req.params.taskKey,req.body?.reason,{requestId:req.requestId}),"Workflow 任务已标记失败",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });
+  app.post("/v1/workflow-instances/:id/tasks/:taskKey/retry", async (req,res)=>{ try { const workflow=requiredService(req,res); if(!workflow)return; return success(res,await workflow.retryTask(req.merchantScope,req.params.id,req.params.taskKey,{requestId:req.requestId}),"Workflow 任务已重试",200,req.requestId);} catch(e){return failure(res,e,req.requestId);} });  app.post("/v1/workflow-instances/:id/cancel", async (req, res) => {
     try { const workflow = requiredService(req, res); if (!workflow) return; return success(res, await workflow.cancelInstance(req.merchantScope, req.params.id, { requestId: req.requestId }), "Workflow 实例已取消", 200, req.requestId); }
     catch (error) { return failure(res, error, req.requestId); }
   });

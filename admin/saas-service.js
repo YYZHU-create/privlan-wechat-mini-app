@@ -7,6 +7,7 @@ const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = re
 const { createWorkflowService } = require("./workflow-service");
 const { createWorkflowIntegrationService } = require("./workflow-integration-service");
 const { DEFAULT_WORKFLOW_MAPPINGS } = require("./workflow-integration-mappings");
+const { createMembershipLaunchService, createOperatorLaunchService, createMarketingService } = require("./launch-v1-services");
 
 class ServiceError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -116,11 +117,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       return { sessionId: row.session_id, userId: row.user_id, tenantId: row.tenant_id, workspaceId: row.workspace_id, storeId: row.store_id, role: row.role, csrfTokenHash: row.csrf_token_hash, user: publicUser(row), workspace: { id: row.workspace_id, tenantId: row.tenant_id, storeId: row.store_id, publicStoreId: row.public_store_id, name: row.workspace_name, storeName: row.store_name }, subscription: { id: row.subscription_id, planId: row.subscription_plan_id || row.plan_id, status: expired ? "expired" : row.subscription_status, startedAt: row.started_at, expiresAt: row.subscription_expires_at } };
     }
     const result = await db.query(`select s.id session_id,s.user_id,s.workspace_id,s.csrf_token_hash,s.expires_at,
-      u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,w.name workspace_name,w.plan_id,
+      u.login_identifier,u.display_name,u.avatar_url,u.status user_status,w.tenant_id,t.status tenant_status,w.name workspace_name,w.plan_id,
       st.id store_id,st.name store_name,st.public_store_id,m.role,sub.id subscription_id,sub.status subscription_status,
       sub.plan_id subscription_plan_id,sub.started_at,sub.expires_at
       from merchant_sessions s join users u on u.id=s.user_id join memberships m on m.user_id=u.id and m.workspace_id=s.workspace_id
-      join workspaces w on w.id=s.workspace_id join stores st on st.workspace_id=w.id
+      join workspaces w on w.id=s.workspace_id join tenants t on t.id=w.tenant_id join stores st on st.workspace_id=w.id
       left join subscriptions sub on sub.workspace_id=w.id
       where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`, [sha256(token)]);
     const row = result.rows[0];
@@ -235,6 +236,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   function assertWritable(scope) {
     const subscription = scope?.subscription;
+    if (scope?.tenantStatus === "suspended") throw new ServiceError(403, "TENANT_SUSPENDED", "租户已暂停，请联系运营人员恢复");
     if (!subscription || subscription.status !== "active") throw new ServiceError(403, "SUBSCRIPTION_REQUIRED", "订阅已到期，请兑换后继续使用");
   }
 
@@ -441,8 +443,11 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   const workflowService = createWorkflowService({ db, audit });
+  const membershipLaunchService = createMembershipLaunchService({ db, customerService, audit });
+  const operatorLaunchService = createOperatorLaunchService({ db, audit });
+  const marketingService = createMarketingService({ db, audit });
   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
-  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };

@@ -199,9 +199,32 @@ function createWorkflowService({ db, audit }) {
     });
   }
   async function getInstance(scope, instanceId) { return loadInstance(scopeOf(scope), String(instanceId || "")); }
-  async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }
+  async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }  const CAPABILITY_CATALOG = Object.freeze([
+    { id: "condition.customer_status", displayName: "客户状态条件", inputSchema: { status: "string" }, availability: "runtime" },
+    { id: "condition.membership_level", displayName: "会员等级条件", inputSchema: { levelId: "uuid" }, availability: "runtime" },
+    { id: "action.issue_coupon", displayName: "发放优惠", inputSchema: { offerId: "uuid", customerId: "uuid" }, availability: "marketing" },
+    { id: "action.membership_level_changed", displayName: "会员等级变更", inputSchema: { customerId: "uuid" }, availability: "membership" },
+    { id: "action.appointment_completed", displayName: "预约完成", inputSchema: { appointmentId: "uuid" }, availability: "appointment" }
+  ]);
+  async function listCapabilities(scope) { scopeOf(scope); return CAPABILITY_CATALOG; }
+  async function listRuns(scope, options = {}) {
+    const scoped = scopeOf(scope); const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const rows = (await db.query(`select i.id,i.status,i.context,i.started_at,i.completed_at,i.updated_at,d.workflow_key,
+      (select max(e.created_at) from workflow_events e where e.instance_id=i.id) last_event_at,
+      (select count(*)::int from workflow_tasks t where t.instance_id=i.id and t.status='failed') failed_tasks
+      from workflow_instances i join workflow_definitions d on d.id=i.definition_id and d.tenant_id=i.tenant_id and d.workspace_id=i.workspace_id
+      where i.tenant_id=$1 and i.workspace_id=$2 order by i.updated_at desc limit $3`, [scoped.tenantId, scoped.workspaceId, limit])).rows;
+    return rows.map(r => ({ id:r.id, workflowKey:r.workflow_key, status:r.status, context:r.context, startedAt:r.started_at, completedAt:r.completed_at, updatedAt:r.updated_at, lastEventAt:r.last_event_at, failedTasks:Number(r.failed_tasks||0) }));
+  }
+  async function failTask(scope, instanceId, taskKey, reason, context = {}) {
+    const scoped = { ...scopeOf(scope), requestId: context.requestId }; const message = String(reason || "执行失败").slice(0, 500);
+    return db.transaction(async tx => { const task=(await tx.query("select id,status,retry_count,retry_limit from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0]; if(!task) throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在"); if(task.status!=="pending") throw new WorkflowError(409,"WORKFLOW_TASK_NOT_PENDING","Workflow 任务当前不可失败"); const next=Number(task.retry_count||0)+1; await tx.query("update workflow_tasks set status='failed',retry_count=$1,last_error=$2,completed_at=now() where id=$3",[next,message,task.id]); await tx.query("update workflow_instances set status='failed',updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3",[instanceId,scoped.tenantId,scoped.workspaceId]); await event(tx,scoped,instanceId,task.id,"task.failed",{taskKey:String(taskKey),reason:message,retryCount:next,retryLimit:Number(task.retry_limit||3)}); return loadInstance(scoped,instanceId,tx); });
+  }
+  async function retryTask(scope, instanceId, taskKey, context = {}) {
+    const scoped={...scopeOf(scope),requestId:context.requestId}; return db.transaction(async tx=>{const task=(await tx.query("select id,status,retry_count,retry_limit,last_error from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0];if(!task)throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在");if(task.status!=="failed")throw new WorkflowError(409,"WORKFLOW_TASK_NOT_FAILED","Workflow 任务当前不可重试");if(Number(task.retry_count||0)>=Number(task.retry_limit||3))throw new WorkflowError(409,"WORKFLOW_RETRY_EXHAUSTED","已达到重试上限");await tx.query("update workflow_tasks set status='pending',completed_at=null where id=$1",[task.id]);await tx.query("update workflow_instances set status='running',updated_at=now() where id=$1",[instanceId]);await event(tx,scoped,instanceId,task.id,"task.retrying",{taskKey:String(taskKey),retryCount:Number(task.retry_count||0)});return loadInstance(scoped,instanceId,tx);});
+  }
 
-  return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, WorkflowError };
+  return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, listCapabilities, listRuns, failTask, retryTask, WorkflowError };
 }
 
 module.exports = { createWorkflowService, WorkflowError };
