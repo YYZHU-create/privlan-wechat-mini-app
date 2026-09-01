@@ -304,5 +304,5 @@ test("blocks private and metadata provider addresses in production", async () =>
   const gateway = require(gatewayPath);
   await assert.rejects(() => gateway.assertSafeProviderEndpoint("https://169.254.169.254/chat/completions"), error => error.code === "AI_PROVIDER_URL_BLOCKED");
   await assert.rejects(() => gateway.assertSafeProviderEndpoint("https://127.0.0.1/chat/completions"), error => error.code === "AI_PROVIDER_URL_BLOCKED");
-  process.env.NODE_ENV = previous;
+  if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous;
 });
