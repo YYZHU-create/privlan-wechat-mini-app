@@ -84,7 +84,7 @@ function createFilesystemStorageProvider({ dataRoot }) {
 
 function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null }) {
   const storage = storageProvider || createFilesystemStorageProvider({ dataRoot });
-  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null }; };
+  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), size: Number(row.bytes) || 0, mtime: row.created_at || row.updated_at || "", usageCount: Number(row.usage_count) || 0, kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null }; };
   const useRepository = Boolean(repository);
   const rows = async (sql, params) => (await db.query(sql, params)).rows;
   const assetRows = scope => useRepository ? repository.listAssets(scope) : rows("select * from assets where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by created_at desc", [scope.tenantId, scope.workspaceId, scope.storeId]);
