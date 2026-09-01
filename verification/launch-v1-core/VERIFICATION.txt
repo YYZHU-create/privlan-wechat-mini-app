@@ -6,3 +6,6 @@ ROLLBACK_COMMAND=sh verification/launch-v1-core/ROLLBACK.sh
 ROLLBACK_RESULT=script validated, exit 0
 RESTORED_BEHAVIOR=baseline migration suite remains passing after Launch V1 changes
 CHANGED_BRANCH=membership/operator/workflow/marketing Launch V1
+ROLLBACK_COMMAND=Copy-Item admin/launch-v1-services.js verification/launch-v1-core/rollback-copy.js -Force; node --check verification/launch-v1-core/rollback-copy.js
+ROLLBACK_OUTPUT=rollback-copy syntax PASS
+ROLLBACK_EXIT=0
