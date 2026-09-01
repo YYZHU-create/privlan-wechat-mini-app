@@ -2357,3 +2357,10 @@ body, button, input, select, textarea { font-family: var(--ui-font-body); }
   .design-tabbar-fields { grid-template-columns: 1fr; }
   .tabbar-row-menu-popover { position: fixed; right: 16px; top: auto; margin-top: 4px; }
 }
+.media-upload-queue { display: grid; gap: 10px; margin: 14px 0; }
+.media-upload-item { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(140px, 2fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid var(--line, #2a2a2a); border-radius: 10px; background: var(--panel, #161616); }
+.media-upload-item > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.media-upload-item span { color: var(--muted, #8a8a8a); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-upload-progress { height: 6px; border-radius: 999px; background: var(--line, #2a2a2a); overflow: hidden; }
+.media-upload-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent, #c9a97e); transition: width .2s ease; }
+@media (max-width: 680px) { .media-upload-item { grid-template-columns: 1fr auto; } .media-upload-progress { grid-column: 1 / -1; } }

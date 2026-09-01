@@ -1,0 +1,59 @@
+MEDIA V1 HARDENING VERIFICATION
+
+BRANCH=main
+CHANGED_BRANCH_FIELD=media storage provider abstraction, image dimension metadata validation, upload progress/retry state, duplicate attachment guard
+
+ARTIFACTS
+MODIFIED_FILE=verification/launch-v1-media-hardening/MODIFIED_FILE
+DIFF_FILE=verification/launch-v1-media-hardening/DIFF_FILE
+VERIFICATION=verification/launch-v1-media-hardening/VERIFICATION.txt
+ROLLBACK=verification/launch-v1-media-hardening/ROLLBACK.sh
+
+BASELINE
+COMMAND=node -e "const m=require('./admin/workspace-media-baseline.js'); const b=Buffer.from([137,80,78,71,13,10,26,10]); const r=m.decode('baseline.png','data:image/png;base64,'+b.toString('base64')); console.log('BASELINE_MEDIA_DECODE='+ (r.kind==='image'?'PASS':'FAIL'))"
+INPUT=8-byte PNG signature fixture
+LITERAL_OUTPUT=BASELINE_MEDIA_DECODE=PASS
+EXIT_STATUS=0
+
+MODIFIED
+COMMAND=node --test admin/test/workspace-media.test.js
+INPUT=valid PNG dimensions, zero-dimension PNG, filesystem provider contract, DB failure cleanup, frontend source contract
+LITERAL_OUTPUT=4 tests; 4 passed; 0 failed
+EXIT_STATUS=0
+
+REGRESSION
+COMMAND=npm test (cwd=admin)
+INPUT=full admin regression suite
+LITERAL_OUTPUT=191 tests; 190 passed; 1 skipped; 0 failed
+EXIT_STATUS=0
+
+STATIC
+COMMAND=node --check admin/public/app.js
+LITERAL_OUTPUT=syntax check passed
+EXIT_STATUS=0
+COMMAND=git diff --check
+LITERAL_OUTPUT=clean
+EXIT_STATUS=0
+
+ROLLBACK
+COMMAND=node verification/launch-v1-media-hardening/ROLLBACK.sh verification/launch-v1-media-hardening/rollback-copy.js verification/launch-v1-media-hardening/BASELINE_FILE
+INPUT=copy of MODIFIED_FILE
+LITERAL_OUTPUT=ROLLBACK_OK target=verification/launch-v1-media-hardening/rollback-copy.js
+EXIT_STATUS=0
+RESULT=ROLLBACK_COMPARE=True
+RESTORED_BEHAVIOR=baseline media decode remained PASS after rollback copy
+RESTORED_STATUS=baseline file hash matched rollback copy hash
+
+CURRENT_STATUS
+MODIFIED_FILE remains changed; working tree retains intentional media batch changes.
+PROVIDER=filesystem provider behind narrow put/get/signedAccess/delete/restore/metadata/exists contract
+IMAGE_TYPES=image/jpeg,image/png,image/gif,image/webp
+VIDEO_TYPES=video/mp4,video/quicktime,video/webm
+FILE_SIZE_RULE=80MB infrastructure ceiling enforced server-side; no new merchant recommendation imposed
+DIMENSION_RULE=validate decodable image dimensions when present; reject width or height below 1
+RESUMABLE_UPLOAD=DEFER_TO_V2
+MEDIA_STORAGE_PROVIDER_ABSTRACTION=PASS
+MEDIA_VALIDATION=PASS
+MEDIA_UPLOAD_RECOVERY=PASS
+MEDIA_REFERENCE_SAFETY=PASS (existing soft-delete/reference checks preserved)
+MEDIA_TESTS=PASS

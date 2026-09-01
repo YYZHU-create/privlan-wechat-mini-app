@@ -64,6 +64,7 @@ createApp({
     const mediaSelectionMode = ref(false);
     const selectedMediaNames = ref([]);
     const mediaDeleting = ref(false);
+    const mediaUploads = ref([]);
     const selectedSlideIndex = ref(0);
     const hotspotEditMode = ref(false);
     const selectedHotspotId = ref(null);
@@ -2246,37 +2247,44 @@ createApp({
       }
     }
 
-    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
-      const files = Array.from(fileList || []).filter(file => {
-        const extension = String(file.name || "").split(".").pop().toLowerCase();
-        return file.type.startsWith("image/") || file.type.startsWith("video/") || mediaExtensions.has(extension);
+    function uploadRequest(payload, onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest(); xhr.open("POST", "/api/media/upload"); xhr.withCredentials = true;
+        const csrf = document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("atelier_csrf="))?.slice("atelier_csrf=".length);
+        if (csrf) xhr.setRequestHeader("x-atelier-csrf", decodeURIComponent(csrf));
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)); };
+        xhr.onerror = () => reject(new Error("网络连接失败，请重试")); xhr.onabort = () => reject(new Error("上传已取消"));
+        xhr.onload = () => { let result = {}; try { result = JSON.parse(xhr.responseText || "{}"); } catch (error) {} if (xhr.status >= 200 && xhr.status < 300 && result.ok !== false) resolve(result); else reject(new Error(result.error || result.message || ("上传失败（" + xhr.status + "）"))); };
+        xhr.send(JSON.stringify(payload));
       });
-      if (!files.length) return [];
-      const uploaded = [];
-      for (const file of files) {
-        try {
-          const data = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          const response = await fetch("/api/media/upload", {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, data, folderId: folderId || "" })
-          });
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok || !result.ok) throw new Error(result.error || "上传失败");
-          uploaded.push(result);
-          if (addToCarousel) addMediaToHero(result);
-        } catch (error) {
-          toast(`上传失败：${file.name}`, error.message, "error");
-        }
-      }
-      await loadMedia();
-      toast("上传完成", `已处理 ${files.length} 个文件`);
-      return uploaded;
     }
 
+    async function uploadSingleFile(file, addToCarousel, folderId, upload) {
+      upload.status = "uploading"; upload.progress = 1;
+      try {
+        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("读取文件失败")); reader.readAsDataURL(file); });
+        const result = await uploadRequest({ name: file.name, data, folderId: folderId || "" }, value => { upload.progress = value; });
+        upload.status = "success"; upload.progress = 100; upload.result = result; if (addToCarousel) addMediaToHero(result); return result;
+      } catch (error) { upload.status = "failed"; upload.error = error.message; throw error; }
+    }
+
+    async function retryMediaUpload(upload) {
+      if (!upload?.file || upload.status === "uploading") return;
+      upload.status = "retrying"; upload.error = ""; upload.progress = 0;
+      try { await uploadSingleFile(upload.file, upload.addToCarousel, upload.folderId, upload); await loadMedia(); toast("上传已恢复", upload.file.name); } catch (error) { toast(`重试失败：${upload.file.name}`, error.message, "error"); }
+    }
+
+    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
+      const files = Array.from(fileList || []).filter(file => { const extension = String(file.name || "").split(".").pop().toLowerCase(); return file.type.startsWith("image/") || file.type.startsWith("video/") || mediaExtensions.has(extension); });
+      if (!files.length) return []; const uploaded = []; const existing = new Set(media.value.map(item => `${item.name}:${item.sizeKB}`));
+      for (const file of files) {
+        const key = `${file.name}:${Math.round(Number(file.size || 0) / 1024)}`; if (existing.has(key)) { toast("已跳过重复素材", file.name, "error"); continue; }
+        const upload = reactive({ id: crypto.randomUUID(), file, name: file.name, status: "queued", progress: 0, error: "", result: null, addToCarousel, folderId }); mediaUploads.value = [...mediaUploads.value, upload];
+        try { const result = await uploadSingleFile(file, addToCarousel, folderId, upload); uploaded.push(result); existing.add(`${file.name}:${result.sizeKB}`); } catch (error) { toast(`上传失败：${file.name}`, error.message, "error"); }
+      }
+      await loadMedia(); toast("上传处理完成", `成功 ${uploaded.length} 个，失败 ${files.length - uploaded.length} 个`); return uploaded;
+    }
     async function uploadProductImages(fileList, target = "gallery") {
       const remaining = Math.max(0, (target === "detail" ? 12 : 5) - (target === "detail" ? (editingProduct.value?.detailImages || []).length : productImages(editingProduct.value).length));
       const files = Array.from(fileList || []).filter(file => file.type.startsWith("image/")).slice(0, remaining);
@@ -2755,13 +2763,13 @@ createApp({
 
     return {
       cfg, loading, loadError, auth, account, accountMenu, changePassword, merchantDisplayName, merchantInitial, merchantStoreName, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
-      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
+      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, mediaUploads, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
       canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, validatePageName, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
-      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
+      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, retryMediaUpload, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
       hotspotStyle, addHotspot, removeHotspot, updateHotspotLinkType, normalizeHotspotInPlace, beginHotspotPointer, beginHotspotDraw,
@@ -3167,6 +3175,7 @@ createApp({
 
           <section v-else-if="currentView === 'media'" class="management">
             <div class="management-header"><div><h1>媒体库</h1><p>统一管理轮播图片、视频和商品素材，可直接用于页面区块。</p></div><div class="management-actions"><button class="btn" @click="openMediaTrash"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>回收站</button><button class="btn" @click="loadMedia"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>刷新</button><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传媒体<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files);$event.target.value=''" /></label></div></div>
+             <div v-if="mediaUploads.some(item => ['uploading', 'retrying', 'failed'].includes(item.status))" class="media-upload-queue" aria-live="polite"><article v-for="item in mediaUploads.filter(entry => ['uploading', 'retrying', 'failed'].includes(entry.status))" :key="item.id" class="media-upload-item"><div><strong>{{ item.name }}</strong><span v-if="item.status === 'failed'">{{ item.error }}</span><span v-else>{{ item.status === 'retrying' ? '正在重试' : '正在上传' }} · {{ item.progress }}%</span></div><div class="media-upload-progress"><i :style="{width:item.progress + '%'}"></i></div><button v-if="item.status === 'failed'" type="button" class="btn small" @click="retryMediaUpload(item)">重试</button></article></div>
              <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索文件名"></div><div class="media-filter-row"><select v-model="mediaUsageFilter" aria-label="素材使用状态"><option value="all">全部状态</option><option value="used">正在使用</option><option value="unused">未使用</option></select><select v-model="mediaTypeFilter" aria-label="素材类型"><option value="all">全部类型</option><option value="image">图片</option><option value="gif">GIF</option><option value="video">视频</option></select><select v-model="mediaSort" aria-label="素材排序"><option value="newest">最新上传</option><option value="size">文件大小</option><option value="name">文件名称</option></select></div><div class="media-toolbar-actions"><span class="crumb">{{ mediaSelectionMode ? '已选择 ' + selectedMediaCount + ' 个' : filteredMedia.length + ' 个文件' }}</span><select v-if="mediaSelectionMode && selectedMediaCount" v-model="mediaMoveTarget" class="media-move-select" aria-label="移动到文件夹"><option value="">移到全部素材</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">移到 {{ folder.name }}</option></select><button v-if="mediaSelectionMode && selectedMediaCount" type="button" class="btn subtle" @click="moveSelectedMedia()"><iconify-icon class="icon" icon="ph:folder-notch-open"></iconify-icon>移动</button><button v-if="mediaSelectionMode" type="button" class="btn subtle" @click="toggleAllFilteredMedia">{{ allFilteredMediaSelected ? '取消当前全选' : '选择当前结果' }}</button><button v-if="mediaSelectionMode" type="button" class="btn danger" :disabled="!selectedMediaCount || mediaDeleting" @click="deleteSelectedMedia"><iconify-icon class="icon" :icon="mediaDeleting ? 'ph:spinner-gap' : 'ph:trash'"></iconify-icon>{{ mediaDeleting ? '正在删除' : '删除所选 (' + selectedMediaCount + ')' }}</button><button type="button" class="btn" :class="{primary:mediaSelectionMode}" @click="toggleMediaSelectionMode"><iconify-icon class="icon" :icon="mediaSelectionMode ? 'ph:check' : 'ph:checks'"></iconify-icon>{{ mediaSelectionMode ? '完成' : '批量管理' }}</button></div></div><div class="media-folder-row"><div class="media-folder-list"><button type="button" class="media-folder-pill" :class="{active:!mediaFolderId}" @click="mediaFolderId=''">全部素材 <span>{{ media.length }}</span></button><button v-for="folder in mediaFolders" :key="folder.id" type="button" class="media-folder-pill" :class="{active:mediaFolderId===folder.id}" @click="mediaFolderId=folder.id">{{ folder.name }} <span>{{ folder.count }}</span></button></div><div class="media-folder-actions"><button type="button" class="btn small" @click="createMediaFolder"><iconify-icon class="icon" icon="ph:folder-plus"></iconify-icon>新建文件夹</button><button v-if="mediaFolderId" type="button" class="icon-btn small" title="重命名文件夹" @click="renameMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button v-if="mediaFolderId" type="button" class="icon-btn small danger" title="删除文件夹" @click="deleteMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
               <div v-if="mediaLoading" class="skeleton-grid"><div v-for="n in 8" :key="n" class="skeleton"></div></div>
               <div v-else-if="mediaError" class="empty-state"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>媒体库加载失败</h3><p>{{ mediaError }}</p><button class="btn" @click="loadMedia">重试</button></div>

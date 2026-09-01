@@ -1,0 +1,242 @@
+diff --git a/admin/public/app.js b/admin/public/app.js
+index 0b2ccdc..e9f9c30 100644
+--- a/admin/public/app.js
++++ b/admin/public/app.js
+@@ -64,6 +64,7 @@ createApp({
+     const mediaSelectionMode = ref(false);
+     const selectedMediaNames = ref([]);
+     const mediaDeleting = ref(false);
++    const mediaUploads = ref([]);
+     const selectedSlideIndex = ref(0);
+     const hotspotEditMode = ref(false);
+     const selectedHotspotId = ref(null);
+@@ -2246,37 +2247,44 @@ createApp({
+       }
+     }
+ 
+-    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
+-      const files = Array.from(fileList || []).filter(file => {
+-        const extension = String(file.name || "").split(".").pop().toLowerCase();
+-        return file.type.startsWith("image/") || file.type.startsWith("video/") || mediaExtensions.has(extension);
++    function uploadRequest(payload, onProgress) {
++      return new Promise((resolve, reject) => {
++        const xhr = new XMLHttpRequest(); xhr.open("POST", "/api/media/upload"); xhr.withCredentials = true;
++        const csrf = document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("atelier_csrf="))?.slice("atelier_csrf=".length);
++        if (csrf) xhr.setRequestHeader("x-atelier-csrf", decodeURIComponent(csrf));
++        xhr.setRequestHeader("Content-Type", "application/json");
++        xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)); };
++        xhr.onerror = () => reject(new Error("网络连接失败，请重试")); xhr.onabort = () => reject(new Error("上传已取消"));
++        xhr.onload = () => { let result = {}; try { result = JSON.parse(xhr.responseText || "{}"); } catch (error) {} if (xhr.status >= 200 && xhr.status < 300 && result.ok !== false) resolve(result); else reject(new Error(result.error || result.message || ("上传失败（" + xhr.status + "）"))); };
++        xhr.send(JSON.stringify(payload));
+       });
+-      if (!files.length) return [];
+-      const uploaded = [];
++    }
++
++    async function uploadSingleFile(file, addToCarousel, folderId, upload) {
++      upload.status = "uploading"; upload.progress = 1;
++      try {
++        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("读取文件失败")); reader.readAsDataURL(file); });
++        const result = await uploadRequest({ name: file.name, data, folderId: folderId || "" }, value => { upload.progress = value; });
++        upload.status = "success"; upload.progress = 100; upload.result = result; if (addToCarousel) addMediaToHero(result); return result;
++      } catch (error) { upload.status = "failed"; upload.error = error.message; throw error; }
++    }
++
++    async function retryMediaUpload(upload) {
++      if (!upload?.file || upload.status === "uploading") return;
++      upload.status = "retrying"; upload.error = ""; upload.progress = 0;
++      try { await uploadSingleFile(upload.file, upload.addToCarousel, upload.folderId, upload); await loadMedia(); toast("上传已恢复", upload.file.name); } catch (error) { toast(`重试失败：${upload.file.name}`, error.message, "error"); }
++    }
++
++    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
++      const files = Array.from(fileList || []).filter(file => { const extension = String(file.name || "").split(".").pop().toLowerCase(); return file.type.startsWith("image/") || file.type.startsWith("video/") || mediaExtensions.has(extension); });
++      if (!files.length) return []; const uploaded = []; const existing = new Set(media.value.map(item => `${item.name}:${item.sizeKB}`));
+       for (const file of files) {
+-        try {
+-          const data = await new Promise((resolve, reject) => {
+-            const reader = new FileReader();
+-            reader.onload = () => resolve(reader.result);
+-            reader.onerror = reject;
+-            reader.readAsDataURL(file);
+-          });
+-          const response = await fetch("/api/media/upload", {
+-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, data, folderId: folderId || "" })
+-          });
+-          const result = await response.json().catch(() => ({}));
+-          if (!response.ok || !result.ok) throw new Error(result.error || "上传失败");
+-          uploaded.push(result);
+-          if (addToCarousel) addMediaToHero(result);
+-        } catch (error) {
+-          toast(`上传失败：${file.name}`, error.message, "error");
+-        }
++        const key = `${file.name}:${Math.round(Number(file.size || 0) / 1024)}`; if (existing.has(key)) { toast("已跳过重复素材", file.name, "error"); continue; }
++        const upload = reactive({ id: crypto.randomUUID(), file, name: file.name, status: "queued", progress: 0, error: "", result: null, addToCarousel, folderId }); mediaUploads.value = [...mediaUploads.value, upload];
++        try { const result = await uploadSingleFile(file, addToCarousel, folderId, upload); uploaded.push(result); existing.add(`${file.name}:${result.sizeKB}`); } catch (error) { toast(`上传失败：${file.name}`, error.message, "error"); }
+       }
+-      await loadMedia();
+-      toast("上传完成", `已处理 ${files.length} 个文件`);
+-      return uploaded;
++      await loadMedia(); toast("上传处理完成", `成功 ${uploaded.length} 个，失败 ${files.length - uploaded.length} 个`); return uploaded;
+     }
+-
+     async function uploadProductImages(fileList, target = "gallery") {
+       const remaining = Math.max(0, (target === "detail" ? 12 : 5) - (target === "detail" ? (editingProduct.value?.detailImages || []).length : productImages(editingProduct.value).length));
+       const files = Array.from(fileList || []).filter(file => file.type.startsWith("image/")).slice(0, remaining);
+@@ -2755,13 +2763,13 @@ createApp({
+ 
+     return {
+       cfg, loading, loadError, auth, account, accountMenu, changePassword, merchantDisplayName, merchantInitial, merchantStoreName, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
+-      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
++      media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, mediaUploads, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
+       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
+       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
+       editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+       canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+       statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, validatePageName, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
+-      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
++      previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, retryMediaUpload, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
+       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
+       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
+       hotspotStyle, addHotspot, removeHotspot, updateHotspotLinkType, normalizeHotspotInPlace, beginHotspotPointer, beginHotspotDraw,
+@@ -3167,6 +3175,7 @@ createApp({
+ 
+           <section v-else-if="currentView === 'media'" class="management">
+             <div class="management-header"><div><h1>媒体库</h1><p>统一管理轮播图片、视频和商品素材，可直接用于页面区块。</p></div><div class="management-actions"><button class="btn" @click="openMediaTrash"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>回收站</button><button class="btn" @click="loadMedia"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>刷新</button><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传媒体<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files);$event.target.value=''" /></label></div></div>
++             <div v-if="mediaUploads.some(item => ['uploading', 'retrying', 'failed'].includes(item.status))" class="media-upload-queue" aria-live="polite"><article v-for="item in mediaUploads.filter(entry => ['uploading', 'retrying', 'failed'].includes(entry.status))" :key="item.id" class="media-upload-item"><div><strong>{{ item.name }}</strong><span v-if="item.status === 'failed'">{{ item.error }}</span><span v-else>{{ item.status === 'retrying' ? '正在重试' : '正在上传' }} · {{ item.progress }}%</span></div><div class="media-upload-progress"><i :style="{width:item.progress + '%'}"></i></div><button v-if="item.status === 'failed'" type="button" class="btn small" @click="retryMediaUpload(item)">重试</button></article></div>
+              <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索文件名"></div><div class="media-filter-row"><select v-model="mediaUsageFilter" aria-label="素材使用状态"><option value="all">全部状态</option><option value="used">正在使用</option><option value="unused">未使用</option></select><select v-model="mediaTypeFilter" aria-label="素材类型"><option value="all">全部类型</option><option value="image">图片</option><option value="gif">GIF</option><option value="video">视频</option></select><select v-model="mediaSort" aria-label="素材排序"><option value="newest">最新上传</option><option value="size">文件大小</option><option value="name">文件名称</option></select></div><div class="media-toolbar-actions"><span class="crumb">{{ mediaSelectionMode ? '已选择 ' + selectedMediaCount + ' 个' : filteredMedia.length + ' 个文件' }}</span><select v-if="mediaSelectionMode && selectedMediaCount" v-model="mediaMoveTarget" class="media-move-select" aria-label="移动到文件夹"><option value="">移到全部素材</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">移到 {{ folder.name }}</option></select><button v-if="mediaSelectionMode && selectedMediaCount" type="button" class="btn subtle" @click="moveSelectedMedia()"><iconify-icon class="icon" icon="ph:folder-notch-open"></iconify-icon>移动</button><button v-if="mediaSelectionMode" type="button" class="btn subtle" @click="toggleAllFilteredMedia">{{ allFilteredMediaSelected ? '取消当前全选' : '选择当前结果' }}</button><button v-if="mediaSelectionMode" type="button" class="btn danger" :disabled="!selectedMediaCount || mediaDeleting" @click="deleteSelectedMedia"><iconify-icon class="icon" :icon="mediaDeleting ? 'ph:spinner-gap' : 'ph:trash'"></iconify-icon>{{ mediaDeleting ? '正在删除' : '删除所选 (' + selectedMediaCount + ')' }}</button><button type="button" class="btn" :class="{primary:mediaSelectionMode}" @click="toggleMediaSelectionMode"><iconify-icon class="icon" :icon="mediaSelectionMode ? 'ph:check' : 'ph:checks'"></iconify-icon>{{ mediaSelectionMode ? '完成' : '批量管理' }}</button></div></div><div class="media-folder-row"><div class="media-folder-list"><button type="button" class="media-folder-pill" :class="{active:!mediaFolderId}" @click="mediaFolderId=''">全部素材 <span>{{ media.length }}</span></button><button v-for="folder in mediaFolders" :key="folder.id" type="button" class="media-folder-pill" :class="{active:mediaFolderId===folder.id}" @click="mediaFolderId=folder.id">{{ folder.name }} <span>{{ folder.count }}</span></button></div><div class="media-folder-actions"><button type="button" class="btn small" @click="createMediaFolder"><iconify-icon class="icon" icon="ph:folder-plus"></iconify-icon>新建文件夹</button><button v-if="mediaFolderId" type="button" class="icon-btn small" title="重命名文件夹" @click="renameMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button v-if="mediaFolderId" type="button" class="icon-btn small danger" title="删除文件夹" @click="deleteMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
+               <div v-if="mediaLoading" class="skeleton-grid"><div v-for="n in 8" :key="n" class="skeleton"></div></div>
+               <div v-else-if="mediaError" class="empty-state"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>媒体库加载失败</h3><p>{{ mediaError }}</p><button class="btn" @click="loadMedia">重试</button></div>
+diff --git a/admin/public/styles.css b/admin/public/styles.css
+index f163802..02f5f25 100644
+--- a/admin/public/styles.css
++++ b/admin/public/styles.css
+@@ -2357,3 +2357,10 @@ body, button, input, select, textarea { font-family: var(--ui-font-body); }
+   .design-tabbar-fields { grid-template-columns: 1fr; }
+   .tabbar-row-menu-popover { position: fixed; right: 16px; top: auto; margin-top: 4px; }
+ }
++.media-upload-queue { display: grid; gap: 10px; margin: 14px 0; }
++.media-upload-item { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(140px, 2fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid var(--line, #2a2a2a); border-radius: 10px; background: var(--panel, #161616); }
++.media-upload-item > div:first-child { display: grid; gap: 3px; min-width: 0; }
++.media-upload-item span { color: var(--muted, #8a8a8a); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++.media-upload-progress { height: 6px; border-radius: 999px; background: var(--line, #2a2a2a); overflow: hidden; }
++.media-upload-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent, #c9a97e); transition: width .2s ease; }
++@media (max-width: 680px) { .media-upload-item { grid-template-columns: 1fr auto; } .media-upload-progress { grid-column: 1 / -1; } }
+diff --git a/admin/workspace-media.js b/admin/workspace-media.js
+index 1275c40..0ddf5f7 100644
+--- a/admin/workspace-media.js
++++ b/admin/workspace-media.js
+@@ -13,6 +13,36 @@ const FORMATS = [
+   { extensions: [".webm"], mimes: ["video/webm"], kind: "video", match: value => value.length >= 4 && value.subarray(0, 4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3])) }
+ ];
+ 
++function readJpegDimensions(buffer) {
++  let offset = 2;
++  while (offset + 9 < buffer.length) {
++    if (buffer[offset] !== 0xff) { offset += 1; continue; }
++    const marker = buffer[offset + 1]; offset += 2;
++    if (marker === 0xd8 || marker === 0xd9) continue;
++    if (offset + 2 > buffer.length) return null;
++    const length = buffer.readUInt16BE(offset);
++    if (length < 2 || offset + length > buffer.length) return null;
++    if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
++      if (length < 7) return null;
++      return { width: buffer.readUInt16BE(offset + 5), height: buffer.readUInt16BE(offset + 3) };
++    }
++    offset += length;
++  }
++  return null;
++}
++
++function readImageDimensions(buffer, mime) {
++  if (mime === "image/png" && buffer.length >= 24 && buffer.subarray(12, 16).toString("ascii") === "IHDR") return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
++  if (mime === "image/gif" && buffer.length >= 10) return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
++  if (mime === "image/webp" && buffer.length >= 30 && buffer.subarray(12, 16).toString("ascii") === "VP8X") {
++    const width = 1 + buffer[24] + (buffer[25] << 8) + (buffer[26] << 16);
++    const height = 1 + buffer[27] + (buffer[28] << 8) + (buffer[29] << 16);
++    return { width, height };
++  }
++  if (mime === "image/jpeg" && buffer.length >= 4) return readJpegDimensions(buffer);
++  return null;
++}
++
+ function decode(name, data) {
+   const match = String(data || "").match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/);
+   if (!match || match[2].length % 4) throw new ServiceError(400, "INVALID_MEDIA_DATA", "媒体数据必须是有效的 Base64 Data URL");
+@@ -22,17 +52,41 @@ function decode(name, data) {
+   if (!format) throw new ServiceError(400, "MEDIA_TYPE_MISMATCH", "文件扩展名与 MIME 类型不一致");
+   if (!buffer.length || buffer.toString("base64").replace(/=+$/, "") !== encoded.replace(/=+$/, "") || !format.match(buffer)) throw new ServiceError(400, "MEDIA_CONTENT_MISMATCH", "文件内容与声明的媒体格式不一致");
+   if (buffer.length > 80 * 1024 * 1024) throw new ServiceError(413, "MEDIA_TOO_LARGE", "单个素材不能超过 80MB");
+-  return { buffer, mime, kind: format.kind, extension };
++  const dimensions = format.kind === "image" ? readImageDimensions(buffer, mime) : null;
++  if (dimensions && (dimensions.width < 1 || dimensions.height < 1)) throw new ServiceError(400, "MEDIA_DIMENSIONS_INVALID", "图片尺寸必须大于 0");
++  return { buffer, mime, kind: format.kind, extension, dimensions };
+ }
+ 
+ function safeName(name) { return path.basename(String(name || "")).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 160) || "asset"; }
+ function metadata(row) { try { return typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {}); } catch (error) { return {}; } }
+ 
+-function createWorkspaceMedia({ db, dataRoot }) {
++function createFilesystemStorageProvider({ dataRoot }) {
+   const rootFor = scope => path.resolve(dataRoot, "workspaces", scope.workspaceId, "media");
++  const keyPath = (scope, objectKey) => {
++    const root = rootFor(scope); const resolved = path.resolve(root, objectKey);
++    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) throw new ServiceError(400, "INVALID_OBJECT_KEY", "素材对象路径无效");
++    return resolved;
++  };
++  return {
++    name: "filesystem",
++    async put(scope, { objectKey, buffer }) {
++      const filePath = keyPath(scope, objectKey); fs.mkdirSync(path.dirname(filePath), { recursive: true }); fs.writeFileSync(filePath, buffer, { flag: "wx" });
++      return { objectKey, bytes: buffer.length };
++    },
++    async get(scope, objectKey) { return keyPath(scope, objectKey); },
++    async signedAccess(scope, objectKey) { return this.get(scope, objectKey); },
++    async delete(scope, objectKey) { fs.rmSync(keyPath(scope, objectKey), { force: true }); return true; },
++    async restore(scope, objectKey, restoredKey = objectKey) { const source = keyPath(scope, objectKey); const target = keyPath(scope, restoredKey); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.renameSync(source, target); return restoredKey; },
++    async metadata(scope, objectKey) { const stat = await fs.promises.stat(keyPath(scope, objectKey)); return { bytes: stat.size, modifiedAt: stat.mtime.toISOString() }; },
++    async exists(scope, objectKey) { return fs.existsSync(keyPath(scope, objectKey)); }
++  };
++}
++
++function createWorkspaceMedia({ db, dataRoot, storageProvider }) {
++  const storage = storageProvider || createFilesystemStorageProvider({ dataRoot });
+   const publicItem = row => {
+     const meta = metadata(row);
+-    return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null };
++    return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null };
+   };
+ 
+   async function list(scope, deleted = false) {
+@@ -41,17 +95,17 @@ function createWorkspaceMedia({ db, dataRoot }) {
+   }
+   async function upload(scope, input) {
+     const decoded = decode(input.name, input.data); const assetId = crypto.randomUUID();
+-    const original = safeName(input.name); const objectKey = `${assetId}${decoded.extension}`; const directory = rootFor(scope); const filePath = path.join(directory, objectKey);
+-    fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(filePath, decoded.buffer, { flag: "wx" });
++    const original = safeName(input.name); const objectKey = `${assetId}${decoded.extension}`;
++    await storage.put(scope, { objectKey, buffer: decoded.buffer });
+     try {
+-      await db.query("insert into assets(id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)", [assetId, scope.tenantId, scope.workspaceId, scope.storeId, objectKey, original, decoded.mime, decoded.buffer.length, JSON.stringify({ kind: decoded.kind, folderId: String(input.folderId || "") })]);
++      await db.query("insert into assets(id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)", [assetId, scope.tenantId, scope.workspaceId, scope.storeId, objectKey, original, decoded.mime, decoded.buffer.length, JSON.stringify({ kind: decoded.kind, folderId: String(input.folderId || ""), dimensions: decoded.dimensions })]);
+       return publicItem((await db.query("select * from assets where id=$1", [assetId])).rows[0]);
+-    } catch (error) { fs.rmSync(filePath, { force: true }); throw error; }
++    } catch (error) { await storage.delete(scope, objectKey); throw error; }
+   }
+   async function get(scope, assetId, includeDeleted = false) {
+     const row = (await db.query("select * from assets where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [assetId, scope.tenantId, scope.workspaceId, scope.storeId])).rows[0];
+     if (!row || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在");
+-    return { row, filePath: path.join(rootFor(scope), row.object_key), item: publicItem(row) };
++    return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) };
+   }
+   async function remove(scope, ids) {
+     const removed = [];
+@@ -77,7 +131,7 @@ function createWorkspaceMedia({ db, dataRoot }) {
+   async function deleteFolder(scope, folderId) { const exists = (await db.query("delete from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3 returning id", [folderId, scope.tenantId, scope.workspaceId])).rows[0]; if (!exists) throw new ServiceError(404, "FOLDER_NOT_FOUND", "文件夹不存在"); const rows = (await db.query("select * from assets where workspace_id=$1", [scope.workspaceId])).rows; for (const row of rows) { const meta = metadata(row); if (meta.folderId === folderId) await db.query("update assets set metadata=$1::jsonb where id=$2 and workspace_id=$3", [JSON.stringify({ ...meta, folderId: "" }), row.id, scope.workspaceId]); } return { id: folderId }; }
+   async function move(scope, ids, folderId) { if (folderId && !(await db.query("select 1 from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3", [folderId, scope.tenantId, scope.workspaceId])).rows.length) throw new ServiceError(404, "FOLDER_NOT_FOUND", "文件夹不存在"); for (const assetId of ids) { const current = await get(scope, assetId, true); await db.query("update assets set metadata=$1::jsonb where id=$2 and workspace_id=$3", [JSON.stringify({ ...metadata(current.row), folderId: folderId || "" }), assetId, scope.workspaceId]); } return ids; }
+   async function resolveIds(scope, values) { const all = await list(scope, false); return [...new Set(values.map(value => all.find(item => item.id === value || item.name === value)?.id).filter(Boolean))]; }
+-  return { list, upload, get, remove, restore, folders, addFolder, renameFolder, deleteFolder, move, resolveIds, publicItem };
++  return { list, upload, get, remove, restore, folders, addFolder, renameFolder, deleteFolder, move, resolveIds, publicItem, storageProvider: storage };
+ }
+ 
+-module.exports = { createWorkspaceMedia, decode, safeName };
++module.exports = { createWorkspaceMedia, createFilesystemStorageProvider, decode, safeName, readImageDimensions };
