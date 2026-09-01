@@ -14,9 +14,12 @@ function scopeValues(scope) {
   return values;
 }
 
-function normalizeError(error, status) {
+function normalizeError(error, status, context = {}) {
   if (status === 404) return new SupabaseAdapterError("NOT_FOUND", "resource not found", 404);
-  if (status === 409 || error?.code === "23505") return new SupabaseAdapterError("TAG_EXISTS", "标签已存在", 409);
+  if (status === 409 || error?.code === "23505") {
+    if (context.table === "customer_tags") return new SupabaseAdapterError("TAG_EXISTS", "标签已存在", 409);
+    return new SupabaseAdapterError("RESOURCE_CONFLICT", "resource conflict", 409);
+  }
   if (error?.code === "23514") return new SupabaseAdapterError("TAG_INVALID", "标签名称不能为空", 400);
   return new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
 }
@@ -49,7 +52,7 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
         return body;
       }
       if (method === "GET" && [429, 502, 503].includes(response.status) && attempt < 2) { await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt))); continue; }
-      const normalized = normalizeError(body, response.status);
+      const normalized = normalizeError(body, response.status, { table: String(new URL(baseEndpoint).pathname).split("/").pop() });
       onEvent({ backend: "meoo", operation: method, durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
       throw normalized;
     }
@@ -73,7 +76,7 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch { result = null; }
     if (!response.ok) {
-      const normalized = normalizeError(result, response.status);
+      const normalized = normalizeError(result, response.status, { table: `rpc.${name}` });
       onEvent({ backend: "meoo", operation: `rpc.${name}`, durationMs: Date.now() - startedAt, success: false, errorCategory: normalized.code });
       throw normalized;
     }
