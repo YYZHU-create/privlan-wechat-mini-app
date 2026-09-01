@@ -38,7 +38,7 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       let response;
       try {
-        response = await fetchImpl(`${baseEndpoint}${path}`, { ...options, signal: controller.signal, headers: { ...headers, ...(options.headers || {}) } });
+        response = await fetchImpl(`${baseEndpoint}${path}`, { ...options, signal: controller.signal, headers: { ...headers, ...(method === "GET" ? { "Cache-Control": "no-cache" } : {}), ...(options.headers || {}) } });
       } catch (error) {
         if (method === "GET" && attempt < 2) { clearTimeout(timer); await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt))); continue; }
         onEvent({ backend: "meoo", operation: method, durationMs: Date.now() - startedAt, success: false, errorCategory: "DATABASE_UNAVAILABLE" });
