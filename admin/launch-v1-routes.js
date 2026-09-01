@@ -10,13 +10,17 @@ function registerLaunchV1Routes(app){
   const m=req=>req.saasService.marketingService;
   app.get("/v1/marketing/audiences",run(req=>m(req).audienceList(req.merchantScope)));
   app.post("/v1/marketing/audiences",run(req=>m(req).audienceCreate(req.merchantScope,req.body||{})));
+  app.patch("/v1/marketing/audiences/:id",run(req=>m(req).audienceUpdate(req.merchantScope,req.params.id,req.body||{})));
   app.get("/v1/marketing/audiences/:id/members",run(req=>m(req).audienceMembers(req.merchantScope,req.params.id)));
   app.get("/v1/marketing/offers",run(req=>m(req).offers(req.merchantScope)));
   app.post("/v1/marketing/offers",run(req=>m(req).createOffer(req.merchantScope,req.body||{})));
+  app.patch("/v1/marketing/offers/:id",run(req=>m(req).offerUpdate(req.merchantScope,req.params.id,req.body||{})));
+  app.patch("/v1/marketing/offers/:id/status",run(req=>m(req).offerStatus(req.merchantScope,req.params.id,req.body?.status)));
   app.post("/v1/marketing/offers/:offerId/issue",run(req=>m(req).issue(req.merchantScope,req.params.offerId,req.body?.customerId,req.body||{},{requestId:req.requestId})));
   app.post("/v1/marketing/issuances/:id/redeem",run(req=>m(req).redeem(req.merchantScope,req.params.id,req.body||{},{requestId:req.requestId})));
   app.get("/v1/marketing/campaigns",run(req=>m(req).campaigns(req.merchantScope)));
   app.post("/v1/marketing/campaigns",run(req=>m(req).createCampaign(req.merchantScope,req.body||{})));
+  app.patch("/v1/marketing/campaigns/:id",run(req=>m(req).campaignUpdate(req.merchantScope,req.params.id,req.body||{})));
   app.patch("/v1/marketing/campaigns/:id/status",run(req=>m(req).setCampaignStatus(req.merchantScope,req.params.id,req.body?.status,{requestId:req.requestId})));
   app.get("/v1/marketing/campaigns/:id/analytics",run(req=>m(req).analytics(req.merchantScope,req.params.id)));
 }

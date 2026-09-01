@@ -5,6 +5,7 @@ const { ServiceError } = require("./saas-service");
 const { createWorkspaceMedia } = require("./workspace-media");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
+const { registerAiTemplateRoutes } = require("./ai-template-routes");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -239,6 +240,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
 
   registerMerchantAppointmentRoutes(app);
   registerWorkflowRoutes(app);
+  registerAiTemplateRoutes(app);
 
   app.get("/v1/subscription", async (req, res) => {
     try { return success(res, await req.saasService.getSubscription(req.merchantScope), "订阅已获取", 200, req.requestId); }

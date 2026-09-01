@@ -61,7 +61,42 @@ function createMarketingService({db,audit}) {
   async function createCampaign(s,input={}){const row=(await db.query("insert into marketing_campaigns(id,tenant_id,workspace_id,store_id,name,audience_id,offer_id,starts_at,ends_at,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *",[id(),...scope(s),String(input.name||"").trim().slice(0,120),input.audienceId||null,input.offerId||null,input.startsAt||null,input.endsAt||null,s.userId||"merchant"])).rows[0];await audit(db,s,"marketing.campaign.create","marketing_campaign",row.id,{});return row;}
   async function setCampaignStatus(s,campaignId,status,context={}){if(!["draft","scheduled","active","paused","completed","archived"].includes(status))throw err(400,"CAMPAIGN_STATUS_INVALID","活动状态无效");const row=(await db.query("update marketing_campaigns set status=$1,updated_at=now() where id=$2 and tenant_id=$3 and workspace_id=$4 and store_id=$5 returning *",[status,campaignId,...scope(s)])).rows[0];if(!row)throw err(404,"CAMPAIGN_NOT_FOUND","活动不存在");await audit(db,s,`marketing.campaign.${status}`,"marketing_campaign",campaignId,{});return row;}
   async function analytics(s,campaignId){const row=(await db.query("select * from marketing_campaigns where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4",[campaignId,...scope(s)])).rows[0];if(!row)throw err(404,"CAMPAIGN_NOT_FOUND","活动不存在");const issued=(await db.query("select count(*)::int count from marketing_issuances where tenant_id=$1 and workspace_id=$2 and store_id=$3 and offer_id=$4",[...scope(s),row.offer_id])).rows[0].count;const redeemed=(await db.query("select count(*)::int count from marketing_redemptions r join marketing_issuances i on i.id=r.issuance_id where i.tenant_id=$1 and i.workspace_id=$2 and i.store_id=$3 and i.offer_id=$4",[...scope(s),row.offer_id])).rows[0].count;const audienceSize=row.audience_id?(await audienceMembers(s,row.audience_id)).length:0;return {campaignId,audienceSize,issued:Number(issued||0),redeemed:Number(redeemed||0),redemptionRate:issued?Number(redeemed)/Number(issued):0,status:row.status,outboundDeliveryProvider:"NOT_IN_V1"};}
-  return {audienceList,audienceCreate,audienceMembers,offers,createOffer,issue,redeem,campaigns,createCampaign,setCampaignStatus,analytics};
+  async function audienceUpdate(s, audienceId, input={}) {
+    const name = String(input.name || "").trim().slice(0, 120);
+    if (!name) throw err(400, "AUDIENCE_NAME_REQUIRED", "Audience name is required");
+    const criteria = input.criteria || {};
+    const allowed = ["membershipLevelId", "tagId", "minPoints", "minAppointments", "customerStatus"];
+    for (const k of Object.keys(criteria)) if (!allowed.includes(k)) throw err(400, "AUDIENCE_CRITERIA_INVALID", "Unsupported audience criteria");
+    const row = (await db.query("update marketing_audiences set name=$1,criteria=$2::jsonb,updated_at=now() where id=$3 and tenant_id=$4 and workspace_id=$5 and store_id=$6 returning *", [name, json(criteria), audienceId, ...scope(s)])).rows[0];
+    if (!row) throw err(404, "AUDIENCE_NOT_FOUND", "Audience not found");
+    await audit(db, s, "marketing.audience.update", "marketing_audience", row.id, { criteria });
+    return row;
+  }
+  async function offerStatus(s, offerId, status) {
+    if (!["draft", "active", "disabled", "expired"].includes(status)) throw err(400, "OFFER_STATUS_INVALID", "Invalid offer status");
+    const row = (await db.query("update marketing_offers set status=$1,updated_at=now() where id=$2 and tenant_id=$3 and workspace_id=$4 and store_id=$5 returning *", [status, offerId, ...scope(s)])).rows[0];
+    if (!row) throw err(404, "OFFER_NOT_FOUND", "Offer not found");
+    await audit(db, s, `marketing.offer.${status}`, "marketing_offer", row.id, { status });
+    return row;
+  }
+  async function offerUpdate(s, offerId, input={}) {
+    const name = String(input.name || "").trim().slice(0, 120);
+    const code = String(input.code || "").trim().slice(0, 80);
+    if (!name || !code) throw err(400, "OFFER_FIELDS_REQUIRED", "Offer code and name are required");
+    const row = (await db.query("update marketing_offers set code=$1,name=$2,description=$3,starts_at=$4,expires_at=$5,max_uses=$6,single_use=$7,updated_at=now() where id=$8 and tenant_id=$9 and workspace_id=$10 and store_id=$11 returning *", [code, name, String(input.description || "").slice(0, 500), input.startsAt || null, input.expiresAt || null, input.maxUses || null, input.singleUse !== false, offerId, ...scope(s)])).rows[0];
+    if (!row) throw err(404, "OFFER_NOT_FOUND", "Offer not found");
+    await audit(db, s, "marketing.offer.update", "marketing_offer", row.id, { code: row.code });
+    return row;
+  }
+  async function campaignUpdate(s, campaignId, input={}) {
+    const name = String(input.name || "").trim().slice(0, 120);
+    if (!name) throw err(400, "CAMPAIGN_NAME_REQUIRED", "Campaign name is required");
+    const row = (await db.query("update marketing_campaigns set name=$1,audience_id=$2,offer_id=$3,starts_at=$4,ends_at=$5,updated_at=now() where id=$6 and tenant_id=$7 and workspace_id=$8 and store_id=$9 returning *", [name, input.audienceId || null, input.offerId || null, input.startsAt || null, input.endsAt || null, campaignId, ...scope(s)])).rows[0];
+    if (!row) throw err(404, "CAMPAIGN_NOT_FOUND", "Campaign not found");
+    await audit(db, s, "marketing.campaign.update", "marketing_campaign", row.id, {});
+    return row;
+  }
+  return {audienceList,audienceCreate,audienceUpdate,audienceMembers,offers,createOffer,offerUpdate,offerStatus,issue,redeem,campaigns,createCampaign,campaignUpdate,setCampaignStatus,analytics};
 }
 module.exports={createMembershipLaunchService,createOperatorLaunchService,createMarketingService};
 

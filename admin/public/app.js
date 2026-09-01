@@ -29,7 +29,7 @@ createApp({
       errors: { currentPassword: "", newPassword: "", confirmPassword: "" }
     });
     const mvpFeatureFlags = Object.freeze({ orders: false, marketing: false, analytics: false });
-    const mvpViews = new Set(["overview", "editor", "products", "categories", "media", "customers", "membership", "appointments", "ai-service", "channels", "account", "settings", "theme"]);
+    const mvpViews = new Set(["overview", "editor", "products", "categories", "media", "customers", "membership", "appointments", "ai-service", "ai-template", "channels", "account", "settings", "theme"]);
     const requestedView = new URLSearchParams(window.location.search).get("view") || "overview";
     const currentView = ref(mvpViews.has(requestedView) ? requestedView : "overview");
     const currentPage = ref("home");
@@ -120,6 +120,7 @@ createApp({
       runtimeIdentity: null
     });
     const aiConsole = reactive({ question: "", sending: false, answer: null, error: "" });
+    const aiTemplate = reactive({ prompt: "", instruction: "", draft: null, drafts: [], components: [], capabilities: [], credits: null, loading: false, refining: false, applying: false, error: "" });
     const faqEditor = reactive({ open: false, index: -1, question: "", keywordsText: "", answer: "", enabled: true, showAsPrompt: true, error: "" });
     const knowledgeSourceEditor = reactive({ open: false, type: "faq", title: "", content: "", error: "" });
     const appointmentWorkspace = reactive({ loading: false, error: "", servicesLoading: false, servicesError: "", tab: "appointments", customerSection: "all", stats: { today: 0, week: 0, pending: 0, customers: 0 }, customerStats: { total: 0, customers: 0, members: 0, new30Days: 0 }, appointments: [], customers: [], customerPage: 1, customerPageSize: 25, customerTotal: 0, services: [], advisors: [], filters: { q: "", status: "", serviceId: "", advisorId: "", dateFrom: "", dateTo: "", identity: "", source: "", sort: "activity" } });
@@ -128,7 +129,7 @@ createApp({
     const appointmentDrawer = reactive({ open: false, loading: false, item: null, timeline: [], followUpDraft: "", followUpSaving: false, error: "" });
     const customerDrawer = reactive({ open: false, loading: false, item: null, error: "", tab: "overview", noteDraft: "", pointsDelta: 0, pointsReason: "" });
     const customerAdmin = reactive({ tags: [], newTag: "", program: { enabled: false, points_enabled: false }, levels: [], newLevel: { name: "", levelOrder: 2, growthThreshold: 0, enabled: true } });
-    const marketing = reactive({ loading: false, error: "", audiences: [], offers: [], campaigns: [] });
+    const marketing = reactive({ loading: false, error: "", audiences: [], offers: [], campaigns: [], dialog: "", saving: false, form: { id: "", name: "", code: "", description: "", minPoints: 0, audienceId: "", offerId: "", startsAt: "", endsAt: "", status: "draft" } });
     const bookingSettings = reactive({ open: false, loading: false, saving: false, section: "rules", error: "", rules: { timezone: "Asia/Shanghai", slotIntervalMinutes: 30, defaultBufferMinutes: 1, maxAdvanceDays: 30, bookingEnabled: true }, hours: [], services: [], advisors: [], staff: [], staffEditor: null, leaveDraft: { startAt: "", endAt: "", reason: "" } });
     let historyTimer;
     let dragSlideIndex = -1;
@@ -184,7 +185,8 @@ createApp({
         { id: "customers", label: "客户中心", icon: "ph:users-three" },
         { id: "membership", label: "会员中心", icon: "ph:crown" },
         ...(cfg.value?.features?.appointments === false ? [] : [{ id: "appointments", label: "预约中心", icon: "ph:calendar-check" }]),
-        { id: "ai-service", label: "AI 客服", icon: "ph:chat-circle-text" }
+        { id: "ai-service", label: "AI 客服", icon: "ph:chat-circle-text" },
+        { id: "ai-template", label: "AI 模板", icon: "ph:sparkle" }
       ] },
       { id: "account", label: "账户", items: [
         { id: "account", label: "账户与订阅", icon: "ph:identification-card" },
@@ -219,7 +221,7 @@ createApp({
       return ({
         overview: "店铺概览", products: "商品管理", categories: "分类管理", media: "媒体库",
         theme: "主题设置", orders: "订单管理", customers: "客户中心", appointments: "预约管理", marketing: "营销中心",
-        "ai-service": "智能客服", channels: "小程序预览", account: "账户与订阅", settings: "全局设置"
+        "ai-service": "智能客服", "ai-template": "AI 模板工作室", channels: "小程序预览", account: "账户与订阅", settings: "全局设置"
       })[currentView.value] || "工作台";
     });
 
@@ -752,6 +754,47 @@ createApp({
       return result.data ?? result;
     }
 
+    async function loadAiTemplateStudio() {
+      if (aiTemplate.components.length || aiTemplate.loading) return;
+      aiTemplate.loading = true; aiTemplate.error = "";
+      try {
+        const [components, capabilities, credits, drafts] = await Promise.all([
+          apiJson("/v1/ai/components"), apiJson("/v1/ai/capabilities"), apiJson("/v1/ai/credits"), apiJson("/v1/ai/templates/drafts")
+        ]);
+        aiTemplate.components = components || []; aiTemplate.capabilities = capabilities || []; aiTemplate.credits = credits; aiTemplate.drafts = drafts || [];
+      } catch (error) { aiTemplate.error = error.message || "AI 模板工作室读取失败"; }
+      finally { aiTemplate.loading = false; }
+    }
+
+    async function generateAiTemplate() {
+      if (!aiTemplate.prompt.trim() || aiTemplate.loading) return;
+      aiTemplate.loading = true; aiTemplate.error = "";
+      try {
+        aiTemplate.draft = await apiJson("/v1/ai/templates/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: aiTemplate.prompt, idempotencyKey: `studio-${Date.now()}-${Math.random().toString(36).slice(2)}` }) });
+        aiTemplate.drafts = await apiJson("/v1/ai/templates/drafts");
+      } catch (error) { aiTemplate.error = error.message || "模板生成失败"; }
+      finally { aiTemplate.loading = false; }
+    }
+
+    async function refineAiTemplate() {
+      if (!aiTemplate.draft || !aiTemplate.instruction.trim() || aiTemplate.refining) return;
+      aiTemplate.refining = true; aiTemplate.error = "";
+      try { aiTemplate.draft = await apiJson(`/v1/ai/templates/drafts/${encodeURIComponent(aiTemplate.draft.draftId)}/refine`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftRevision: aiTemplate.draft.draftRevision, merchantInstruction: aiTemplate.instruction }) }); aiTemplate.instruction = ""; }
+      catch (error) { aiTemplate.error = error.message || "模板修改失败"; }
+      finally { aiTemplate.refining = false; }
+    }
+
+    async function applyAiTemplate() {
+      if (!aiTemplate.draft || aiTemplate.applying) return;
+      aiTemplate.applying = true; aiTemplate.error = "";
+      try {
+        const result = await apiJson(`/v1/ai/templates/drafts/${encodeURIComponent(aiTemplate.draft.draftId)}/apply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        restoring.value = true; cfg.value = normalizeConfig(result.document); const snapshot = JSON.stringify(cfg.value); history.value = history.value.slice(0, historyIndex.value + 1); history.value.push(snapshot); historyIndex.value = history.value.length - 1;
+        nextTick(() => { restoring.value = false; saveMode.value = "dirty"; }); toast("AI 模板已载入编辑器", "请检查后点击保存", "success");
+      } catch (error) { aiTemplate.error = error.message || "模板应用失败"; }
+      finally { aiTemplate.applying = false; }
+    }
+
     async function loadAppointmentWorkspace() {
       appointmentWorkspace.loading = true; appointmentWorkspace.error = "";
       try {
@@ -771,6 +814,31 @@ createApp({
     }
 
     async function loadMarketing() { marketing.loading=true; marketing.error=""; try { const [audiences,offers,campaigns]=await Promise.all([apiJson("/v1/marketing/audiences"),apiJson("/v1/marketing/offers"),apiJson("/v1/marketing/campaigns")]); marketing.audiences=audiences||[]; marketing.offers=offers||[]; marketing.campaigns=campaigns||[]; } catch(error){ marketing.error=error.message||"营销数据读取失败"; } finally { marketing.loading=false; } }
+    function openMarketingDialog(type, item = null) {
+      marketing.dialog = type;
+      marketing.form = { id: item?.id || "", name: item?.name || "", code: item?.code || "", description: item?.description || "", minPoints: Number(item?.criteria?.minPoints || 0), audienceId: item?.audience_id || item?.audienceId || "", offerId: item?.offer_id || item?.offerId || "", startsAt: item?.starts_at || item?.startsAt || "", endsAt: item?.ends_at || item?.endsAt || "", status: item?.status || "draft" };
+    }
+    function closeMarketingDialog() { if (!marketing.saving) marketing.dialog = ""; }
+    async function saveMarketing() {
+      const f = marketing.form;
+      if (!String(f.name || "").trim()) { marketing.error = "名称不能为空"; return; }
+      if (marketing.dialog === "offer" && !String(f.code || "").trim()) { marketing.error = "优惠码不能为空"; return; }
+      marketing.saving = true; marketing.error = "";
+      try {
+        let path = "", method = "POST", body = {};
+        if (marketing.dialog === "audience") { path = f.id ? `/v1/marketing/audiences/${encodeURIComponent(f.id)}` : "/v1/marketing/audiences"; method = f.id ? "PATCH" : "POST"; body = { name: f.name, criteria: { minPoints: Number(f.minPoints || 0) || undefined } }; }
+        if (marketing.dialog === "offer") { path = f.id ? `/v1/marketing/offers/${encodeURIComponent(f.id)}` : "/v1/marketing/offers"; method = f.id ? "PATCH" : "POST"; body = { code: f.code, name: f.name, description: f.description, startsAt: f.startsAt || null, expiresAt: f.endsAt || null, singleUse: true }; }
+        if (marketing.dialog === "campaign") { path = f.id ? `/v1/marketing/campaigns/${encodeURIComponent(f.id)}` : "/v1/marketing/campaigns"; method = f.id ? "PATCH" : "POST"; body = { name: f.name, audienceId: f.audienceId || null, offerId: f.offerId || null, startsAt: f.startsAt || null, endsAt: f.endsAt || null }; }
+        await apiJson(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (marketing.dialog === "offer" && f.id && f.status !== "draft") await apiJson(`/v1/marketing/offers/${encodeURIComponent(f.id)}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: f.status }) });
+        if (marketing.dialog === "campaign" && f.id && f.status !== "draft") await apiJson(`/v1/marketing/campaigns/${encodeURIComponent(f.id)}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: f.status }) });
+        marketing.dialog = ""; await loadMarketing(); toast("营销内容已保存", f.name);
+      } catch (error) { marketing.error = error.message || "保存失败"; } finally { marketing.saving = false; }
+    }
+    async function inspectAudience(id) { try { const v = await apiJson(`/v1/marketing/audiences/${encodeURIComponent(id)}/members`); toast("受众已检查", `${v.length || 0} 位成员`); } catch (error) { marketing.error = error.message || "读取失败"; } }
+    async function setMarketingStatus(type, id, status) {
+      try { await apiJson(`/v1/marketing/${type}/${encodeURIComponent(id)}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); await loadMarketing(); toast("状态已更新", status); } catch (error) { marketing.error = error.message || "状态更新失败"; }
+    }
     let appointmentServicesRequest = null;
     async function loadAppointmentServices() {
       if (appointmentServicesRequest) return appointmentServicesRequest;
@@ -925,7 +993,7 @@ createApp({
         const response = await fetch("/auth/session"); const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) { auth.session = null; return; }
         auth.session = result.data;
-        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="membership"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="marketing")await loadMarketing(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
+        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="membership"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="marketing")await loadMarketing(); else if(currentView.value==="ai-template")await loadAiTemplateStudio(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
       } catch (error) { auth.session = null; }
       finally { auth.loading = false; }
     }
@@ -1406,6 +1474,7 @@ createApp({
       currentView.value = id;
       if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
       if (id === "media" && !media.value.length) loadMedia();
+      if (id === "ai-template") loadAiTemplateStudio();
       if (id === "customers" || id === "membership" || id === "appointments" || id === "overview") { if (id !== "overview") appointmentWorkspace.tab = id === "appointments" ? "appointments" : "customers"; loadAppointmentWorkspace(); }
       if (id === "editor") loadAppointmentServices();
       const url = new URL(window.location.href);
@@ -2768,14 +2837,14 @@ createApp({
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, mediaUploads, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
-      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, marketing, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
-      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
+      editingProduct, editingProductSnapshot, productErrors, isProductDraftDirty, pageEditor, newPage, homeNavOpen, blockQuickAddOpen, previewDialog, themePreview, servicePreview, toasts, platform, aiConsole, aiTemplate, faqEditor, knowledgeSourceEditor, appointmentWorkspace, appointmentDrawer, customerDrawer, customerAdmin, marketing, bookingSettings, navGroups, navItems, isNavActive, blockLibrary, viewTitle, sections, selectedSection, isDirty,
+      canUndo, canRedo, filteredProducts, filteredCategories, filteredMedia, visibleTabItems, previewAppointmentServices, profile, businessTemplates, saveProfile, uploadProfileAvatar, loadBusinessTemplates, applyBusinessTemplate, loadAiTemplateStudio, generateAiTemplate, refineAiTemplate, applyAiTemplate, advanceOnboarding, skipOnboarding, saveConfig, syncProject, openPhonePreview, closePhonePreview, switchView, toggleSidebar, toggleMobileSidebar, closeMobileSidebar, togglePanel, closeResponsivePanels, undo, redo, loadPlatform, loadSubscription, loadProfile, redeemSubscription, submitAuth, checkMerchantSession, merchantSignOut, toggleAccountMenu, closeAccountMenu, handleAccountMenuKeydown, openChangePassword, closeChangePassword, trapChangePasswordFocus, submitChangePassword, testAiService,  openFaqEditor, saveFaq, removeFaq, toggleFaq, openKnowledgeSourceEditor, selectKnowledgeSourceType, saveKnowledgeNote, removeKnowledgeNote, importKnowledgeText,
       statusText, previewStatusText, blockLabel, addBlock, moveSection, duplicateSection, deleteSection, toggleSection, openNewPage, createBlankPage, validatePageName, openPageEditor, savePageEditor, duplicateCustomPage, deleteCustomPage, pageInboundReferences, openHomeNavigation, addHomeChannel, moveHomeChannel, removeHomeChannel, finishHomeNavigation, switchPage, navigatePreview,
       previewHero, sectionProducts, detailProduct, cartLines, cartSummary, addToCart, changeCartQuantity, mpUrl, money, categoryName, sectionStyle, loadMedia, openMediaTrash, restoreMediaTrash, uploadFiles, retryMediaUpload, uploadFontFiles, loadSystemFonts, importSelectedSystemFont, serviceBotClick, closeServicePreview, previewServicePrompt, openPreviewAppointment, submitPreviewAppointment, beginServiceBotDrag, moveServiceBotDrag, endServiceBotDrag,
       selectMedia, isMediaSelected, toggleMediaSelectionMode, toggleAllFilteredMedia, deleteMediaItem, deleteSelectedMedia, createMediaFolder, renameMediaFolder, deleteMediaFolder, moveSelectedMedia, isAnimatedImage, editProduct, addProduct, closeProductEditor, saveProduct, removeProduct, addCategory, moveCategory, validateCategory, productCompleteness, removeCategory, productImages, openProductMediaPicker, uploadProductImages, removeProductImage, removeProductDetailImage, addProductColor, removeProductColor, addProductSize, removeProductSize, addTabItem, moveTabItem, removeTabItem, toggleTabVisibility, toggleFeaturedTab, openSectionMediaPicker, uploadSectionMedia, openTabBarMediaPicker, uploadTabBarIcon, openServiceBotMediaPicker, uploadServiceBotIcon, openTabBarCrop, closeTabBarCrop, resetTabBarCrop, updateTabBarCropZoom, beginTabBarCropDrag, moveTabBarCropDrag, endTabBarCropDrag, handleTabBarCropKey, applyTabBarCrop, tabBarCropTitle, applyPreset, finishThemePreview, resetSectionStyle,
       selectHeroSlide, updateHeroLinkType, openMediaPicker, addMediaToHero, removeHeroSlide, moveHeroSlide, beginSlideDrag, dropSlide, addCustomFontUrl,
       hotspotStyle, addHotspot, removeHotspot, updateHotspotLinkType, normalizeHotspotInPlace, beginHotspotPointer, beginHotspotDraw,
-      loadAppointmentWorkspace, loadMarketing, openAppointment, updateAppointmentStatus, addAppointmentFollowUp, openCustomer, addCustomerNote, adjustCustomerPoints, createCustomerTag, saveMembershipProgram, saveMembershipLevel, openBookingSettings, saveBookingRules, addBusinessWindow, removeBusinessWindow, saveBusinessHours, addBookingService, saveBookingService, addBookingAdvisor, saveBookingAdvisor, openStaffEditor, saveStaffEditor, toggleStaffService, staffHasService, addStaffSchedule, removeStaffSchedule, saveStaffLeave, removeStaffLeave, formatAppointmentTime, sourceLabel
+      loadAppointmentWorkspace, loadMarketing, openMarketingDialog, closeMarketingDialog, saveMarketing, inspectAudience, setMarketingStatus, openAppointment, updateAppointmentStatus, addAppointmentFollowUp, openCustomer, addCustomerNote, adjustCustomerPoints, createCustomerTag, saveMembershipProgram, saveMembershipLevel, openBookingSettings, saveBookingRules, addBusinessWindow, removeBusinessWindow, saveBusinessHours, addBookingService, saveBookingService, addBookingAdvisor, saveBookingAdvisor, openStaffEditor, saveStaffEditor, toggleStaffService, staffHasService, addStaffSchedule, removeStaffSchedule, saveStaffLeave, removeStaffLeave, formatAppointmentTime, sourceLabel
     };
   },
 
@@ -3152,11 +3221,20 @@ createApp({
           </section>
 
           <section v-else-if="currentView === 'marketing'" class="management">
-            <div class="management-header"><div><span class="eyebrow">GROWTH TOOLS</span><h1>营销中心</h1><p>受众、优惠与活动在当前工作区内统一管理。</p></div><button type="button" class="btn" @click="loadMarketing">刷新</button></div>
-            <div v-if="marketing.loading" class="appointment-loading">正在读取营销数据…</div><div v-else-if="marketing.error" class="form-error">{{ marketing.error }}</div>
-            <div v-else class="module-grid"><article><span class="module-icon"><iconify-icon class="icon" icon="ph:users-three"></iconify-icon></span><h2>受众</h2><p>{{ marketing.audiences.length }} 个受众，可按会员、标签、积分和预约次数筛选。</p><span class="status-chip success">可用</span></article><article><span class="module-icon"><iconify-icon class="icon" icon="ph:ticket"></iconify-icon></span><h2>优惠与发放</h2><p>{{ marketing.offers.length }} 个优惠，可记录发放、兑换与幂等状态。</p><span class="status-chip success">可用</span></article><article><span class="module-icon"><iconify-icon class="icon" icon="ph:megaphone"></iconify-icon></span><h2>活动</h2><p>{{ marketing.campaigns.length }} 个活动，支持草稿、排期、启用和暂停。</p><span class="status-chip success">可用</span></article><article><span class="module-icon"><iconify-icon class="icon" icon="ph:chart-line-up"></iconify-icon></span><h2>结果</h2><p>提供受众规模、发放量、兑换量与兑换率；外部触达供应商未接入。</p><span class="status-chip warning">当前版本</span></article></div>
+            <div class="management-header"><div><span class="eyebrow">GROWTH TOOLS</span><h1>营销中心</h1><p>在当前工作区内管理受众、优惠和活动。</p></div><div class="management-actions"><button type="button" class="btn" @click="loadMarketing">刷新</button><button type="button" class="btn primary" @click="openMarketingDialog('campaign')"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>新建活动</button></div></div>
+            <div v-if="marketing.loading" class="appointment-loading">正在读取营销数据…</div><div v-else-if="marketing.error" class="form-error" role="alert">{{ marketing.error }}</div>
+            <div v-else class="marketing-lifecycle-grid">
+              <section class="data-card"><div class="atelier-panel-head"><div><h2>受众</h2><p>{{ marketing.audiences.length }} 个受众</p></div><button class="btn small" @click="openMarketingDialog('audience')">新建</button></div><div v-if="!marketing.audiences.length" class="empty-compact">暂无受众</div><article v-for="item in marketing.audiences" :key="item.id" class="marketing-row"><span><strong>{{ item.name }}</strong><small>积分门槛 {{ item.criteria?.minPoints || 0 }}</small></span><button class="btn small" @click="openMarketingDialog('audience', item)">编辑</button><button class="btn small" @click="inspectAudience(item.id)">检查</button></article></section>
+              <section class="data-card"><div class="atelier-panel-head"><div><h2>优惠</h2><p>{{ marketing.offers.length }} 个优惠</p></div><button class="btn small" @click="openMarketingDialog('offer')">新建</button></div><div v-if="!marketing.offers.length" class="empty-compact">暂无优惠</div><article v-for="item in marketing.offers" :key="item.id" class="marketing-row"><span><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.status }}</small></span><button class="btn small" @click="openMarketingDialog('offer', item)">编辑</button><button class="btn small" @click="setMarketingStatus('offers', item.id, item.status === 'active' ? 'disabled' : 'active')">{{ item.status === 'active' ? '停用' : '启用' }}</button></article></section>
+              <section class="data-card"><div class="atelier-panel-head"><div><h2>活动</h2><p>{{ marketing.campaigns.length }} 个活动</p></div><button class="btn small" @click="openMarketingDialog('campaign')">新建</button></div><div v-if="!marketing.campaigns.length" class="empty-compact">暂无活动</div><article v-for="item in marketing.campaigns" :key="item.id" class="marketing-row"><span><strong>{{ item.name }}</strong><small>{{ item.status }}</small></span><button class="btn small" @click="openMarketingDialog('campaign', item)">编辑</button><button class="btn small" @click="setMarketingStatus('campaigns', item.id, item.status === 'active' ? 'paused' : 'active')">{{ item.status === 'active' ? '暂停' : '启用' }}</button></article></section>
+            </div>
+            <div v-if="marketing.dialog" class="drawer-backdrop" @click.self="closeMarketingDialog"><aside class="appointment-detail-drawer" role="dialog" aria-modal="true"><header><div><span class="eyebrow">MARKETING</span><h2>{{ marketing.form.id ? '编辑' : '新建' }}{{ marketing.dialog === 'audience' ? '受众' : marketing.dialog === 'offer' ? '优惠' : '活动' }}</h2></div><button class="icon-btn" aria-label="关闭" @click="closeMarketingDialog">×</button></header><form class="booking-rules" @submit.prevent="saveMarketing"><label>名称<input v-model.trim="marketing.form.name" maxlength="120" required></label><label v-if="marketing.dialog==='offer'">优惠码<input v-model.trim="marketing.form.code" maxlength="80" required></label><label v-if="marketing.dialog==='offer'">说明<textarea v-model="marketing.form.description" maxlength="500"></textarea></label><label v-if="marketing.dialog==='audience'">最低积分<input v-model.number="marketing.form.minPoints" type="number" min="0"></label><template v-if="marketing.dialog==='campaign'"><label>受众<select v-model="marketing.form.audienceId"><option value="">不指定</option><option v-for="item in marketing.audiences" :value="item.id" :key="item.id">{{ item.name }}</option></select></label><label>优惠<select v-model="marketing.form.offerId"><option value="">不指定</option><option v-for="item in marketing.offers" :value="item.id" :key="item.id">{{ item.name }}</option></select></label></template><label v-if="marketing.dialog!=='audience' && marketing.form.id">状态<select v-model="marketing.form.status"><option value="draft">草稿</option><option value="active">启用</option><option value="paused">暂停</option><option value="disabled">停用</option></select></label><div class="management-actions"><button type="button" class="btn" @click="closeMarketingDialog">取消</button><button type="submit" class="btn primary" :disabled="marketing.saving">{{ marketing.saving ? '保存中…' : '保存' }}</button></div></form></aside></div>
           </section>
 
+          <section v-else-if="currentView === 'ai-template'" class="management ai-workspace">
+            <div class="management-header"><div><span class="eyebrow">AI TEMPLATE STUDIO</span><h1>AI 模板工作室</h1><p>描述店铺和顾客体验，生成可在编辑器中继续调整的声明式模板。</p></div><button type="button" class="btn" @click="switchView('editor')"><iconify-icon class="icon" icon="ph:bounding-box"></iconify-icon>打开编辑器</button></div>
+            <div class="ai-grid"><section class="atelier-panel ai-console"><div class="atelier-panel-head"><div><h2>生成模板</h2><p>AI 只会使用已注册的页面区块和能力。</p></div></div><form class="ai-composer" @submit.prevent="generateAiTemplate"><label class="sr-only" for="ai-template-prompt">店铺需求</label><textarea id="ai-template-prompt" v-model="aiTemplate.prompt" maxlength="4000" rows="5" placeholder="例如：我经营一家高端摄影工作室，希望首页展示作品并引导顾客预约。"></textarea><button class="btn primary" type="submit" :disabled="aiTemplate.loading || !aiTemplate.prompt.trim()">{{ aiTemplate.loading ? '生成中…' : '生成模板' }}</button></form><div v-if="aiTemplate.error" class="form-error" role="alert">{{ aiTemplate.error }}</div><div v-if="aiTemplate.draft" class="ai-answer"><div><strong>草稿 v{{ aiTemplate.draft.draftRevision }}</strong><span>{{ aiTemplate.draft.baseConfigVersion ? '基于当前配置' : '待检查' }}</span></div><p>模板已生成，应用后会进入编辑器待保存状态。</p><div class="ai-composer"><input v-model="aiTemplate.instruction" maxlength="1000" placeholder="继续描述修改，例如：增加预约入口"><button class="btn" type="button" :disabled="aiTemplate.refining" @click="refineAiTemplate">{{ aiTemplate.refining ? '修改中…' : '自然语言修改' }}</button><button class="btn primary" type="button" :disabled="aiTemplate.applying" @click="applyAiTemplate">{{ aiTemplate.applying ? '载入中…' : '应用到编辑器' }}</button></div></div></section><aside class="atelier-panel ai-status-panel"><div class="atelier-panel-head"><div><h2>可用能力</h2><p>服务端注册表</p></div></div><ul class="status-definition"><li v-for="item in aiTemplate.capabilities" :key="item.id"><span>{{ item.label }}</span><strong>{{ item.available ? '可用' : '未启用' }}</strong></li></ul><div class="callout success"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>草稿不会自动保存</strong><p>请在编辑器检查结果后使用现有保存流程。</p></div></div></aside></div>
+          </section>
           <section v-else-if="currentView === 'ai-service'" class="management ai-workspace">
             <div class="management-header"><div><span class="eyebrow">CUSTOMER SERVICE</span><h1>智能客服</h1><p>维护店铺知识和标准回答，客服只使用当前工作区的规则知识。</p></div><div class="management-actions"><span class="status-chip success">规则 FAQ</span><button type="button" class="btn primary" @click="openFaqEditor()"><iconify-icon class="icon" icon="ph:plus"></iconify-icon>添加问答</button></div></div>
             <div class="ai-grid"><section class="atelier-panel ai-console"><div class="atelier-panel-head"><div><span class="eyebrow">TEST CUSTOMER QUESTION</span><h2>测试客服回答</h2></div></div><div class="ai-preview"><div class="ai-welcome"><span class="ai-avatar">A</span><p>{{ cfg.serviceBot.welcomeMessage }}</p></div><div class="ai-prompts"><button v-for="prompt in cfg.serviceBot.quickPrompts" :key="prompt" type="button" @click="testAiService(prompt)">{{ prompt }}</button></div><div v-if="aiConsole.answer" class="ai-answer"><div><strong>{{ aiConsole.answer.provider || '规则 FAQ' }}</strong><span>规则模式</span></div><p>{{ aiConsole.answer.content }}</p><small v-if="aiConsole.answer.citations?.length">来源：{{ aiConsole.answer.citations.join('、') }}</small></div><div v-if="aiConsole.error" class="form-error" role="alert">{{ aiConsole.error }}</div><form class="ai-composer" @submit.prevent="testAiService()"><label class="sr-only" for="ai-test-question">测试问题</label><input id="ai-test-question" v-model="aiConsole.question" name="ai-test-question" autocomplete="off" type="text" maxlength="400" placeholder="输入客户可能提出的问题…"><button type="submit" class="btn primary" :disabled="aiConsole.sending || !aiConsole.question.trim()">{{ aiConsole.sending ? '生成中…' : '发送' }}</button></form></div></section><aside class="atelier-panel ai-status-panel"><div class="atelier-panel-head"><div><span class="eyebrow">ANSWER SETTINGS</span><h2>回答设置</h2></div></div><dl class="status-definition"><div><dt>当前模式</dt><dd>规则 FAQ</dd></div><div><dt>知识来源</dt><dd>店铺内容 / FAQ / 文本知识</dd></div><div><dt>对话留存</dt><dd>仅当前测试会话</dd></div><div><dt>失败处理</dt><dd>规则回答 → 联系店铺</dd></div></dl><div class="callout success"><iconify-icon class="icon" icon="ph:shield-check"></iconify-icon><div><strong>当前使用规则 FAQ</strong><p>客服只读取已维护的店铺内容、FAQ 和文本知识，不需要配置模型连接。</p></div></div></aside></div>
