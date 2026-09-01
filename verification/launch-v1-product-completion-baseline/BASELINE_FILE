@@ -1,0 +1,83 @@
+=== ATELIER OS LAUNCH V1 PRODUCT COMPLETION BASELINE ===
+
+DATE=2026-09-01
+TARGET_PROJECT_ID=asmhysidbg5g
+INTEGRATION_BASE=main
+B1_LOCAL_MERGE=PASS
+B1_MERGE_SHA=7d4cfb1
+MEOO_STAGING_AUTHORITATIVE=YES
+SAFE_TO_MIGRATE_PRODUCTION_DATA=NO
+
+EVIDENCE BASIS
+- Current merged source at 7d4cfb1; B1 source fixes are ancestry of the merge.
+- Sprint 3A/3B contracts were read from docs/prompts/sprint-3a-workflow-runtime.md and docs/prompts/sprint-3b-workflow-integration.md.
+- Full admin regression after merge: 184 passed, 1 skipped, 0 failed.
+- Focused B1 regression: 38 passed, 0 failed.
+- Migration namespace: Core 001-010; Meoo provider 001-003; migration 011 remains intentionally unapplied.
+- Staging runtime evidence: HTTP 200 and database=ok; authoritative Meoo staging retained.
+
+WORKFLOW
+CURRENT_STATUS=PARTIAL
+COMPLETE=definition/version persistence; immutable published versions; instance/task lifecycle; ordered transitions; idempotent starts; atomic event sequencing; append-only events/audit; tenant/workspace isolation; appointment event integration; duplicate delivery convergence; terminal failure classification
+PARTIAL=retry handling is bounded inbox reconciliation rather than a configurable policy; runtime has no merchant-facing definition/version editor; action/condition execution is limited to ordered manual tasks; no explicit workflow enable/disable UI or template catalog
+MISSING=merchant workflow builder/configuration surface; reusable action/condition catalog; retry schedule/backoff controls; failure-recovery operator view; workflow templates and business-event mapping UI
+V1_BLOCKERS=merchant configuration and observable failure/retry controls are required for launch-critical workflow operations
+
+MEDIA
+CURRENT_STATUS=PARTIAL
+COMPLETE=scoped asset records; tenant/workspace/store predicates; image/video extension and MIME checks; magic-byte validation; 80MB limit; upload/list/delete/restore; folders; reference-aware deletion warning; product primary/gallery/detailImages handling; preview media selection
+PARTIAL=filesystem-backed storage rather than provider abstraction; base64 request transport; large-file warning only; no server-side image-dimension validation; no resumable upload or progress protocol; no upload retry queue; permanent purge is not implemented (30-day trash metadata only)
+MISSING=provider-neutral object storage adapter; dimension/aspect validation; resumable/progress/retry UX; retention purge job; media usage analytics
+V1_BLOCKERS=provider abstraction plus robust upload progress/error recovery and dimension validation
+
+OPERATOR
+CURRENT_STATUS=PARTIAL
+COMPLETE=separate operator_users/operator_sessions; operator login/logout; tenant/workspace/plan/subscription directory; plan entitlements; license generation/disable; subscription extension; health diagnostics; audit listing; server-side role/session checks
+PARTIAL=usage visibility is limited to aggregate AI/storage/SKU counters; tenant status is read-only; diagnostics are basic; operator UI has no workspace suspend/recover action or incident workflow
+MISSING=feature-flag management; suspend/recover commands; per-tenant usage drill-down; support/incident records; impersonation controls; operational action audit views
+V1_BLOCKERS=feature flags and suspend/recover plus actionable tenant diagnostics
+
+MARKETING
+CURRENT_STATUS=MISSING
+COMPLETE=campaign page content/configuration and campaign navigation in the generated mini program; license/subscription channel and batch metadata
+PARTIAL=none for a marketing domain service
+MISSING=audiences; campaign records and lifecycle; coupons/issuance/redeem/expiry/usage rules; campaign analytics; workflow-trigger compatibility; merchant marketing console
+V1_BLOCKERS=basic campaign/coupon lifecycle and analytics are absent
+
+MEMBERSHIP
+CURRENT_STATUS=PARTIAL
+COMPLETE=customer membership profile/state; membership programs; levels; growth thresholds; points accounts and append-only ledger; scoped membership reads/writes; join/level adjustment; idempotent point adjustments; existing Membership Center and Customer 360 membership view
+PARTIAL=benefits are stored as JSON but not fully editable/validated in the UI; growth/level progression is manual; no rule engine for earning/spending; no benefit redemption tracking; no membership analytics
+MISSING=automated progression rules; benefit catalog/redemption; points earning integrations; expiry/rollback policy; membership reporting
+V1_BLOCKERS=merchant-configurable rules and automated progression/benefit semantics
+
+AI
+CURRENT_STATUS=PARTIAL
+COMPLETE=isolated OpenAI-compatible gateway; provider URL/network validation; encrypted merchant secrets; BYOK connection CRUD/test/rotation; scoped AI policy; usage accounting/reservation; quota enforcement; FAQ/rules fallback; audit/error classification; Template Engine business templates with explicit apply/save
+PARTIAL=AI Template Generator is not present as an applied migration/runtime module; preview/refine/apply are limited to existing business-template operations; quota/cost controls are basic and not operator-configurable
+MISSING=capability registry; prompt-to-template generation; validation/preview/refine/apply workflow with explicit approval; permission matrix; generator audit trail and cost budgets; migration-011-backed persistence
+V1_BLOCKERS=isolated Template Generator implementation and acceptance gates, without applying migration 011 during baseline
+
+FRONTEND / UX
+CURRENT_STATUS=PARTIAL
+CRITICAL_DEFECTS=none observed in current B1 navigation smoke; Membership -> Customer routing defect is fixed and tested
+HIGH_PRIORITY_DEFECTS=workflow and marketing have no merchant-facing navigation; media upload lacks progress/retry feedback; membership configuration exposes only basic controls; operator actions are mostly read-only
+SYSTEMIC_ISSUES=monolithic admin/public/app.js; repeated loading/error/empty-state patterns; mixed API/config-backed modules; limited responsive/UAT coverage for new launch surfaces; native confirm remains in media deletion flow
+
+ACCEPTANCE CONTRACT
+WORKFLOW=IN_SCOPE_V1 definitions, version selection, enable/disable, event triggers, deterministic tasks, idempotency, bounded retry/failure visibility, audit; OUT_OF_SCOPE_V1 BPMN/visual builder/AI-generated arbitrary code; CURRENT_STATUS=PARTIAL; DEPENDENCIES=existing 008-010 migrations and Sprint 3A/3B services; ACCEPTANCE_TESTS=definition CRUD, active-state transitions, event-to-instance idempotency, retry/terminal failure, tenant isolation, audit; UAT_REQUIREMENTS=merchant config and replay a real appointment event
+MEDIA=IN_SCOPE_V1 upload/list/delete/restore, MIME/size/dimension checks, ordering, references, scoped access, progress/error UX; OUT_OF_SCOPE_V1 video transcoding/CDN; CURRENT_STATUS=PARTIAL; DEPENDENCIES=workspace media adapter and config references; ACCEPTANCE_TESTS=content spoof rejection, size/dimension limits, upload retry, delete/restore/reference safety; UAT_REQUIREMENTS=merchant uploads primary/detail media on desktop and mobile
+OPERATOR=IN_SCOPE_V1 tenant/workspace/plan/license/status/usage/audit/diagnostics/suspend-recover; OUT_OF_SCOPE_V1 billing provider and full incident platform; CURRENT_STATUS=PARTIAL; DEPENDENCIES=operator tables and SaaS service; ACCEPTANCE_TESTS=role/session, status actions, usage drill-down, audit; UAT_REQUIREMENTS=operator manages a test tenant without merchant credentials
+MARKETING=IN_SCOPE_V1 audiences, campaigns, coupons, redeem/expiry, basic analytics, workflow hooks; OUT_OF_SCOPE_V1 enterprise segmentation/attribution; CURRENT_STATUS=MISSING; DEPENDENCIES=customer identity, workflow events, additive schema; ACCEPTANCE_TESTS=issue/redeem/expiry/rule enforcement and analytics; UAT_REQUIREMENTS=merchant creates and redeems a coupon
+MEMBERSHIP=IN_SCOPE_V1 program/levels/points/rules/benefits/progression/config; OUT_OF_SCOPE_V1 partner ecosystems; CURRENT_STATUS=PARTIAL; DEPENDENCIES=existing customer and points tables; ACCEPTANCE_TESTS=earning/spending, progression, benefits, tenant isolation, audit; UAT_REQUIREMENTS=merchant configures rules and verifies Customer 360
+AI=IN_SCOPE_V1 constrained template generation/validation/preview/refine/apply/save, permissions, quota/cost/audit; OUT_OF_SCOPE_V1 arbitrary code generation and migration-011 cutover during this goal; CURRENT_STATUS=PARTIAL; DEPENDENCIES=Template Engine and isolated AI persistence; ACCEPTANCE_TESTS=capability allow-list, invalid output rejection, explicit save, quota and audit; UAT_REQUIREMENTS=operator/merchant roles complete a sample generation
+
+ROADMAP
+RECOMMENDED_IMPLEMENTATION_ORDER=1) Workflow merchant control surface and failure observability; 2) Media provider abstraction, dimensions, progress/retry; 3) Membership rules/progression/benefits; 4) Operator feature flags and suspend/recover; 5) Marketing minimal domain and workflow hooks; 6) AI Template Generator isolated implementation; 7) cross-module UX and full Launch V1 UAT
+PARALLELIZABLE_WORKSTREAMS=Media hardening || Membership rules (after shared scope contracts) || Operator controls; Marketing can start schema/API design after event contracts; AI generator can proceed in isolation without applying migration 011
+LAUNCH_V1_CRITICAL_BLOCKERS=Workflow merchant configuration and failure controls; media reliability/validation; membership automation; operator suspend/recover and feature flags; minimal marketing lifecycle; AI generator acceptance surface
+ESTIMATED_IMPLEMENTATION_BATCHES=7 coherent batches plus final cross-module UAT
+
+DECISION
+READY_TO_BEGIN_LAUNCH_V1_IMPLEMENTATION=YES
+SAFE_TO_MIGRATE_PRODUCTION_DATA=NO

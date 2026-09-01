@@ -1,0 +1,10 @@
+diff --git "a/verification/launch-v1-product-completion-baseline\\BASELINE_FILE" "b/verification/launch-v1-product-completion-baseline\\MODIFIED_FILE"
+index 37a6bb8..e987fbd 100644
+--- "a/verification/launch-v1-product-completion-baseline\\BASELINE_FILE"
++++ "b/verification/launch-v1-product-completion-baseline\\MODIFIED_FILE"
+@@ -81,3 +81,5 @@ ESTIMATED_IMPLEMENTATION_BATCHES=7 coherent batches plus final cross-module UAT
+ DECISION
+ READY_TO_BEGIN_LAUNCH_V1_IMPLEMENTATION=YES
+ SAFE_TO_MIGRATE_PRODUCTION_DATA=NO
++
++MODIFIED_BRANCH=main; MODIFIED_FIELD=Launch_V1_capability_matrix_and_acceptance_contract

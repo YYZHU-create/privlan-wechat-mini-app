@@ -1,0 +1,35 @@
+=== LAUNCH V1 PRODUCT COMPLETION BASELINE VERIFICATION ===
+DATE=2026-09-01
+TARGET_PROJECT_ID=asmhysidbg5g
+CHANGED_BRANCH=main
+CHANGED_FIELD=Launch_V1_capability_matrix_and_acceptance_contract
+
+BASELINE_COMMAND=git merge --no-ff codex/meoo-b1-deployment-readiness -m "merge: close Meoo B1 staging readiness"
+BASELINE_INPUT=local main at 6aa0a28 plus B1 branch at 347fe660be48d4f337dabcdb0d8d5fe8cce97fa2
+BASELINE_LITERAL_OUTPUT=Merge made by the ort strategy; merge commit 7d4cfb1
+BASELINE_EXIT_STATUS=0
+
+MODIFIED_COMMAND=cd admin; npm test
+MODIFIED_INPUT=merged main source at 7d4cfb1 plus Launch V1 baseline artifact
+MODIFIED_LITERAL_OUTPUT=tests 185; pass 184; fail 0; skipped 1; cancelled 0; todo 0; duration_ms 26779.0157
+MODIFIED_EXIT_STATUS=0
+
+FOCUSED_COMMAND=node --test admin/test/meoo-staging-cutover.test.js admin/test/membership-navigation.test.js admin/test/meoo-data-rehearsal.test.js admin/test/meoo-auth-runtime.test.js admin/test/meoo-visible-write-paths.test.js
+FOCUSED_LITERAL_OUTPUT=tests 38; pass 38; fail 0; skipped 0
+FOCUSED_EXIT_STATUS=0
+
+STATIC_COMMAND=git diff --check; focused secret scan; node --check admin/workflow-service.js; node --check admin/workflow-integration-service.js
+STATIC_LITERAL_OUTPUT=GIT_DIFF_CHECK=PASS; SECRET_SCAN=PASS; NODE_SYNTAX=PASS
+STATIC_EXIT_STATUS=0
+
+ROLLBACK_COMMAND=PowerShell scriptblock execution of verification/launch-v1-product-completion-baseline/ROLLBACK.sh against disposable rollback-test-copy
+ROLLBACK_INPUT=MODIFIED_FILE copy with TEMP_MUTATION=1
+ROLLBACK_LITERAL_OUTPUT=ROLLBACK_RESULT=PASS; BASELINE_SHA256=1A22A6BC013B8030B6A40FCEF963EB0280FA61B4ABC224D1256CE745545CF6E8; RESTORED_COPY_SHA256=1A22A6BC013B8030B6A40FCEF963EB0280FA61B4ABC224D1256CE745545CF6E8
+ROLLBACK_EXIT_STATUS=0
+RESTORED_BEHAVIOR=disposable copy restored byte-for-byte to BASELINE_FILE
+RESTORED_STATUS=active MODIFIED_FILE remains changed with Launch V1 baseline metadata
+
+ARTIFACT_MODIFIED_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-product-completion-baseline\MODIFIED_FILE
+ARTIFACT_DIFF_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-product-completion-baseline\DIFF_FILE
+ARTIFACT_VERIFICATION_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-product-completion-baseline\VERIFICATION.txt
+ARTIFACT_ROLLBACK_FILE=C:\Users\Administrator\WorkBuddy\2026-08-31-meoo-b1-deployment-readiness\verification\launch-v1-product-completion-baseline\ROLLBACK.sh
