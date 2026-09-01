@@ -7,7 +7,7 @@ class WorkflowError extends Error {
 function id() { return crypto.randomUUID(); }
 function json(value) { return JSON.stringify(value ?? {}); }
 
-function createWorkflowService({ db, audit }) {
+function createWorkflowService({ db, audit, meooRepository = null }) {
   if (!db) throw new Error("database is required");
   if (typeof audit !== "function") throw new Error("audit writer is required");
 
@@ -65,6 +65,7 @@ function createWorkflowService({ db, audit }) {
 
   async function registerDefinition(scope, input = {}, context = {}) {
     const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowRegister) return meooRepository.workflowRegister(scoped, input);
     const workflowKey = String(input.workflowKey || "").trim();
     const name = String(input.name || workflowKey).trim().slice(0, 160);
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(workflowKey) || !name) throw new WorkflowError(400, "WORKFLOW_DEFINITION_INVALID", "Workflow 定义标识无效");
@@ -84,6 +85,7 @@ function createWorkflowService({ db, audit }) {
 
   async function startInstance(scope, input = {}, context = {}) {
     const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowStart) return meooRepository.workflowStart(scoped, input);
     const workflowKey = String(input.workflowKey || "").trim();
     const idempotencyKey = input.idempotencyKey ? String(input.idempotencyKey).trim().slice(0, 160) : null;
     if (!workflowKey) throw new WorkflowError(400, "WORKFLOW_KEY_REQUIRED", "缺少 Workflow 标识");
@@ -116,6 +118,7 @@ function createWorkflowService({ db, audit }) {
 
   async function completeTask(scope, instanceId, taskKey, input = {}, context = {}) {
     const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowTask) return meooRepository.workflowTask(scoped, instanceId, taskKey, "complete", input);
     const key = String(taskKey || "").trim();
     if (!key) throw new WorkflowError(400, "WORKFLOW_TASK_REQUIRED", "缺少 Workflow 任务标识");
     return db.transaction(async tx => {
@@ -145,6 +148,7 @@ function createWorkflowService({ db, audit }) {
 
   async function cancelInstance(scope, instanceId, context = {}) {
     const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowCancel) return meooRepository.workflowCancel(scoped, instanceId);
     return db.transaction(async tx => {
       const row = (await tx.query("select id,status from workflow_instances where id=$1 and tenant_id=$2 and workspace_id=$3 for update", [instanceId, scoped.tenantId, scoped.workspaceId])).rows[0];
       if (!row) throw new WorkflowError(404, "WORKFLOW_INSTANCE_NOT_FOUND", "Workflow 实例不存在");
@@ -158,6 +162,7 @@ function createWorkflowService({ db, audit }) {
 
   async function listDefinitions(scope) {
     const scoped = scopeOf(scope);
+    if (meooRepository?.workflowDefinitions) return meooRepository.workflowDefinitions(scoped);
     const rows = (await db.query(`select d.id,d.workflow_key,d.name,d.status,d.created_by,d.created_at,d.updated_at,
         v.id version_id,v.version,v.status version_status,v.definition_json,
         (select count(*)::int from workflow_instances i where i.definition_id=d.id and i.tenant_id=d.tenant_id and i.workspace_id=d.workspace_id) instance_count
@@ -187,6 +192,7 @@ function createWorkflowService({ db, audit }) {
 
   async function setDefinitionStatus(scope, workflowKey, status, context = {}) {
     const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowStatus) return meooRepository.workflowStatus(scoped, workflowKey, status);
     const key = String(workflowKey || "").trim();
     const nextStatus = String(status || "").trim();
     if (!key || !["active", "archived"].includes(nextStatus)) throw new WorkflowError(400, "WORKFLOW_STATUS_INVALID", "Workflow 状态无效");
@@ -198,7 +204,7 @@ function createWorkflowService({ db, audit }) {
       return { id: row.id, workflowKey: row.workflow_key, name: row.name, status: row.status, updatedAt: row.updated_at };
     });
   }
-  async function getInstance(scope, instanceId) { return loadInstance(scopeOf(scope), String(instanceId || "")); }
+  async function getInstance(scope, instanceId) { const scoped=scopeOf(scope); return meooRepository?.workflowLoad ? meooRepository.workflowLoad(scoped, String(instanceId || "")) : loadInstance(scoped, String(instanceId || "")); }
   async function listEvents(scope, instanceId) { return (await getInstance(scope, instanceId)).events; }  const CAPABILITY_CATALOG = Object.freeze([
     { id: "condition.customer_status", displayName: "客户状态条件", inputSchema: { status: "string" }, availability: "runtime" },
     { id: "condition.membership_level", displayName: "会员等级条件", inputSchema: { levelId: "uuid" }, availability: "runtime" },
@@ -208,7 +214,8 @@ function createWorkflowService({ db, audit }) {
   ]);
   async function listCapabilities(scope) { scopeOf(scope); return CAPABILITY_CATALOG; }
   async function listRuns(scope, options = {}) {
-    const scoped = scopeOf(scope); const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const scoped = scopeOf(scope);
+    if (meooRepository?.workflowRuns) return meooRepository.workflowRuns(scoped, options.limit); const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
     const rows = (await db.query(`select i.id,i.status,i.context,i.started_at,i.completed_at,i.updated_at,d.workflow_key,
       (select max(e.created_at) from workflow_events e where e.instance_id=i.id) last_event_at,
       (select count(*)::int from workflow_tasks t where t.instance_id=i.id and t.status='failed') failed_tasks
@@ -217,11 +224,13 @@ function createWorkflowService({ db, audit }) {
     return rows.map(r => ({ id:r.id, workflowKey:r.workflow_key, status:r.status, context:r.context, startedAt:r.started_at, completedAt:r.completed_at, updatedAt:r.updated_at, lastEventAt:r.last_event_at, failedTasks:Number(r.failed_tasks||0) }));
   }
   async function failTask(scope, instanceId, taskKey, reason, context = {}) {
-    const scoped = { ...scopeOf(scope), requestId: context.requestId }; const message = String(reason || "执行失败").slice(0, 500);
+    const scoped = { ...scopeOf(scope), requestId: context.requestId };
+    if (meooRepository?.workflowTask) return meooRepository.workflowTask(scoped, instanceId, taskKey, "fail", { reason }); const message = String(reason || "执行失败").slice(0, 500);
     return db.transaction(async tx => { const task=(await tx.query("select id,status,retry_count,retry_limit from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0]; if(!task) throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在"); if(task.status!=="pending") throw new WorkflowError(409,"WORKFLOW_TASK_NOT_PENDING","Workflow 任务当前不可失败"); const next=Number(task.retry_count||0)+1; await tx.query("update workflow_tasks set status='failed',retry_count=$1,last_error=$2,completed_at=now() where id=$3",[next,message,task.id]); await tx.query("update workflow_instances set status='failed',updated_at=now() where id=$1 and tenant_id=$2 and workspace_id=$3",[instanceId,scoped.tenantId,scoped.workspaceId]); await event(tx,scoped,instanceId,task.id,"task.failed",{taskKey:String(taskKey),reason:message,retryCount:next,retryLimit:Number(task.retry_limit||3)}); return loadInstance(scoped,instanceId,tx); });
   }
   async function retryTask(scope, instanceId, taskKey, context = {}) {
-    const scoped={...scopeOf(scope),requestId:context.requestId}; return db.transaction(async tx=>{const task=(await tx.query("select id,status,retry_count,retry_limit,last_error from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0];if(!task)throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在");if(task.status!=="failed")throw new WorkflowError(409,"WORKFLOW_TASK_NOT_FAILED","Workflow 任务当前不可重试");if(Number(task.retry_count||0)>=Number(task.retry_limit||3))throw new WorkflowError(409,"WORKFLOW_RETRY_EXHAUSTED","已达到重试上限");await tx.query("update workflow_tasks set status='pending',completed_at=null where id=$1",[task.id]);await tx.query("update workflow_instances set status='running',updated_at=now() where id=$1",[instanceId]);await event(tx,scoped,instanceId,task.id,"task.retrying",{taskKey:String(taskKey),retryCount:Number(task.retry_count||0)});return loadInstance(scoped,instanceId,tx);});
+    const scoped={...scopeOf(scope),requestId:context.requestId};
+    if (meooRepository?.workflowTask) return meooRepository.workflowTask(scoped, instanceId, taskKey, "retry", {}); return db.transaction(async tx=>{const task=(await tx.query("select id,status,retry_count,retry_limit,last_error from workflow_tasks where instance_id=$1 and tenant_id=$2 and workspace_id=$3 and task_key=$4 for update",[instanceId,scoped.tenantId,scoped.workspaceId,String(taskKey)])).rows[0];if(!task)throw new WorkflowError(404,"WORKFLOW_TASK_NOT_FOUND","Workflow 任务不存在");if(task.status!=="failed")throw new WorkflowError(409,"WORKFLOW_TASK_NOT_FAILED","Workflow 任务当前不可重试");if(Number(task.retry_count||0)>=Number(task.retry_limit||3))throw new WorkflowError(409,"WORKFLOW_RETRY_EXHAUSTED","已达到重试上限");await tx.query("update workflow_tasks set status='pending',completed_at=null where id=$1",[task.id]);await tx.query("update workflow_instances set status='running',updated_at=now() where id=$1",[instanceId]);await event(tx,scoped,instanceId,task.id,"task.retrying",{taskKey:String(taskKey),retryCount:Number(task.retry_count||0)});return loadInstance(scoped,instanceId,tx);});
   }
 
   return { registerDefinition, listDefinitions, setDefinitionStatus, startInstance, completeTask, cancelInstance, getInstance, listEvents, listCapabilities, listRuns, failTask, retryTask, WorkflowError };

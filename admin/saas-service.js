@@ -30,7 +30,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null }) {
   if (!db) throw new Error("database is required");
   const customerService = createCustomerService({ db, tagRepository, customerRepository, customerWriteRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository, appointmentWriteRepository });
@@ -442,10 +442,10 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     };
   }
 
-  const workflowService = createWorkflowService({ db, audit });
-  const membershipLaunchService = createMembershipLaunchService({ db, customerService, audit });
+  const workflowService = createWorkflowService({ db, audit, meooRepository: meooLaunchRepository });
+  const membershipLaunchService = createMembershipLaunchService({ db, customerService, audit, meooRepository: meooLaunchRepository });
   const operatorLaunchService = createOperatorLaunchService({ db, audit });
-  const marketingService = createMarketingService({ db, audit });
+  const marketingService = createMarketingService({ db, audit, meooRepository: meooLaunchRepository });
   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
   return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }

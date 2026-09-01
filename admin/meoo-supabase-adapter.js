@@ -174,14 +174,29 @@ function createSupabaseAdapter({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return Array.isArray(rows) ? rows[0] || null : null;
   }
 
-  async function readResource(tableName, query = "") {
-    const allowed = new Set(["customers", "customer_memberships", "customer_tag_links", "customer_tags", "customer_notes", "customer_events", "customer_points_accounts", "customer_points_ledger", "membership_levels", "membership_programs", "appointments", "orders", "appointment_settings", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_advisor_services", "staff_members", "staff_store_assignments", "staff_schedules", "staff_leaves", "audit_events"]);
-    if (!allowed.has(String(tableName || ""))) throw new SupabaseAdapterError("RESOURCE_INVALID", "database resource is invalid", 400);
+  const allowedResources = new Set(["customers", "customer_memberships", "customer_tag_links", "customer_tags", "customer_notes", "customer_events", "customer_points_accounts", "customer_points_ledger", "membership_levels", "membership_programs", "appointments", "orders", "appointment_settings", "appointment_business_hours", "appointment_services", "appointment_advisors", "appointment_advisor_services", "staff_members", "staff_store_assignments", "staff_schedules", "staff_leaves", "audit_events", "membership_level_rules", "membership_overrides", "membership_redemptions", "marketing_audiences", "marketing_offers", "marketing_issuances", "marketing_redemptions", "marketing_campaigns", "workflow_definitions", "workflow_versions", "workflow_instances", "workflow_tasks", "workflow_events", "workflow_event_consumptions"]);
+  function assertResource(tableName, query = "") {
+    if (!allowedResources.has(String(tableName || ""))) throw new SupabaseAdapterError("RESOURCE_INVALID", "database resource is invalid", 400);
     if (query && !/^[A-Za-z0-9_.=(),%:+&-]+$/.test(String(query))) throw new SupabaseAdapterError("QUERY_INVALID", "database query is invalid", 400);
+  }
+  async function readResource(tableName, query = "") {
+    assertResource(tableName, query);
     return request(`${query ? `?${query}` : ""}`, {}, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);
   }
+  async function insertResource(tableName, row, options = {}) {
+    assertResource(tableName);
+    return request("", { method: "POST", headers: { Prefer: "return=representation", ...(options.headers || {}) }, body: JSON.stringify(row) }, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);
+  }
+  async function updateResource(tableName, query, patch, options = {}) {
+    assertResource(tableName, query);
+    return request(`?${query}`, { method: "PATCH", headers: { Prefer: "return=representation", ...(options.headers || {}) }, body: JSON.stringify(patch) }, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);
+  }
+  async function deleteResource(tableName, query, options = {}) {
+    assertResource(tableName, query);
+    return request(`?${query}`, { method: "DELETE", headers: { Prefer: "return=representation", ...(options.headers || {}) }, body: options.body }, `${String(url).replace(/\/$/, "")}/rest/v1/${tableName}`);
+  }
 
-  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, readConfig, writeConfig, getSubscription, getAiPolicy, readResource, callRpc };
+  return { listTags, createTag, deleteTag, createSession, findSession, revokeSession, readConfig, writeConfig, getSubscription, getAiPolicy, readResource, insertResource, updateResource, deleteResource, callRpc };
 }
 
 function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl = globalThis.fetch, timeoutMs = 8000 } = {}) {

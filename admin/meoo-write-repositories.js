@@ -37,7 +37,16 @@ function createMeooCustomerWriteRepository({ adapter } = {}) {
     addNote: (scope, customerId, input) => invoke("atelier_customer_add_note", scope, { p_customer_id: customerId, p_content: String(input?.content || "").trim().slice(0, 5000) }),
     adjustPoints: (scope, customerId, input) => invoke("atelier_customer_adjust_points", scope, { p_customer_id: customerId, p_points: Number(input?.points), p_reason: String(input?.reason || "人工调整").slice(0, 200), p_idempotency_key: String(input?.idempotencyKey || "").slice(0, 180) }),
     updateProgram: (scope, input) => invoke("atelier_membership_program_update", scope, { p_enabled: input?.enabled === true, p_points_enabled: input?.pointsEnabled === true }),
-    saveLevel: (scope, input, levelId = null) => invoke("atelier_membership_level_save", scope, { p_level_id: levelId, p_name: String(input?.name || "").trim().slice(0, 80), p_level_order: Number(input?.levelOrder), p_growth_threshold: Number(input?.growthThreshold || 0), p_enabled: input?.enabled !== false, p_benefits: input?.benefits || {} })
+    saveLevel: (scope, input, levelId = null) => invoke("atelier_membership_level_save", scope, { p_level_id: levelId, p_name: String(input?.name || "").trim().slice(0, 80), p_level_order: Number(input?.levelOrder), p_growth_threshold: Number(input?.growthThreshold || 0), p_enabled: input?.enabled !== false, p_benefits: input?.benefits || {} }),
+    async linkTag(scope, customerId, tagId) {
+      const query = `tenant_id=eq.${encodeURIComponent(scope.tenantId)}&workspace_id=eq.${encodeURIComponent(scope.workspaceId)}&store_id=eq.${encodeURIComponent(scope.storeId)}`;
+      const customers = await adapter.readResource("customers", `${query}&id=eq.${encodeURIComponent(customerId)}&limit=1`);
+      const tags = await adapter.readResource("customer_tags", `${query}&id=eq.${encodeURIComponent(tagId)}&limit=1`);
+      if (!customers?.[0] || !tags?.[0]) throw new SupabaseAdapterError("CUSTOMER_SCOPE_INVALID", "客户或标签不存在", 404);
+      await adapter.insertResource("customer_tag_links", { tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, customer_id: customerId, tag_id: tagId });
+      await adapter.insertResource("audit_events", { id: require("node:crypto").randomUUID(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId, actor_type: "merchant", actor_id: scope.userId || "system", action: "customer.tag.link", resource_type: "customer_tag", resource_id: tagId, request_id: scope.requestId || require("node:crypto").randomUUID(), metadata: { customerId } });
+      return tags[0];
+    }
   };
 }
 

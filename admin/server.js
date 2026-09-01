@@ -16,6 +16,7 @@ const { createMeooAppointmentRepository } = require("./meoo-appointment-reposito
 const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
 const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
 const { createMeooMediaRepository } = require("./meoo-media-repository");
+const { createMeooLaunchV1Repository } = require("./meoo-launch-v1-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
@@ -68,6 +69,7 @@ const saasServicePromise = databasePromise.then(database => database ? createSaa
   customerWriteRepository: meooAdapter ? createMeooCustomerWriteRepository({ adapter: meooAdapter }) : null,
   appointmentWriteRepository: meooAdapter ? createMeooAppointmentWriteRepository({ adapter: meooAdapter }) : null,
   appointmentReadRepository: meooAdapter ? createMeooAppointmentReadRepository({ adapter: meooAdapter }) : null,
+  meooLaunchRepository: meooAdapter ? createMeooLaunchV1Repository({ adapter: meooAdapter }) : null,
   authRepository: database?.authRepository || meooAuthRepository,
   configRepository: meooAdapter
 }) : null);
