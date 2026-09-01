@@ -167,7 +167,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
         const csrf = String(req.get("x-atelier-csrf") || "");
         if (!service.verifyCsrf(scope, csrf)) throw new ServiceError(403, "CSRF_INVALID", "页面会话已更新，请刷新后重试");
       }
-      req.merchantScope = scope;
+      req.merchantScope = { ...scope, requestId: id };
       req.requestId = id;
       req.saasService = service;
       next();

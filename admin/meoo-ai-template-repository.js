@@ -73,7 +73,7 @@ function createMeooAiTemplateRepository({ url = process.env.SUPABASE_URL, servic
   }
   async function audit(scope, action, resourceType, resourceId, metadata = {}) {
     const [tenantId, workspaceId] = scopeValues(scope);
-    await insert("audit_events", { id: crypto.randomUUID(), tenant_id: tenantId, workspace_id: workspaceId, actor_type: "merchant", actor_id: scope.userId || null, action, resource_type: resourceType, resource_id: resourceId, metadata });
+    await insert("audit_events", { id: crypto.randomUUID(), tenant_id: tenantId, workspace_id: workspaceId, actor_type: "merchant", actor_id: scope.userId || null, action, resource_type: resourceType, resource_id: resourceId, request_id: scope.requestId || crypto.randomUUID(), metadata });
   }
   async function refine(scope, draftId, next, document, instruction) {
     const row = await get(scope, draftId); const updated = await update("ai_template_drafts", qs(scope, `id=eq.${encode(draftId)}&current_revision=eq.${Number(next) - 1}&status=eq.draft`), { current_revision: next, updated_at: new Date().toISOString() });

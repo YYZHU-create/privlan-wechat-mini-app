@@ -63,3 +63,17 @@ test("AI template service persists scoped drafts, refines, applies and enforces 
     assert.equal((await studio.listDrafts(scope))[0].status, "applied");
   } finally { await db.close(); }
 });
+const { createMeooAiTemplateRepository } = require("../meoo-ai-template-repository");
+test("Meoo AI audit writes a non-null request_id", async () => {
+  let payload;
+  const repository = createMeooAiTemplateRepository({
+    url: "https://example.test",
+    serviceRoleKey: "test-service-role",
+    fetchImpl: async (_url, options) => {
+      payload = JSON.parse(options.body);
+      return { ok: true, status: 201, text: async () => JSON.stringify([payload]) };
+    }
+  });
+  await repository.audit({ tenantId: "tenant-1", workspaceId: "workspace-1", storeId: "store-1", userId: "user-1", requestId: "merchant_req_test" }, "ai.template.generate", "ai_template_draft", "draft-1", { revision: 1 });
+  assert.equal(payload.request_id, "merchant_req_test");
+});
