@@ -86,6 +86,24 @@ app.use((req, res, next) => {
 
 const mutationRequests = new Map();
 const localHost = ["127.0.0.1", "localhost", "::1"].includes(HOST);
+function requestOriginHost(req) {
+  const forwarded = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  return forwarded || String(req.get("host") || "").trim();
+}
+
+function originMatchesRequest(req, origin) {
+  const originHost = new URL(origin).host;
+  if (originHost === requestOriginHost(req)) return true;
+  const configuredHosts = [
+    process.env.ATELIER_PUBLIC_HOST,
+    process.env.MEOO_PUBLIC_HOST,
+    process.env.MEOO_PROJECT_URL_ID ? `${process.env.MEOO_PROJECT_URL_ID}.meoo.pub` : "",
+    process.env.SUPABASE_PUBLIC_URL,
+    process.env.SUPABASE_URL
+  ].map(value => { try { return new URL(String(value || "")).host; } catch { return String(value || "").trim(); } }).filter(Boolean);
+  return configuredHosts.includes(originHost);
+}
+
 function validAdminToken(req) {
   const supplied = String(req.get("x-privlan-token") || req.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!ADMIN_TOKEN || supplied.length !== ADMIN_TOKEN.length) return false;
@@ -96,7 +114,7 @@ app.use("/api", (req, res, next) => {
   const origin = String(req.get("origin") || "");
   if (origin) {
     try {
-      if (new URL(origin).host !== req.get("host")) return res.status(403).json({ error: "请求来源不受信任" });
+      if (!originMatchesRequest(req, origin)) return res.status(403).json({ error: "请求来源不受信任" });
     } catch (error) {
       return res.status(403).json({ error: "请求来源无效" });
     }
@@ -117,7 +135,7 @@ app.use("/v1", (req, res, next) => {
   const origin = String(req.get("origin") || "");
   if (origin) {
     try {
-      if (new URL(origin).host !== req.get("host")) return res.status(403).json({ ok: false, error: "请求来源不受信任" });
+      if (!originMatchesRequest(req, origin)) return res.status(403).json({ ok: false, error: "请求来源不受信任" });
     } catch (error) {
       return res.status(403).json({ ok: false, error: "请求来源无效" });
     }
@@ -1014,7 +1032,7 @@ app.use("/ops/v1", (req, res, next) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     const origin = String(req.get("origin") || "");
     if (origin) {
-      try { if (new URL(origin).host !== req.get("host")) return res.status(403).json({ ok: false, error: "请求来源不受信任" }); }
+      try { if (!originMatchesRequest(req, origin)) return res.status(403).json({ ok: false, error: "请求来源不受信任" }); }
       catch (error) { return res.status(403).json({ ok: false, error: "请求来源无效" }); }
     }
   }
