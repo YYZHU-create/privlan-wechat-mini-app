@@ -70,7 +70,7 @@ test("normalizes duplicate, validation, missing and availability failures", asyn
 
 test("keeps non-tag conflicts distinguishable from duplicate tags", async () => {
   const adapter = createSupabaseAdapter({ url: "https://probe.example", serviceRoleKey: "test-key", fetchImpl: async () => response(409, { code: "23503", message: "foreign key violation" }) });
-  await assert.rejects(() => adapter.readResource("customer_memberships", "tenant_id=eq.tenant-a"), error => error.code === "RESOURCE_CONFLICT" && error.status === 409);
+  await assert.rejects(() => adapter.readResource("customer_memberships", "tenant_id=eq.tenant-a"), error => error.code === "RESOURCE_CONFLICT_FOREIGN_KEY" && error.status === 409);
 });
 
 test("rejects missing scope before making a request", async () => {

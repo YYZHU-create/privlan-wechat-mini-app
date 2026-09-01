@@ -40,10 +40,23 @@ function createMeooLaunchV1Repository({ adapter } = {}) {
     const levels=await read('membership_levels',s,'enabled=eq.true&order=level_order.asc'); const rules=await read('membership_level_rules',s,'enabled=eq.true');
     const target=override ? ({...override,level_id:override.level_id}) : levels.map(level=>({level,...(rules.find(r=>String(r.level_id)===String(level.id))||{})})).filter(x=>(x.spend_threshold_fen==null||Number(customer.total_spend_fen||0)>=Number(x.spend_threshold_fen))&&(x.points_threshold==null||points>=Number(x.points_threshold))&&(x.appointment_count_threshold==null||Number(customer.appointment_count||0)>=Number(x.appointment_count_threshold))).pop() || levels[0];
     if(!target) throw Object.assign(new Error('没有可用会员等级'),{status:400,code:'MEMBERSHIP_LEVEL_INVALID'});
-    const targetId=target.level_id||target.level?.id||target.id; const targetLevel=target.level||target; const current=first(await read('customer_memberships',s,`customer_id=eq.${enc(customerId)}&status=eq.active&limit=1`));
+    const targetId=target.level_id||target.level?.id||target.id; const targetLevel=target.level||target; let current=first(await read('customer_memberships',s,`customer_id=eq.${enc(customerId)}&status=eq.active&limit=1`));
     if(current && String(current.level_id)===String(targetId)) return {changed:false,levelId:targetId,levelName:targetLevel.name,levelOrder:Number(targetLevel.level_order)};
-    let membershipId=current?.id; if(current) { const row=await update('customer_memberships',qscope(s,`id=eq.${enc(current.id)}`),{level_id:targetId,updated_at:new Date().toISOString()}); membershipId=row?.id||current.id; }
-    else { const row=await insert('customer_memberships',{id:id(),tenant_id:s.tenantId,workspace_id:s.workspaceId,store_id:s.storeId,customer_id:customerId,level_id:targetId,status:'active'}); membershipId=row.id; }
+    let membershipId=current?.id;
+    if(current) { const row=await update('customer_memberships',qscope(s,`id=eq.${enc(current.id)}`),{level_id:targetId,updated_at:new Date().toISOString()}); membershipId=row?.id||current.id; }
+    else {
+      try {
+        const row=await insert('customer_memberships',{id:id(),tenant_id:s.tenantId,workspace_id:s.workspaceId,store_id:s.storeId,customer_id:customerId,level_id:targetId,status:'active'}); membershipId=row.id;
+      } catch(error) {
+        if(error?.status!==409) throw error;
+        current=first(await read('customer_memberships',s,`customer_id=eq.${enc(customerId)}&status=eq.active&limit=1`));
+        if(!current) throw error;
+        membershipId=current.id;
+        if(String(current.level_id)!==String(targetId)) {
+          const row=await update('customer_memberships',qscope(s,`id=eq.${enc(current.id)}`),{level_id:targetId,updated_at:new Date().toISOString()}); membershipId=row?.id||current.id;
+        } else return {changed:false,levelId:targetId,levelName:targetLevel.name,levelOrder:Number(targetLevel.level_order)};
+      }
+    }
     const direction=current && Number(targetLevel.level_order)<Number((levels.find(l=>String(l.id)===String(current.level_id))||{}).level_order)?'downgrade':'upgrade';
     await event(s,customerId,'member_level_changed','customer_membership',membershipId,{direction,fromLevelId:current?.level_id||null,toLevelId:targetId,reason:override?'manual_override':'qualification'});
     await audit(s,'customer.membership.auto_evaluate','customer_membership',membershipId,{direction,toLevelId:targetId});
