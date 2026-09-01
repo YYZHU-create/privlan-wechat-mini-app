@@ -1,4 +1,5 @@
 const { SupabaseAdapterError } = require("./meoo-supabase-adapter");
+const crypto = require("node:crypto");
 
 function scopeParams(scope) {
   if (!scope?.tenantId || !scope?.workspaceId || !scope?.storeId) throw new SupabaseAdapterError("SCOPE_REQUIRED", "tenant/workspace/store scope is required", 400);
@@ -38,6 +39,23 @@ function createMeooCustomerWriteRepository({ adapter } = {}) {
     adjustPoints: (scope, customerId, input) => invoke("atelier_customer_adjust_points", scope, { p_customer_id: customerId, p_points: Number(input?.points), p_reason: String(input?.reason || "人工调整").slice(0, 200), p_idempotency_key: String(input?.idempotencyKey || "").slice(0, 180) }),
     updateProgram: (scope, input) => invoke("atelier_membership_program_update", scope, { p_enabled: input?.enabled === true, p_points_enabled: input?.pointsEnabled === true }),
     saveLevel: (scope, input, levelId = null) => invoke("atelier_membership_level_save", scope, { p_level_id: levelId, p_name: String(input?.name || "").trim().slice(0, 80), p_level_order: Number(input?.levelOrder), p_growth_threshold: Number(input?.growthThreshold || 0), p_enabled: input?.enabled !== false, p_benefits: input?.benefits || {} }),
+    async joinMembership(scope, customerId, levelId = null) {
+      const q = `tenant_id=eq.${encodeURIComponent(scope.tenantId)}&workspace_id=eq.${encodeURIComponent(scope.workspaceId)}&store_id=eq.${encodeURIComponent(scope.storeId)}`;
+      const customers = await adapter.readResource("customers", `${q}&id=eq.${encodeURIComponent(customerId)}&limit=1`);
+      if (!customers?.[0]) throw new SupabaseAdapterError("CUSTOMER_NOT_FOUND", "客户不存在", 404);
+      const levelFilter = levelId ? `&id=eq.${encodeURIComponent(levelId)}` : "";
+      const levels = await adapter.readResource("membership_levels", `${q}&enabled=eq.true${levelFilter}&order=level_order.asc&limit=1`);
+      const level = levels?.[0];
+      if (!level) throw new SupabaseAdapterError("MEMBERSHIP_LEVEL_INVALID", "会员等级不存在", 400);
+      const existing = await adapter.readResource("customer_memberships", `${q}&customer_id=eq.${encodeURIComponent(customerId)}&status=eq.active&limit=1`);
+      let row;
+      if (existing?.[0]) row = await adapter.updateResource("customer_memberships", `${q}&id=eq.${encodeURIComponent(existing[0].id)}`, { level_id: level.id, updated_at: new Date().toISOString() });
+      else row = await adapter.insertResource("customer_memberships", { id: crypto.randomUUID(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, customer_id: customerId, level_id: level.id, status: "active" });
+      const saved = Array.isArray(row) ? row[0] : row;
+      await adapter.insertResource("customer_events", { id: crypto.randomUUID(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, customer_id: customerId, event_type: "member_joined", source: "merchant", resource_type: "customer_membership", resource_id: saved.id, metadata: {} });
+      await adapter.insertResource("audit_events", { id: crypto.randomUUID(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId, actor_type: "merchant", actor_id: scope.userId || "system", action: "customer.membership.join", resource_type: "customer_membership", resource_id: saved.id, request_id: scope.requestId || crypto.randomUUID(), metadata: {} });
+      return { ...saved, level_id: level.id, level_name: level.name, level_order: level.level_order, growth_threshold: level.growth_threshold };
+    },
     async linkTag(scope, customerId, tagId) {
       const query = `tenant_id=eq.${encodeURIComponent(scope.tenantId)}&workspace_id=eq.${encodeURIComponent(scope.workspaceId)}&store_id=eq.${encodeURIComponent(scope.storeId)}`;
       const customers = await adapter.readResource("customers", `${query}&id=eq.${encodeURIComponent(customerId)}&limit=1`);

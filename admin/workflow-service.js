@@ -13,7 +13,7 @@ function createWorkflowService({ db, audit, meooRepository = null }) {
 
   function scopeOf(scope) {
     if (!scope?.tenantId || !scope.workspaceId || !scope.userId) throw new WorkflowError(401, "AUTH_REQUIRED", "请先登录");
-    return { tenantId: scope.tenantId, workspaceId: scope.workspaceId, userId: scope.userId };
+    return { tenantId: scope.tenantId, workspaceId: scope.workspaceId, storeId: scope.storeId, userId: scope.userId };
   }
 
   function taskDefinitions(value) {
