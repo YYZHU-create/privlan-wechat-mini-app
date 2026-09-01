@@ -15,6 +15,7 @@ const { createSupabaseAdapter, createMeooAuthRepository } = require("./meoo-supa
 const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
 const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
 const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
+const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
@@ -141,7 +142,7 @@ app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
-registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY });
+registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null });
 registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 

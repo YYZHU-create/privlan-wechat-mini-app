@@ -82,56 +82,25 @@ function createFilesystemStorageProvider({ dataRoot }) {
   };
 }
 
-function createWorkspaceMedia({ db, dataRoot, storageProvider }) {
+function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null }) {
   const storage = storageProvider || createFilesystemStorageProvider({ dataRoot });
-  const publicItem = row => {
-    const meta = metadata(row);
-    return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null };
-  };
-
-  async function list(scope, deleted = false) {
-    const rows = (await db.query("select * from assets where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by created_at desc", [scope.tenantId, scope.workspaceId, scope.storeId])).rows;
-    return rows.map(publicItem).filter(item => Boolean(item.deletedAt) === deleted);
-  }
-  async function upload(scope, input) {
-    const decoded = decode(input.name, input.data); const assetId = crypto.randomUUID();
-    const original = safeName(input.name); const objectKey = `${assetId}${decoded.extension}`;
-    await storage.put(scope, { objectKey, buffer: decoded.buffer });
-    try {
-      await db.query("insert into assets(id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)", [assetId, scope.tenantId, scope.workspaceId, scope.storeId, objectKey, original, decoded.mime, decoded.buffer.length, JSON.stringify({ kind: decoded.kind, folderId: String(input.folderId || ""), dimensions: decoded.dimensions })]);
-      return publicItem((await db.query("select * from assets where id=$1", [assetId])).rows[0]);
-    } catch (error) { await storage.delete(scope, objectKey); throw error; }
-  }
-  async function get(scope, assetId, includeDeleted = false) {
-    const row = (await db.query("select * from assets where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [assetId, scope.tenantId, scope.workspaceId, scope.storeId])).rows[0];
-    if (!row || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在");
-    return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) };
-  }
-  async function remove(scope, ids) {
-    const removed = [];
-    for (const assetId of [...new Set(ids)].slice(0, 500)) {
-      const current = await get(scope, assetId);
-      const meta = { ...metadata(current.row), deletedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() };
-      await db.query("update assets set metadata=$1::jsonb where id=$2 and tenant_id=$3 and workspace_id=$4", [JSON.stringify(meta), assetId, scope.tenantId, scope.workspaceId]);
-      removed.push(assetId);
-    }
-    return removed;
-  }
-  async function restore(scope, ids) {
-    const restored = [];
-    for (const assetId of [...new Set(ids)].slice(0, 500)) {
-      const current = await get(scope, assetId, true); const meta = { ...metadata(current.row) }; delete meta.deletedAt; delete meta.expiresAt;
-      await db.query("update assets set metadata=$1::jsonb where id=$2 and tenant_id=$3 and workspace_id=$4", [JSON.stringify(meta), assetId, scope.tenantId, scope.workspaceId]); restored.push(assetId);
-    }
-    return restored;
-  }
-  async function folders(scope) { return (await db.query("select id,name,created_at from workspace_media_folders where tenant_id=$1 and workspace_id=$2 order by created_at", [scope.tenantId, scope.workspaceId])).rows.map(row => ({ id: row.id, name: row.name, createdAt: row.created_at })); }
-  async function addFolder(scope, name) { const value = String(name || "").trim(); if (!value || value.length > 40) throw new ServiceError(400, "INVALID_FOLDER", "文件夹名称长度需为 1 至 40 位"); const folder = { id: crypto.randomUUID(), name: value }; await db.query("insert into workspace_media_folders(id,tenant_id,workspace_id,name) values($1,$2,$3,$4)", [folder.id, scope.tenantId, scope.workspaceId, value]); return folder; }
-  async function renameFolder(scope, folderId, name) { const value = String(name || "").trim(); if (!value || value.length > 40) throw new ServiceError(400, "INVALID_FOLDER", "文件夹名称长度需为 1 至 40 位"); const row = (await db.query("update workspace_media_folders set name=$1 where id=$2 and tenant_id=$3 and workspace_id=$4 returning id,name", [value, folderId, scope.tenantId, scope.workspaceId])).rows[0]; if (!row) throw new ServiceError(404, "FOLDER_NOT_FOUND", "文件夹不存在"); return row; }
-  async function deleteFolder(scope, folderId) { const exists = (await db.query("delete from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3 returning id", [folderId, scope.tenantId, scope.workspaceId])).rows[0]; if (!exists) throw new ServiceError(404, "FOLDER_NOT_FOUND", "文件夹不存在"); const rows = (await db.query("select * from assets where workspace_id=$1", [scope.workspaceId])).rows; for (const row of rows) { const meta = metadata(row); if (meta.folderId === folderId) await db.query("update assets set metadata=$1::jsonb where id=$2 and workspace_id=$3", [JSON.stringify({ ...meta, folderId: "" }), row.id, scope.workspaceId]); } return { id: folderId }; }
-  async function move(scope, ids, folderId) { if (folderId && !(await db.query("select 1 from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3", [folderId, scope.tenantId, scope.workspaceId])).rows.length) throw new ServiceError(404, "FOLDER_NOT_FOUND", "文件夹不存在"); for (const assetId of ids) { const current = await get(scope, assetId, true); await db.query("update assets set metadata=$1::jsonb where id=$2 and workspace_id=$3", [JSON.stringify({ ...metadata(current.row), folderId: folderId || "" }), assetId, scope.workspaceId]); } return ids; }
-  async function resolveIds(scope, values) { const all = await list(scope, false); return [...new Set(values.map(value => all.find(item => item.id === value || item.name === value)?.id).filter(Boolean))]; }
+  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null }; };
+  const useRepository = Boolean(repository);
+  const rows = async (sql, params) => (await db.query(sql, params)).rows;
+  const assetRows = scope => useRepository ? repository.listAssets(scope) : rows("select * from assets where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by created_at desc", [scope.tenantId, scope.workspaceId, scope.storeId]);
+  const assetRow = async (scope, id) => useRepository ? repository.getAsset(scope, id) : (await rows("select * from assets where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id, scope.tenantId, scope.workspaceId, scope.storeId]))[0] || null;
+  const updateAsset = (scope, id, meta) => useRepository ? repository.updateAssetMetadata(scope, id, meta) : db.query("update assets set metadata=$1::jsonb where id=$2 and tenant_id=$3 and workspace_id=$4", [JSON.stringify(meta), id, scope.tenantId, scope.workspaceId]);
+  async function list(scope, deleted = false) { return (await assetRows(scope)).map(publicItem).filter(item => Boolean(item.deletedAt) === deleted); }
+  async function upload(scope, input) { const decoded = decode(input.name, input.data); const assetId = crypto.randomUUID(); const original = safeName(input.name); const objectKey = `${assetId}${decoded.extension}`; await storage.put(scope, { objectKey, buffer: decoded.buffer }); try { const payload = { id: assetId, objectKey, originalName: original, mimeType: decoded.mime, bytes: decoded.buffer.length, metadata: { kind: decoded.kind, folderId: String(input.folderId || ""), dimensions: decoded.dimensions } }; const stored = useRepository ? await repository.createAsset(scope, payload) : (await db.query("insert into assets(id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)", [assetId, scope.tenantId, scope.workspaceId, scope.storeId, objectKey, original, decoded.mime, decoded.buffer.length, JSON.stringify(payload.metadata)]), await assetRow(scope, assetId)); if (!stored) throw new ServiceError(503, "MEDIA_RECORD_UNAVAILABLE", "素材记录暂时不可用"); return publicItem(stored); } catch (error) { await storage.delete(scope, objectKey); throw error; } }
+  async function get(scope, assetId, includeDeleted = false) { const row = await assetRow(scope, assetId); if (!row || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在"); return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) }; }
+  async function remove(scope, ids) { const removed=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id); await updateAsset(scope,id,{...metadata(current.row),deletedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+30*86400000).toISOString()}); removed.push(id); } return removed; }
+  async function restore(scope, ids) { const restored=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id,true); const meta={...metadata(current.row)}; delete meta.deletedAt; delete meta.expiresAt; await updateAsset(scope,id,meta); restored.push(id); } return restored; }
+  async function folders(scope) { const result=useRepository ? await repository.listFolders(scope) : await rows("select id,name,created_at from workspace_media_folders where tenant_id=$1 and workspace_id=$2 order by created_at", [scope.tenantId, scope.workspaceId]); return result.map(row=>({id:row.id,name:row.name,createdAt:row.created_at})); }
+  async function addFolder(scope,name) { const value=String(name||"").trim(); if(!value||value.length>40) throw new ServiceError(400,"INVALID_FOLDER","文件夹名称长度需为 1 至 40 位"); const folder={id:crypto.randomUUID(),name:value}; if(useRepository) await repository.createFolder(scope,folder); else await db.query("insert into workspace_media_folders(id,tenant_id,workspace_id,name) values($1,$2,$3,$4)",[folder.id,scope.tenantId,scope.workspaceId,value]); return folder; }
+  async function renameFolder(scope,id,name) { const value=String(name||"").trim(); if(!value||value.length>40) throw new ServiceError(400,"INVALID_FOLDER","文件夹名称长度需为 1 至 40 位"); const row=useRepository ? await repository.renameFolder(scope,id,value) : (await rows("update workspace_media_folders set name=$1 where id=$2 and tenant_id=$3 and workspace_id=$4 returning id,name",[value,id,scope.tenantId,scope.workspaceId]))[0]; if(!row) throw new ServiceError(404,"FOLDER_NOT_FOUND","文件夹不存在"); return row; }
+  async function deleteFolder(scope,id) { const exists=useRepository ? await repository.deleteFolder(scope,id) : (await rows("delete from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3 returning id",[id,scope.tenantId,scope.workspaceId]))[0]; if(!exists) throw new ServiceError(404,"FOLDER_NOT_FOUND","文件夹不存在"); for(const row of await assetRows(scope)){ const meta=metadata(row); if(meta.folderId===id) await updateAsset(scope,row.id,{...meta,folderId:""}); } return {id}; }
+  async function move(scope,ids,folderId) { if(folderId && !(useRepository ? await repository.hasFolder(scope,folderId) : (await rows("select 1 from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3",[folderId,scope.tenantId,scope.workspaceId])).length)) throw new ServiceError(404,"FOLDER_NOT_FOUND","文件夹不存在"); for(const id of ids){const current=await get(scope,id,true); await updateAsset(scope,id,{...metadata(current.row),folderId:folderId||""});} return ids; }
+  async function resolveIds(scope,values){const all=await list(scope,false); return [...new Set(values.map(value=>all.find(item=>item.id===value||item.name===value)?.id).filter(Boolean))];}
   return { list, upload, get, remove, restore, folders, addFolder, renameFolder, deleteFolder, move, resolveIds, publicItem, storageProvider: storage };
 }
-
 module.exports = { createWorkspaceMedia, createFilesystemStorageProvider, decode, safeName, readImageDimensions };

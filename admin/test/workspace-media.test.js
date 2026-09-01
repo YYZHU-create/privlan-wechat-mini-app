@@ -73,6 +73,22 @@ test("workspace media upload records dimensions and cleans provider object on DB
 
 
 
+test("workspace media uses the explicit Meoo repository without database SQL", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-media-meoo-"));
+  const state = [];
+  const repo = {
+    async listAssets() { return state; },
+    async getAsset(scope, id) { return state.find(row => row.id === id && row.tenant_id === scope.tenantId && row.workspace_id === scope.workspaceId && row.store_id === scope.storeId) || null; },
+    async createAsset(scope, input) { const row = { id: input.id, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, object_key: input.objectKey, original_name: input.originalName, mime_type: input.mimeType, bytes: input.bytes, metadata: input.metadata }; state.push(row); return row; },
+    async updateAssetMetadata(scope, id, metadata) { const row = await this.getAsset(scope, id); row.metadata = metadata; return row; },
+    async listFolders() { return []; }, async createFolder() {}, async renameFolder() { return null; }, async deleteFolder() { return null; }, async hasFolder() { return false; }
+  };
+  const media = createWorkspaceMedia({ db: { query: async () => { throw new Error("SQL_PATH_USED"); } }, dataRoot: root, repository: repo });
+  const item = await media.upload(scope, { name: "hero.png", data: `data:image/png;base64,${png().toString("base64")}` });
+  assert.equal(item.name, "hero.png"); assert.equal((await media.list(scope)).length, 1);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test("merchant upload UI exposes progress, failed state, retry and duplicate guard", () => {
   const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
   assert.match(source, /xhr\.upload\.onprogress/);

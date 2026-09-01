@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { ServiceError } = require("./saas-service");
 const { createWorkspaceMedia } = require("./workspace-media");
+const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
@@ -59,7 +60,10 @@ function registerMerchantRoutes(app, getService, options = {}) {
   });
   const mediaByService = new WeakMap();
   const workspaceMedia = service => {
-    if (!mediaByService.has(service)) mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot }));
+    if (!mediaByService.has(service)) {
+      const repository = service.db?.kind === "meoo" ? (options.mediaRepository || createMeooMediaRepository()) : null;
+      mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot, repository }));
+    }
     return mediaByService.get(service);
   };
   const avatarRoot = path.resolve(options.dataRoot || path.join(process.cwd(), "data"), "user-avatars");
