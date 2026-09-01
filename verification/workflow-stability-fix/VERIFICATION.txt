@@ -1,8 +1,18 @@
 WORKFLOW_STABILITY_FIX
-CHANGED_BRANCH=workflow event sequence allocation and UAT fixture cleanup
-BASELINE_COMMAND=node --test test/launch-v1.test.js test/workflow-runtime.test.js
+CHANGED_BRANCH=workflow event sequence allocation retry handling; disposable UAT fixture cleanup ordering
+BASELINE_COMMAND=$env:NODE_PATH='admin/node_modules'; node verification/launch-v1-uat-run.js
+BASELINE_INPUT=staging v22 at https://asmhysidbg5g.meoo.pub
+BASELINE_LITERAL_OUTPUT=WORKFLOW_UAT FAIL 200/201/200/201/200/200/409/200; UAT_FIXTURE_CLEANUP FAIL HTTP 409 23503
+BASELINE_EXIT_STATUS=0
 MODIFIED_COMMAND=node --test test/launch-v1.test.js test/workflow-runtime.test.js
+MODIFIED_INPUT=local admin test suite
+MODIFIED_LITERAL_OUTPUT=12 passed, 0 failed
+MODIFIED_EXIT_STATUS=0
 ROLLBACK_COMMAND=sh verification/workflow-stability-fix/ROLLBACK.sh
-BASELINE_RESULT=prior candidate UAT WORKFLOW_UAT 409 on retry; cleanup 409 23503
-MODIFIED_RESULT=local focused tests 12 passed, 0 failed
-ROLLBACK_RESULT=restored copies and rerun required
+ROLLBACK_INPUT=Windows host without sh executable
+ROLLBACK_LITERAL_OUTPUT=NOT EXECUTED: sh command unavailable (WinError 2)
+ROLLBACK_EXIT_STATUS=NOT RUN
+RESTORED_BEHAVIOR=NOT VERIFIED; rollback artifact exists and points to baseline copies
+DEPLOY_COMMAND=cmd.exe /d /s /c meoo deploy --runtime image --force
+DEPLOY_LITERAL_OUTPUT=v23 active; health HTTP 200 database ok; runtime commit remained 480f56e2e6a8c186f869993f50a99791b4024cbf, expected fe7d702ff60e6be1ba4e4981d2d9c6012b60e81f
+DEPLOY_EXIT_STATUS=0
