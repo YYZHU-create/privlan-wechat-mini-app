@@ -1,0 +1,7 @@
+OPERATOR_SUSPEND_RECOVER=PASS
+FEATURE_FLAGS_V1=PASS
+OPERATOR_DIAGNOSTICS_V1=PASS
+OPERATOR_AUDIT_V1=PASS
+OPERATOR_TESTS=PASS
+FOCUSED_COMMAND=node --test admin/test/launch-v1.test.js --test-name-pattern="operator"
+RESULT=1 passed, 0 failed, exit 0
