@@ -31,7 +31,7 @@ createApp({
     const mvpFeatureFlags = Object.freeze({ orders: false, marketing: false, analytics: false });
     const mvpViews = new Set(["overview", "editor", "products", "categories", "media", "customers", "membership", "appointments", "ai-service", "channels", "account", "settings", "theme"]);
     const requestedView = new URLSearchParams(window.location.search).get("view") || "overview";
-    const currentView = ref(requestedView === "membership" ? "customers" : (mvpViews.has(requestedView) ? requestedView : "overview"));
+    const currentView = ref(mvpViews.has(requestedView) ? requestedView : "overview");
     const currentPage = ref("home");
     const sidebarCollapsed = ref(false);
     const mobileSidebarOpen = ref(false);
@@ -190,7 +190,7 @@ createApp({
       ] }
     ]);
     const navItems = computed(() => navGroups.value.flatMap(group => group.items));
-    const isNavActive = item => item.id === "membership" ? currentView.value === "customers" && appointmentWorkspace.customerSection === "membership" : currentView.value === item.id;
+    const isNavActive = item => currentView.value === item.id;
 
     const blockLibrary = [
       { type: "hero", name: "首屏轮播", help: "大图与主行动", icon: "ph:images" },
@@ -922,7 +922,7 @@ createApp({
         const response = await fetch("/auth/session"); const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) { auth.session = null; return; }
         auth.session = result.data;
-        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
+        if (loadWorkspace) { await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]); if(currentView.value==="overview"||currentView.value==="customers"||currentView.value==="membership"||currentView.value==="appointments")await loadAppointmentWorkspace(); else if(currentView.value==="editor")await loadAppointmentServices(); loadCart(); }
       } catch (error) { auth.session = null; }
       finally { auth.loading = false; }
     }
@@ -1399,12 +1399,11 @@ createApp({
       if (id === "membership") {
         appointmentWorkspace.customerSection = "membership";
         appointmentWorkspace.tab = "customers";
-        id = "customers";
       }
       currentView.value = id;
       if (window.innerWidth < 1024) mobileSidebarOpen.value = false;
       if (id === "media" && !media.value.length) loadMedia();
-      if (id === "customers" || id === "appointments" || id === "overview") { if (id !== "overview") appointmentWorkspace.tab = id === "appointments" ? "appointments" : "customers"; loadAppointmentWorkspace(); }
+      if (id === "customers" || id === "membership" || id === "appointments" || id === "overview") { if (id !== "overview") appointmentWorkspace.tab = id === "appointments" ? "appointments" : "customers"; loadAppointmentWorkspace(); }
       if (id === "editor") loadAppointmentServices();
       const url = new URL(window.location.href);
       url.searchParams.set("view", id);
@@ -3120,8 +3119,8 @@ createApp({
             <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input class="search-input" name="order-query" autocomplete="off" aria-label="搜索订单" type="search" placeholder="搜索订单号、客户或商品…"></div><div class="filter-row"><select aria-label="订单状态"><option>全部状态</option><option>待付款</option><option>待发货</option><option>已完成</option><option>售后中</option></select></div></div><div class="empty-state"><iconify-icon class="icon" icon="ph:receipt"></iconify-icon><h3>还没有真实订单</h3><p>完成微信支付商户进件和发布后，订单会自动出现在这里。</p><button type="button" class="btn primary" @click="switchView('channels')">配置支付与渠道</button></div></div>
           </section>
 
-          <section v-else-if="currentView === 'customers' || currentView === 'appointments'" class="management">
-            <div class="management-header"><div><span class="eyebrow">{{ currentView==='customers'?'CUSTOMER CENTER':'APPOINTMENTS' }}</span><h1>{{ currentView==='customers'?'客户中心':'预约管理' }}</h1><p>{{ currentView==='customers'?'统一查看已识别用户、顾客、会员和最近活跃。':'查看到店安排、服务进度与预约规则。' }}</p></div><button v-if="currentView==='appointments'" type="button" class="btn" @click="openBookingSettings"><iconify-icon class="icon" icon="ph:sliders-horizontal"></iconify-icon>预约设置</button></div>
+          <section v-else-if="currentView === 'customers' || currentView === 'membership' || currentView === 'appointments'" class="management">
+            <div class="management-header"><div><span class="eyebrow">{{ currentView==='customers'?'CUSTOMER CENTER':currentView==='membership'?'MEMBERSHIP CENTER':'APPOINTMENTS' }}</span><h1>{{ currentView==='customers'?'客户中心':currentView==='membership'?'会员中心':'预约管理' }}</h1><p>{{ currentView==='customers'?'统一查看已识别用户、顾客、会员和最近活跃。':currentView==='membership'?'管理会员计划、等级和积分规则。':'查看到店安排、服务进度与预约规则。' }}</p></div><button v-if="currentView==='appointments'" type="button" class="btn" @click="openBookingSettings"><iconify-icon class="icon" icon="ph:sliders-horizontal"></iconify-icon>预约设置</button></div>
             <div v-if="currentView==='appointments'" class="stats-grid appointment-stats"><div class="stat-card"><div class="stat-label">今日预约</div><div class="stat-value">{{ appointmentWorkspace.stats.today || 0 }}</div></div><div class="stat-card"><div class="stat-label">本周预约</div><div class="stat-value">{{ appointmentWorkspace.stats.week || 0 }}</div></div><div class="stat-card"><div class="stat-label">待确认</div><div class="stat-value">{{ appointmentWorkspace.stats.pending || 0 }}</div></div><div class="stat-card"><div class="stat-label">关联客户</div><div class="stat-value">{{ appointmentWorkspace.stats.customers || 0 }}</div></div></div>
             <div v-else class="stats-grid appointment-stats"><div class="stat-card"><div class="stat-label">全部用户</div><div class="stat-value">{{ appointmentWorkspace.customerStats.total || 0 }}</div></div><div class="stat-card"><div class="stat-label">顾客</div><div class="stat-value">{{ appointmentWorkspace.customerStats.customers || 0 }}</div></div><div class="stat-card"><div class="stat-label">会员</div><div class="stat-value">{{ appointmentWorkspace.customerStats.members || 0 }}</div></div><div class="stat-card"><div class="stat-label">近 30 天新增</div><div class="stat-value">{{ appointmentWorkspace.customerStats.new30Days || 0 }}</div></div></div>
             <div v-if="appointmentWorkspace.error" class="callout danger"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><div><strong>数据读取失败</strong><p>{{ appointmentWorkspace.error }}</p></div><button class="btn small" @click="loadAppointmentWorkspace">重试</button></div>
