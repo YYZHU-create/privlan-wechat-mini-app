@@ -104,7 +104,7 @@ function normalizeSkill(input) {
   return { name, description: cleanText(input?.description, 500), instructions, preferredComponents: [], discouragedComponents: [], designPreferences: {}, contentRules: [], examples: [] };
 }
 
-function createAiTemplateService({ db, audit } = {}) {
+function createNativeAiTemplateService({ db, audit } = {}) {
   if (!db) throw new Error("database is required");
   async function scopedDraft(scope, draftId) {
     const row = (await db.query("select * from ai_template_drafts where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [draftId, scope.tenantId, scope.workspaceId, scope.storeId])).rows[0];
@@ -168,4 +168,35 @@ function createAiTemplateService({ db, audit } = {}) {
   return { generate, listDrafts, getDraft, refine, apply, discard, createSkill, setSkill, getComponents: buildComponentRegistry, getCapabilities: buildCapabilityRegistry, getCredits };
 }
 
+function createRepositoryAiTemplateService({ db, audit, repository } = {}) {
+  if (!repository) throw new Error("AI repository is required");
+  async function generate(scope, input = {}) {
+    const prompt = sanitizePrompt(input.prompt); const key = cleanText(input.idempotencyKey, 160);
+    if (!key) throw new TemplateError(400, "AI_TEMPLATE_IDEMPOTENCY_REQUIRED", "缺少幂等键");
+    const requestHash = hash(JSON.stringify({ prompt })); const existing = await repository.receipt(scope, key, "generate");
+    if (existing) { if (existing.request_hash !== requestHash) throw new TemplateError(409, "AI_TEMPLATE_IDEMPOTENCY_CONFLICT", "幂等键已用于其他模板请求"); return { ...existing.response, idempotent: true }; }
+    const config = await repository.config(scope); const document = buildDraftDocument(config.document, prompt); const draftId = id("draft"); const revisionId = id("rev");
+    const businessBrief = { primaryGoal: "建立清晰的小程序入口", prompt }; const response = { draftId, draftRevision: 1, baseConfigVersion: Number(config.version), status: "draft", document, businessBrief };
+    await repository.generate(scope, { draftId, revisionId, prompt, response, document, requestHash, idempotencyKey: key, baseConfigVersion: Number(config.version), businessBrief }); return response;
+  }
+  async function listDrafts(scope) { return (await repository.list(scope)).map(row => ({ draftId: row.id, draftRevision: Number(row.current_revision), status: row.status, prompt: row.prompt, baseConfigVersion: Number(row.base_config_version), createdAt: row.created_at, updatedAt: row.updated_at })); }
+  async function getDraft(scope, draftId) { const row = await repository.get(scope, draftId); return { draftId: row.id, draftRevision: Number(row.current_revision), status: row.status, prompt: row.prompt, baseConfigVersion: Number(row.base_config_version), document: row.revision?.document || {}, businessBrief: row.business_brief, createdAt: row.created_at, updatedAt: row.updated_at }; }
+  async function refine(scope, draftId, input = {}) {
+    const row = await repository.get(scope, draftId); const supplied = Number(input.draftRevision);
+    if (row.status !== "draft") throw new TemplateError(409, "AI_TEMPLATE_DRAFT_NOT_EDITABLE", "草稿当前不可修改");
+    if (!Number.isInteger(supplied) || supplied !== Number(row.current_revision)) throw new TemplateError(409, "AI_TEMPLATE_DRAFT_REVISION_CONFLICT", "草稿已产生新版本，请刷新后重试");
+    const instruction = sanitizePrompt(input.merchantInstruction); const document = clone(row.revision?.document || {});
+    if (/删除|移除/.test(instruction)) document.pageLayouts.home = (document.pageLayouts.home || []).slice(0, Math.max(0, (document.pageLayouts.home || []).length - 1));
+    if (/预约|服务/.test(instruction) && !document.pageLayouts.appointment) document.pageLayouts.appointment = [{ id: `ai-appointment-${Date.now()}`, type: "appointment-form", enabled: true, props: { showName: true, showPhone: true, showService: true }, style: {} }];
+    const validated = validateTemplateDocument(document); const next = supplied + 1; await repository.refine(scope, draftId, next, validated, instruction); return { draftId, draftRevision: next, status: "draft", baseConfigVersion: Number(row.base_config_version), document: validated };
+  }
+  async function apply(scope, draftId) { const row = await repository.get(scope, draftId); const config = await repository.config(scope); if (Number(config.version) !== Number(row.base_config_version)) throw new TemplateError(409, "AI_TEMPLATE_CONFIG_VERSION_CONFLICT", "编辑器配置已更新，请基于最新配置重新生成"); const current = await getDraft(scope, draftId); await repository.markStatus(scope, draftId, "applied"); await repository.audit(scope, "ai.template.apply", "ai_template_draft", draftId, { persisted: false }); return { ...current, status: "applied", persisted: false, editorDirty: true }; }
+  async function discard(scope, draftId) { await repository.get(scope, draftId); await repository.markStatus(scope, draftId, "discarded"); return { draftId, status: "discarded" }; }
+  async function createSkill(scope, input) { const skill = normalizeSkill(input); const row = await repository.createSkill(scope, skill); return { skillId: row.id, ...skill, status: "disabled" }; }
+  async function setSkill(scope, skillId, enabled) { const row = await repository.setSkill(scope, skillId, enabled); return { skillId: row.id, status: row.status, ...(row.document || {}) }; }
+  async function getCredits(scope) { return repository.credits(scope); }
+  return { generate, listDrafts, getDraft, refine, apply, discard, createSkill, setSkill, getComponents: buildComponentRegistry, getCapabilities: buildCapabilityRegistry, getCredits };
+}
+
+function createAiTemplateService({ db, audit, repository } = {}) { return repository ? createRepositoryAiTemplateService({ db, audit, repository }) : createNativeAiTemplateService({ db, audit }); }
 module.exports = { TemplateError, sanitizePrompt, normalizeSkill, validateTemplateDocument, buildComponentRegistry, buildCapabilityRegistry, buildDraftDocument, createAiTemplateService };
