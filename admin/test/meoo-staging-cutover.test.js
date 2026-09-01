@@ -4,8 +4,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const {
-  CATALOG_PARITY_UNSTABLE, CORE_MIGRATIONS, PROVIDER_MIGRATIONS, SOURCE_EXPECTED, EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT, TARGET_FOREIGN_KEY_FINALIZATION_FILE, applyTargetMigrations, assertExecutionBarrier, assertProviderNormalizedSchemaParity, assertSchemaCutoverCompatibility, loadControlledSourceConnection,
-  parseArgs, parseDotEnv, readCanonicalSourceIdentity, readProviderNormalizedSchemaParityDiagnostic, snapshotMetadata, verifyMigrationFidelity, verifyPublicDataPlaneLockdown, verifyTargetBaseline, verifyTargetCoreMigrations, verifyTargetForeignKeyValidation
+  CATALOG_PARITY_UNSTABLE, CUTOVER_PHASES, CORE_MIGRATIONS, PROVIDER_MIGRATIONS, SOURCE_EXPECTED, EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT, TARGET_FOREIGN_KEY_FINALIZATION_FILE, applyTargetMigrations, assertExecutionBarrier, assertProviderNormalizedSchemaParity, assertSchemaCutoverCompatibility, loadControlledSourceConnection,
+  parseArgs, parseDotEnv, readCanonicalSourceIdentity, readProviderNormalizedSchemaParityDiagnostic, reconstructCutoverPhase, resolveCutoverPhase, snapshotMetadata, verifyMigrationFidelity, verifyPhaseAwareTargetState, verifyPostAuthoritativeState, verifyPostT2DataState, verifyPostT2Fidelity, verifyPublicDataPlaneLockdown, verifyTargetBaseline, verifyTargetCoreMigrations, verifyTargetForeignKeyValidation, writeCutoverPhaseState
 } = require("../meoo-staging-cutover");
 
 const root = path.resolve(__dirname, "../..");
@@ -165,4 +165,78 @@ test("Meoo Image Runtime scripts bind the application and exclude local secret c
   assert.match(dockerignore, /^verification\/$/m);
   assert.match(dockerignore, /^admin\/test\/$/m);
   assert.match(dockerignore, /^docker-compose\.yml$/m);
+});
+
+
+test("phase-aware gate preserves the strict PRE_T2 empty-target baseline", async () => {
+  const policy = { policies: { customers: { targetPreexistingRows: 0 } } };
+  const empty = { request: async () => [] };
+  assert.equal((await verifyPhaseAwareTargetState({ phase: CUTOVER_PHASES.PRE_T2, target: empty, policy })).preT2BaselineGate, "PASS");
+  await assert.rejects(() => verifyPhaseAwareTargetState({ phase: CUTOVER_PHASES.PRE_T2, target: { request: async () => [{}] }, policy }), error => error.code === "CUTOVER_TARGET_BASELINE_MISMATCH");
+});
+
+test("POST_T2_PRE_AUTHORITATIVE accepts imported real rows when fidelity evidence passes", async () => {
+  const snapshot = { rows: { customers: [{ id: "c1", tenant_id: "t1" }] } };
+  const evidence = { receipt: { fidelity: Object.fromEntries(["criticalDigest", "stableIdDigest", "passwordHashDigest", "relationshipDigest"].map(key => [key, "a".repeat(64)])), fk: { expectedUnvalidatedForeignKeyCount: 0 } }, snapshot };
+  const result = await verifyPhaseAwareTargetState({
+    phase: CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE,
+    root: fs.mkdtempSync(path.join(os.tmpdir(), "atelier-post-t2-")),
+    target: { request: async () => [] },
+    policy: { policies: {} },
+    loadEvidence: () => evidence,
+    targetSnapshotReader: async () => snapshot,
+    evidenceChecker: () => true,
+    evidenceContainsChecker: () => true
+  });
+  assert.equal(result.postT2DataStateGate, "PASS");
+  assert.equal(result.t2DataFidelity, "PASS");
+  assert.equal(result.sourceRows, 1);
+});
+
+test("POST_T2_PRE_AUTHORITATIVE rejects fidelity failure without running the empty-target baseline", async () => {
+  const snapshot = { rows: { customers: [{ id: "c1", tenant_id: "t1" }] } };
+  const evidence = { receipt: { fidelity: Object.fromEntries(["criticalDigest", "stableIdDigest", "passwordHashDigest", "relationshipDigest"].map(key => [key, "a".repeat(64)])), fk: { expectedUnvalidatedForeignKeyCount: 0 } }, snapshot };
+  await assert.rejects(() => verifyPhaseAwareTargetState({
+    phase: CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE,
+    root: fs.mkdtempSync(path.join(os.tmpdir(), "atelier-post-t2-fail-")),
+    target: { request: async () => [] },
+    policy: { policies: { customers: { targetPreexistingRows: 0 } } },
+    loadEvidence: () => evidence,
+    targetSnapshotReader: async () => snapshot,
+    fidelityVerifier: () => { const error = new Error("fidelity"); error.code = "CUTOVER_DATA_FIDELITY_MISMATCH"; throw error; },
+    evidenceChecker: () => true,
+    evidenceContainsChecker: () => true
+  }), error => error.code === "CUTOVER_DATA_FIDELITY_MISMATCH");
+});
+
+test("phase reconstruction and transition protection reject backward PRE_T2 regression", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-phase-"));
+  fs.mkdirSync(path.join(directory, ".cutover-artifacts"), { recursive: true });
+  fs.writeFileSync(path.join(directory, ".cutover-artifacts", "final-t2-migration.json"), "{}\n");
+  assert.equal(reconstructCutoverPhase({ root: directory }), CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE);
+  assert.throws(() => resolveCutoverPhase({ root: directory, requestedPhase: CUTOVER_PHASES.PRE_T2 }), error => error.code === "CUTOVER_PHASE_REGRESSION_REJECTED");
+  assert.equal(parseArgs(["--phase=POST_T2_PRE_AUTHORITATIVE"]).phase, CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE);
+  assert.throws(() => resolveCutoverPhase({ root: fs.mkdtempSync(path.join(os.tmpdir(), "atelier-ambiguous-")) }), error => error.code === "CUTOVER_PHASE_AMBIGUOUS");
+});
+
+test("POST_AUTHORITATIVE requires explicit authoritative state", () => {
+  assert.throws(() => verifyPostAuthoritativeState({ env: { MEOO_WRITES_ENABLED: "NO", MEOO_STAGING_AUTHORITATIVE: "NO", DUAL_AUTHORITATIVE_WRITE_PATHS: "NO" } }), error => error.code === "CUTOVER_POST_AUTHORITATIVE_STATE_INVALID");
+  assert.deepEqual(verifyPostAuthoritativeState({ env: { MEOO_WRITES_ENABLED: "YES", MEOO_STAGING_AUTHORITATIVE: "YES", DUAL_AUTHORITATIVE_WRITE_PATHS: "NO" } }), { phase: CUTOVER_PHASES.POST_AUTHORITATIVE, postAuthoritativeStateGate: "PASS" });
+});
+
+
+test("POST_T2 fidelity permits append-only audit/session activity while protecting imported business rows", () => {
+  const sourceSnapshot = { rows: {
+    customers: [{ id: "c1", tenant_id: "t1", name: "Real" }],
+    audit_events: [{ id: "a1", event_type: "login" }],
+    merchant_sessions: [{ id: "s1", user_id: "u1" }]
+  } };
+  const targetSnapshot = { rows: {
+    customers: [{ id: "c1", tenant_id: "t1", name: "Real" }],
+    audit_events: [{ id: "a1", event_type: "login" }, { id: "a2", event_type: "membership_read" }],
+    merchant_sessions: [{ id: "s1", user_id: "u1" }, { id: "s2", user_id: "u1" }]
+  } };
+  const result = verifyPostT2Fidelity({ sourceSnapshot, targetSnapshot });
+  assert.deepEqual(result.appendOnlyExtraRows, { audit_events: 1, merchant_sessions: 1 });
+  assert.throws(() => verifyPostT2Fidelity({ sourceSnapshot, targetSnapshot: { rows: { ...targetSnapshot.rows, customers: [{ id: "c1", tenant_id: "t1", name: "Tampered" }] } } }), error => error.code === "CUTOVER_DATA_FIDELITY_MISMATCH");
 });

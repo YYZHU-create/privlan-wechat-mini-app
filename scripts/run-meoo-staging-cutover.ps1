@@ -2,6 +2,8 @@
 param(
   [ValidateSet('preflight','apply-target-schema','migrate')]
   [string]$Mode = 'preflight',
+  [ValidateSet('PRE_T2','POST_T2_PRE_AUTHORITATIVE','POST_AUTHORITATIVE')]
+  [string]$Phase,
   [Parameter(Mandatory = $true)]
   [string]$TargetProjectId,
   [string]$SourceEnvPath = "$env:LOCALAPPDATA\AtelierOS\Secrets\staging-postgres.env"
@@ -23,7 +25,10 @@ $previous = $env:ATELIER_REAL_POSTGRES_URL
 try {
   $env:ATELIER_REAL_POSTGRES_URL = $value
   Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
-  & $node.Source 'admin/meoo-staging-cutover.js' "--$Mode" "--target-project=$TargetProjectId"
+  $phaseArg = if ($Phase) { "--phase=$Phase" } else { $null }
+  $args = @('admin/meoo-staging-cutover.js', "--$Mode", "--target-project=$TargetProjectId")
+  if ($phaseArg) { $args += $phaseArg }
+  & $node.Source @args
   exit $LASTEXITCODE
 } finally {
   if ($null -eq $previous) { Remove-Item Env:ATELIER_REAL_POSTGRES_URL -ErrorAction SilentlyContinue }

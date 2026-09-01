@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { Client } = require("pg");
-const { createTargetClient, dataFingerprint, migrateSnapshot, readSourceSnapshot, readTargetSnapshot } = require("./meoo-data-rehearsal");
+const { canonical, createTargetClient, dataFingerprint, migrateSnapshot, readSourceSnapshot, readTargetSnapshot } = require("./meoo-data-rehearsal");
 const { verifyProviderNormalizedSchemaParity } = require("./meoo-schema-parity");
 
 const SOURCE_EXPECTED = Object.freeze({
@@ -23,6 +23,14 @@ const EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT = 0;
 const TARGET_FOREIGN_KEY_FINALIZATION_FILE = path.join("scripts", "meoo-validate-target-foreign-keys.sql");
 const CATALOG_PARITY_UNSTABLE = "NOT_COMPLETED_PROVIDER_CATALOG_QUERY_UNSTABLE";
 const EXPECTED_CORE_TABLE_COUNT = 50;
+const CUTOVER_PHASES = Object.freeze({
+  PRE_T2: "PRE_T2",
+  POST_T2_PRE_AUTHORITATIVE: "POST_T2_PRE_AUTHORITATIVE",
+  POST_AUTHORITATIVE: "POST_AUTHORITATIVE",
+  AMBIGUOUS: "AMBIGUOUS"
+});
+const CUTOVER_PHASE_ORDER = Object.freeze({ PRE_T2: 0, POST_T2_PRE_AUTHORITATIVE: 1, POST_AUTHORITATIVE: 2 });
+const POST_T2_APPEND_ONLY_TABLES = new Set(["audit_events", "merchant_sessions", "operator_sessions"]);
 
 function targetForeignKeyValidationGuardSql() {
   return `do $$ begin
@@ -102,6 +110,138 @@ function loadImportPolicy(policyPath) {
 
 function sourceDigestSql(root) {
   return fs.readFileSync(path.join(root, "core-digest.sql"), "utf8");
+}
+
+function normalizeCutoverPhase(value) {
+  const phase = String(value || "").trim().toUpperCase();
+  if (Object.prototype.hasOwnProperty.call(CUTOVER_PHASE_ORDER, phase)) return phase;
+  if (phase === CUTOVER_PHASES.AMBIGUOUS) return CUTOVER_PHASES.AMBIGUOUS;
+  throw cutoverError("CUTOVER_PHASE_INVALID");
+}
+
+function cutoverPhaseStateFile(root) {
+  return path.join(root, ".cutover-artifacts", "cutover-phase.json");
+}
+
+function readCutoverPhaseState(root) {
+  const file = cutoverPhaseStateFile(root);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    return normalizeCutoverPhase(value.phase);
+  } catch (error) {
+    if (error?.code === "CUTOVER_PHASE_INVALID") throw error;
+    throw cutoverError("CUTOVER_PHASE_STATE_INVALID");
+  }
+}
+
+function writeCutoverPhaseState(root, phase) {
+  const normalized = normalizeCutoverPhase(phase);
+  if (normalized === CUTOVER_PHASES.AMBIGUOUS) throw cutoverError("CUTOVER_PHASE_AMBIGUOUS");
+  fs.mkdirSync(path.dirname(cutoverPhaseStateFile(root)), { recursive: true });
+  fs.writeFileSync(cutoverPhaseStateFile(root), `${JSON.stringify({ schemaVersion: 1, phase: normalized, updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+  return normalized;
+}
+
+function evidenceHas(root, relativePath, key, expected) {
+  const file = path.join(root, relativePath);
+  if (!fs.existsSync(file)) return false;
+  const text = fs.readFileSync(file, "utf8");
+  return new RegExp(`^${key}=${String(expected).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(text);
+}
+
+function evidenceContains(root, relativePath, value) {
+  const file = path.join(root, relativePath);
+  return fs.existsSync(file) && fs.readFileSync(file, "utf8").includes(String(value));
+}
+
+function reconstructCutoverPhase({ root = path.resolve(__dirname, ".."), env = process.env } = {}) {
+  const persisted = readCutoverPhaseState(root);
+  if (persisted) return persisted;
+  if (fs.existsSync(path.join(root, ".cutover-artifacts", "authoritative-switch.json")) || env.MEOO_STAGING_AUTHORITATIVE === "YES") return CUTOVER_PHASES.POST_AUTHORITATIVE;
+  if (fs.existsSync(path.join(root, ".cutover-artifacts", "final-t2-migration.json")) || fs.existsSync(path.join(root, ".cutover-artifacts", "final-t2-snapshot.json"))) return CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE;
+  if (fs.existsSync(path.join(root, ".cutover-artifacts", "preflight.json"))) return CUTOVER_PHASES.PRE_T2;
+  return CUTOVER_PHASES.AMBIGUOUS;
+}
+
+function resolveCutoverPhase({ root = path.resolve(__dirname, ".."), requestedPhase = "", env = process.env } = {}) {
+  const current = reconstructCutoverPhase({ root, env });
+  const requested = requestedPhase ? normalizeCutoverPhase(requestedPhase) : current;
+  if (current === CUTOVER_PHASES.AMBIGUOUS && !requestedPhase) throw cutoverError("CUTOVER_PHASE_AMBIGUOUS");
+  if (current !== CUTOVER_PHASES.AMBIGUOUS && requested !== CUTOVER_PHASES.AMBIGUOUS && CUTOVER_PHASE_ORDER[requested] < CUTOVER_PHASE_ORDER[current]) throw cutoverError("CUTOVER_PHASE_REGRESSION_REJECTED");
+  if (requested === CUTOVER_PHASES.AMBIGUOUS) throw cutoverError("CUTOVER_PHASE_AMBIGUOUS");
+  return { current, phase: requested };
+}
+
+function verifyPostT2Fidelity({ sourceSnapshot, targetSnapshot } = {}) {
+  const sourceRows = sourceSnapshot?.rows || {};
+  const targetRows = targetSnapshot?.rows || {};
+  const strictSource = { ...sourceSnapshot, rows: Object.fromEntries(Object.entries(sourceRows).filter(([table]) => !POST_T2_APPEND_ONLY_TABLES.has(table))) };
+  const strictTarget = { ...targetSnapshot, rows: Object.fromEntries(Object.entries(targetRows).filter(([table]) => !POST_T2_APPEND_ONLY_TABLES.has(table))) };
+  const strict = verifyMigrationFidelity({ sourceSnapshot: strictSource, targetSnapshot: strictTarget });
+  for (const table of POST_T2_APPEND_ONLY_TABLES) {
+    const source = sourceRows[table] || [];
+    const target = targetRows[table] || [];
+    const targetById = new Map(target.map(row => [String(row.id), JSON.stringify(canonical(row))]));
+    for (const row of source) if (targetById.get(String(row.id)) !== JSON.stringify(canonical(row))) throw cutoverError("CUTOVER_DATA_FIDELITY_MISMATCH");
+  }
+  return { ...strict, appendOnlyTables: [...POST_T2_APPEND_ONLY_TABLES].filter(table => Object.prototype.hasOwnProperty.call(sourceRows, table)), appendOnlyExtraRows: Object.fromEntries([...POST_T2_APPEND_ONLY_TABLES].filter(table => Object.prototype.hasOwnProperty.call(sourceRows, table)).map(table => [table, Math.max(0, (targetRows[table] || []).length - (sourceRows[table] || []).length)])) };
+}
+
+function loadT2Evidence(root) {
+  const receiptFile = path.join(root, ".cutover-artifacts", "final-t2-migration.json");
+  const snapshotFile = path.join(root, ".cutover-artifacts", "final-t2-snapshot.json");
+  if (!fs.existsSync(receiptFile) || !fs.existsSync(snapshotFile)) throw cutoverError("CUTOVER_T2_EVIDENCE_MISSING");
+  let receipt;
+  let snapshot;
+  try { receipt = JSON.parse(fs.readFileSync(receiptFile, "utf8")); snapshot = JSON.parse(fs.readFileSync(snapshotFile, "utf8")); } catch { throw cutoverError("CUTOVER_T2_EVIDENCE_INVALID"); }
+  const fidelity = receipt?.fidelity;
+  const requiredDigests = ["criticalDigest", "stableIdDigest", "passwordHashDigest", "relationshipDigest"];
+  if (!fidelity || requiredDigests.some(key => !/^[a-f0-9]{64}$/i.test(String(fidelity[key] || "")))) throw cutoverError("CUTOVER_T2_FIDELITY_EVIDENCE_MISSING");
+  if (Number(receipt?.fk?.expectedUnvalidatedForeignKeyCount) !== EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT) throw cutoverError("CUTOVER_T2_FK_EVIDENCE_INVALID");
+  return { receipt, snapshot };
+}
+
+async function verifyPostT2DataState({ root = path.resolve(__dirname, ".."), target, loadEvidence = loadT2Evidence, targetSnapshotReader = readTargetSnapshot, fidelityVerifier = verifyPostT2Fidelity, evidenceChecker = evidenceHas, evidenceContainsChecker = evidenceContains } = {}) {
+  const { receipt, snapshot } = loadEvidence(root);
+  if (!target || typeof target.request !== "function") throw cutoverError("CUTOVER_TARGET_CLIENT_REQUIRED");
+  const targetSnapshot = await targetSnapshotReader(snapshot, target);
+  const fidelity = fidelityVerifier({ sourceSnapshot: snapshot, targetSnapshot });
+  const sourceRows = snapshotMetadata(snapshot).rowCount;
+  const targetRows = snapshotMetadata(targetSnapshot).rowCount;
+  if (targetRows < sourceRows) throw cutoverError("CUTOVER_POST_T2_ROW_COUNT_MISMATCH");
+  const textEvidence = [
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "NATIVE_STAGING_WRITE_FREEZE", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "WRITE_FREEZE_VERIFIED", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "ALL_ATELIER_ROW_COUNTS_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "STABLE_ID_SET_DIGEST_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "PASSWORD_HASH_DIGEST_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "MERCHANT_SESSION_DATA_DIGEST_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "TENANT_RELATIONSHIP_DIGEST_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "CRITICAL_DATA_DIGEST_MATCH", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "TARGET_FK_INTEGRITY", "PASS"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "PLAN_CATALOG_POST_MIGRATION_STATUS", "PASS"],
+    ["verification/meoo-b1-final-staging-acceptance/VERIFICATION.txt", "RESTORED_STATUS", "SYNTHETIC_ACCEPTANCE_DATA_REMAINING=0"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "MEOO_WRITES_ENABLED", "NO"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "MEOO_STAGING_AUTHORITATIVE", "NO"],
+    ["verification/meoo-b1-final-t2-prelogin/VERIFICATION.txt", "DUAL_AUTHORITATIVE_WRITE_PATHS", "NO"]
+  ];
+  const missingEvidence = textEvidence.filter(([file, key, expected]) => key === "RESTORED_STATUS" ? !evidenceContainsChecker(root, file, expected) : !evidenceChecker(root, file, key, expected));
+  if (missingEvidence.length) throw cutoverError("CUTOVER_POST_T2_EVIDENCE_INCOMPLETE");
+  return { phase: CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE, postT2DataStateGate: "PASS", t2DataFidelity: "PASS", realStagingDataPreserved: "PASS", sourceRows, targetRows, fidelity, receipt };
+}
+
+function verifyPostAuthoritativeState({ root = path.resolve(__dirname, ".."), env = process.env } = {}) {
+  if (env.MEOO_WRITES_ENABLED !== "YES" || env.MEOO_STAGING_AUTHORITATIVE !== "YES" || env.DUAL_AUTHORITATIVE_WRITE_PATHS !== "NO") throw cutoverError("CUTOVER_POST_AUTHORITATIVE_STATE_INVALID");
+  return { phase: CUTOVER_PHASES.POST_AUTHORITATIVE, postAuthoritativeStateGate: "PASS" };
+}
+
+async function verifyPhaseAwareTargetState({ phase, root = path.resolve(__dirname, ".."), target, policy, ...options } = {}) {
+  const normalized = normalizeCutoverPhase(phase);
+  if (normalized === CUTOVER_PHASES.PRE_T2) return { phase: normalized, preT2BaselineGate: "PASS", baseline: await verifyTargetBaseline({ target, policy }) };
+  if (normalized === CUTOVER_PHASES.POST_T2_PRE_AUTHORITATIVE) return await verifyPostT2DataState({ root, target, ...options });
+  if (normalized === CUTOVER_PHASES.POST_AUTHORITATIVE) return verifyPostAuthoritativeState({ root });
+  throw cutoverError("CUTOVER_PHASE_AMBIGUOUS");
 }
 
 async function readCanonicalSourceIdentity({ connectionString, root = path.resolve(__dirname, ".."), clientFactory = options => new Client(options) } = {}) {
@@ -309,7 +449,7 @@ function writeReceipt(root, name, body) {
 }
 
 function parseArgs(argv) {
-  const result = { mode: "preflight", targetProjectId: "", sourceEnvPath: "", policyPath: "" };
+  const result = { mode: "preflight", targetProjectId: "", sourceEnvPath: "", policyPath: "", phase: "" };
   for (const value of argv) {
     if (value === "--preflight") result.mode = "preflight";
     else if (value === "--dry-run") result.mode = "dry-run";
@@ -318,6 +458,7 @@ function parseArgs(argv) {
     else if (value.startsWith("--target-project=")) result.targetProjectId = value.slice("--target-project=".length);
     else if (value.startsWith("--source-env=")) result.sourceEnvPath = value.slice("--source-env=".length);
     else if (value.startsWith("--policy=")) result.policyPath = value.slice("--policy=".length);
+    else if (value.startsWith("--phase=")) result.phase = normalizeCutoverPhase(value.slice("--phase=".length));
     else throw cutoverError("CUTOVER_ARGUMENT_INVALID");
   }
   return result;
@@ -325,6 +466,9 @@ function parseArgs(argv) {
 
 async function runCli({ argv = process.argv.slice(2), env = process.env, root = path.resolve(__dirname, "..") } = {}) {
   const args = parseArgs(argv);
+  const phaseResult = resolveCutoverPhase({ root, requestedPhase: args.phase, env });
+  const phase = phaseResult.phase;
+  if ((args.mode === "migrate" || args.mode === "apply-target-schema") && phase !== CUTOVER_PHASES.PRE_T2) throw cutoverError("CUTOVER_PHASE_OPERATION_INVALID");
   const sourceConnection = args.sourceEnvPath ? loadControlledSourceConnection(args.sourceEnvPath) : String(env.ATELIER_REAL_POSTGRES_URL || "");
   if (args.mode === "apply-target-schema") {
     const result = applyTargetMigrations({ root, targetProjectId: args.targetProjectId, env });
@@ -339,7 +483,8 @@ async function runCli({ argv = process.argv.slice(2), env = process.env, root = 
   const policy = loadImportPolicy(policyPath);
   const serviceTarget = createTargetClient({ url: env.SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY });
   const core = await verifyTargetCoreMigrations({ target: serviceTarget });
-  const baseline = await verifyTargetBaseline({ target: serviceTarget, policy });
+  const phaseState = await verifyPhaseAwareTargetState({ phase, root, target: serviceTarget, policy });
+  const baseline = phaseState.baseline || { tablesChecked: Object.keys(policy.policies).length, phaseBaselineGate: "NOT_APPLICABLE_POST_T2" };
   const provider = await verifyTargetProviderMigrations({ url: env.SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY });
   const lockdown = await verifyPublicDataPlaneLockdown({ url: env.SUPABASE_URL, anonKey: env.SUPABASE_ANON_KEY, serviceTarget });
   const gate = assertSchemaCutoverCompatibility({
@@ -350,7 +495,7 @@ async function runCli({ argv = process.argv.slice(2), env = process.env, root = 
       coreMigrations: core.coreMigrations === CORE_MIGRATIONS.length ? "PASS" : "FAIL",
       providerMigrations: provider.providerMigrations === PROVIDER_MIGRATIONS.length ? "PASS" : "FAIL",
       target011NotApplied: "PASS",
-      expectedCoreTableCount: baseline.tablesChecked + 1 === EXPECTED_CORE_TABLE_COUNT ? "PASS" : "FAIL",
+      expectedCoreTableCount: Object.keys(policy.policies).length + 1 === EXPECTED_CORE_TABLE_COUNT ? "PASS" : "FAIL",
       unvalidatedForeignKeyCount: foreignKeyValidation.expectedUnvalidatedForeignKeyCount === 0 ? "PASS" : "FAIL",
       ordersCustomerScopeFkValidated: "PASS",
       fkIntegrity: "PASS",
@@ -371,15 +516,20 @@ async function runCli({ argv = process.argv.slice(2), env = process.env, root = 
     const fidelity = verifyMigrationFidelity({ sourceSnapshot: extracted.snapshot, targetSnapshot });
     writeReceipt(root, "migration", { source, sourceSnapshot, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown, fidelity });
     console.log("CUTOVER_MIGRATION=PASS");
-    return { source, sourceSnapshot, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown, fidelity };
+    return { source, phase, phaseState, sourceSnapshot, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown, fidelity };
   }
-  writeReceipt(root, args.mode, { source, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown });
+  writeReceipt(root, args.mode, { source, phase, phaseState, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown });
+  writeCutoverPhaseState(root, phase);
+  console.log(`CUTOVER_PHASE=${phase}`);
+  console.log(`PRE_T2_BASELINE_GATE=${phase === CUTOVER_PHASES.PRE_T2 ? "PASS" : "NOT_APPLICABLE_POST_T2"}`);
+  console.log(`POST_T2_DATA_STATE_GATE=${phaseState.postT2DataStateGate || "NOT_APPLICABLE"}`);
+  console.log(`POST_AUTHORITATIVE_STATE_GATE=${phaseState.postAuthoritativeStateGate || "NOT_APPLICABLE"}`);
   console.log(`TARGET_SCHEMA_PROVIDER_NORMALIZED_PARITY=${schemaParity.status}`);
   if (schemaParity.warning) console.log(`TARGET_SCHEMA_PROVIDER_NORMALIZED_PARITY_WARNING=${schemaParity.warning.code}:${schemaParity.warning.category}`);
   console.log(`SCHEMA_CUTOVER_COMPATIBILITY_GATE=${gate.schemaCutoverCompatibilityGate}`);
   console.log(`PRE_CUTOVER_TARGET_PREFLIGHT=${gate.preflight === "PASS_WITH_CATALOG_DIAGNOSTIC_WARNING" || gate.preflight === "PASS" ? "PASS" : "FAIL"}`);
   console.log(`CUTOVER_${args.mode.toUpperCase()}=PASS`);
-  return { source, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown };
+  return { source, phase, phaseState, foreignKeyValidation, schemaParity, gate, core, provider, baseline, lockdown };
 }
 
 if (require.main === module) {
@@ -390,7 +540,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  CATALOG_PARITY_UNSTABLE, EXPECTED_CORE_TABLE_COUNT, CORE_MIGRATIONS, PROVIDER_MIGRATIONS, SOURCE_EXPECTED, EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT, TARGET_FOREIGN_KEY_FINALIZATION_FILE, applyTargetMigrations, assertExecutionBarrier, assertProviderNormalizedSchemaParity, assertSchemaCutoverCompatibility, finalizeTargetForeignKeyValidation, isProviderCatalogDiagnostic, loadControlledSourceConnection,
-  loadImportPolicy, parseArgs, parseDotEnv, readCanonicalSourceIdentity, readProviderNormalizedSchemaParityDiagnostic, runCli, runMeooDbQuery, snapshotMetadata, targetMigrationFiles, verifyMigrationFidelity,
+  CATALOG_PARITY_UNSTABLE, CUTOVER_PHASES, EXPECTED_CORE_TABLE_COUNT, CORE_MIGRATIONS, PROVIDER_MIGRATIONS, SOURCE_EXPECTED, EXPECTED_UNVALIDATED_FOREIGN_KEY_COUNT, TARGET_FOREIGN_KEY_FINALIZATION_FILE, applyTargetMigrations, assertExecutionBarrier, assertProviderNormalizedSchemaParity, assertSchemaCutoverCompatibility, finalizeTargetForeignKeyValidation, isProviderCatalogDiagnostic, loadControlledSourceConnection,
+  loadImportPolicy, parseArgs, parseDotEnv, readCanonicalSourceIdentity, readProviderNormalizedSchemaParityDiagnostic, reconstructCutoverPhase, resolveCutoverPhase, runCli, runMeooDbQuery, snapshotMetadata, targetMigrationFiles, verifyMigrationFidelity, verifyPhaseAwareTargetState, verifyPostAuthoritativeState, verifyPostT2DataState, verifyPostT2Fidelity, writeCutoverPhaseState,
   verifyPublicDataPlaneLockdown, verifyTargetBaseline, verifyTargetCoreMigrations, verifyTargetForeignKeyValidation, verifyTargetProviderMigrations, targetForeignKeyValidationGuardSql, writeReceipt
 };
