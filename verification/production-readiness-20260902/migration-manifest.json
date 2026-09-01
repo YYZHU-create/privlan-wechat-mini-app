@@ -1,0 +1,62 @@
+[
+  {
+    "file": "001_saas_mvp.sql",
+    "sha256": "fcb06cfd2ae9d08832b6d0b64bcb77d335215241dec29ef04249472d5ddaf646",
+    "bytes": 7599
+  },
+  {
+    "file": "002_workspace_resources.sql",
+    "sha256": "103db86b0a936122f463e3d60df716e3837b849141a98635898f0a4f5432a463",
+    "bytes": 1684
+  },
+  {
+    "file": "003_appointments.sql",
+    "sha256": "89c43f343a1f53f374655c5210b0edf01f2c997e527d31f0af6e00bbe001f4e2",
+    "bytes": 9852
+  },
+  {
+    "file": "004_appointment_rule_controls.sql",
+    "sha256": "10a2120344cfb28d5e528c97b2d1f52bb43b667aaa7540e649a8217e0f049ded",
+    "bytes": 941
+  },
+  {
+    "file": "005_customer_identity_membership.sql",
+    "sha256": "2c61062d6b8b404fa2f856240ce090f5aaa51f8305b98a20777478fc17d2e0e4",
+    "bytes": 10124
+  },
+  {
+    "file": "006_product_completeness_uat.sql",
+    "sha256": "afa39d50f5b591cd370568cb154db1e1f8d070129285c431d7fb1a9e6d6150c0",
+    "bytes": 138
+  },
+  {
+    "file": "007_operation_engine_foundation.sql",
+    "sha256": "ef820df008abe6907d917e0359fc498d6056afa163b79d0735b1d8f0b74daa75",
+    "bytes": 7132
+  },
+  {
+    "file": "008_workflow_runtime.sql",
+    "sha256": "83363ba923949d961e984e6bd0d6ab749281b7b45208d71392fb01dc2495660b",
+    "bytes": 5368
+  },
+  {
+    "file": "009_workflow_integration.sql",
+    "sha256": "534ab9ba3dee574fe4830b6fbb593c8b11132c107a7a4478d64149e32985d155",
+    "bytes": 1288
+  },
+  {
+    "file": "010_workflow_event_contract_immutability.sql",
+    "sha256": "aba2bb44e831cfb0db47dea3e6270b8425609382ea01f4e1de260fa6eff01f55",
+    "bytes": 2193
+  },
+  {
+    "file": "011_ai_template_studio.sql",
+    "sha256": "688f9309fc8ad76f625bb67cb3b05cf0a83fcfe4b32e3554249addf2dad69e4a",
+    "bytes": 3760
+  },
+  {
+    "file": "012_launch_v1_domains.sql",
+    "sha256": "c850a22474a60eaec8420661305f2f16d94ed6a96747069970c5fd46445e6f9e",
+    "bytes": 7162
+  }
+]
