@@ -30,7 +30,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null }) {
   if (!db) throw new Error("database is required");
   const customerService = createCustomerService({ db, tagRepository, customerRepository, customerWriteRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository, appointmentWriteRepository });
@@ -392,64 +392,42 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function ensureOperatorFromEnv() {
+    if (operatorRepository) return null;
     const email = normalizeLogin(process.env.ATELIER_OPS_EMAIL || "ops-admin@localhost");
     const password = String(process.env.ATELIER_OPS_PASSWORD || "");
     if (!password) return null;
     let row = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
-    if (!row) {
-      row = (await db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'ATELIER OS 管理员',$3,'super_admin','active') returning *", [id(), email, hashPassword(password)])).rows[0];
-    }
+    if (!row) row = (await db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'ATELIER OS 管理员',$3,'super_admin','active') returning *", [id(), email, hashPassword(password)])).rows[0];
     return row;
   }
-
   async function operatorAuthConfigured() {
-    const row = (await db.query("select count(*)::int count from operator_users where status='active'")).rows[0];
-    return Number(row?.count || 0) > 0;
+    if (operatorRepository) return operatorRepository.operatorAuthConfigured();
+    const row = (await db.query("select count(*)::int count from operator_users where status='active'")).rows[0]; return Number(row?.count || 0) > 0;
   }
-
   async function operatorLogin(emailValue, password, context = {}) {
+    if (operatorRepository) {
+      const email = normalizeLogin(emailValue); const user = await operatorRepository.findOperatorByEmail(email);
+      if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
+      const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
+      await operatorRepository.createSession({id:sessionId,operator_id:user.id,token_hash:sha256(token),expires_at:expiresAt.toISOString()});
+      await operatorRepository.audit({id:id(),tenant_id:null,workspace_id:null,actor_type:"operator",actor_id:user.id,action:"operator.login",resource_type:"operator_session",resource_id:sessionId,request_id:context.requestId||id(),metadata:{ip:context.ipAddress||null}});
+      return {token,expiresAt,user:{userId:user.id,email:user.email,name:user.display_name,role:user.role}};
+    }
     await ensureOperatorFromEnv();
     const email = normalizeLogin(emailValue); const user = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
     if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
     const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
-    await db.transaction(async tx => {
-      await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)", [sessionId, user.id, sha256(token), expiresAt]);
-      await audit(tx, { actorType: "operator", actorId: user.id, requestId: context.requestId }, "operator.login", "operator_session", sessionId, { ip: context.ipAddress || null });
-    });
-    return { token, expiresAt, user: { userId: user.id, email: user.email, name: user.display_name, role: user.role } };
+    await db.transaction(async tx => { await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)",[sessionId,user.id,sha256(token),expiresAt]); await audit(tx,{actorType:"operator",actorId:user.id,requestId:context.requestId},"operator.login","operator_session",sessionId,{ip:context.ipAddress||null}); });
+    return {token,expiresAt,user:{userId:user.id,email:user.email,name:user.display_name,role:user.role}};
   }
-
-  async function resolveOperatorSession(token) {
-    if (!token) return null;
-    const row = (await db.query(`select s.id session_id,u.id user_id,u.email,u.display_name,u.role from operator_sessions s join operator_users u on u.id=s.operator_id
-      where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`, [sha256(token)])).rows[0];
-    return row ? { token, sessionId: row.session_id, userId: row.user_id, email: row.email, name: row.display_name, role: row.role } : null;
-  }
-
-  async function operatorLogout(sessionId) { if (sessionId) await db.query("update operator_sessions set revoked_at=now() where id=$1", [sessionId]); }
-
-  async function operatorHealth() {
-    await db.health();
-    return { database: "ok", databaseKind: db.kind, checkedAt: new Date().toISOString() };
-  }
-
-  async function opsBootstrap() {
-    const tenantRows = (await db.query(`select t.id,t.name,t.status,w.id workspace_id,w.name workspace_name,w.plan_id,s.status subscription_status,s.expires_at
-      from tenants t left join workspaces w on w.tenant_id=t.id left join subscriptions s on s.workspace_id=w.id order by t.created_at desc`)).rows;
-    const plans = (await db.query("select * from plan_catalog order by public desc,price_fen")).rows.map(row => ({ id: row.id, name: row.display_name, monthlyPrice: Number(row.price_fen) / 100, durationHours: row.duration_hours, public: row.public, entitlements: row.entitlements }));
-    const subscriptions = tenantRows.filter(row => row.workspace_id).map(row => ({ tenantId: row.id, tenantName: row.name, workspaceId: row.workspace_id, workspaceName: row.workspace_name, planId: row.plan_id, status: row.subscription_status, expiresAt: row.expires_at }));
-    const auditEvents = (await db.query("select * from audit_events order by created_at desc limit 200")).rows.map(row => ({ id: row.id, tenantId: row.tenant_id, workspaceId: row.workspace_id, actorType: row.actor_type, actorId: row.actor_id, action: row.action, resourceType: row.resource_type, resourceId: row.resource_id, requestId: row.request_id, metadata: row.metadata, createdAt: row.created_at }));
-    const licenses = await listLicenses();
-    return {
-      metrics: { tenants: tenantRows.length, activeTenants: tenantRows.filter(row => row.status === "active").length, trials: tenantRows.filter(row => row.status === "trial").length },
-      tenants: tenantRows.map(row => ({ id: row.id, name: row.name, status: row.status, workspaceId: row.workspace_id, workspaceName: row.workspace_name, planId: row.plan_id, subscriptionStatus: row.subscription_status, expiresAt: row.expires_at })),
-      plans, subscriptions, licenses, auditEvents
-    };
-  }
+  async function resolveOperatorSession(token) { if (!token) return null; if (operatorRepository) return operatorRepository.resolveSession(sha256(token)).then(s=>s ? {token,sessionId:s.session_id,userId:s.user_id,email:s.email,name:s.display_name,role:s.role} : null); const row=(await db.query(`select s.id session_id,u.id user_id,u.email,u.display_name,u.role from operator_sessions s join operator_users u on u.id=s.operator_id where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`,[sha256(token)])).rows[0]; return row?{token,sessionId:row.session_id,userId:row.user_id,email:row.email,name:row.display_name,role:row.role}:null; }
+  async function operatorLogout(sessionId) { if (!sessionId) return; if (operatorRepository) return operatorRepository.revokeSession(sessionId); await db.query("update operator_sessions set revoked_at=now() where id=$1",[sessionId]); }
+  async function operatorHealth() { if (operatorRepository) return operatorRepository.health(); await db.health(); return {database:"ok",databaseKind:db.kind,checkedAt:new Date().toISOString()}; }
+  async function opsBootstrap() { if (operatorRepository) return operatorRepository.bootstrap(); const tenantRows=(await db.query(`select t.id,t.name,t.status,w.id workspace_id,w.name workspace_name,w.plan_id,s.status subscription_status,s.expires_at from tenants t left join workspaces w on w.tenant_id=t.id left join subscriptions s on s.workspace_id=w.id order by t.created_at desc`)).rows; const plans=(await db.query("select * from plan_catalog order by public desc,price_fen")).rows.map(row=>({id:row.id,name:row.display_name,monthlyPrice:Number(row.price_fen)/100,durationHours:row.duration_hours,public:row.public,entitlements:row.entitlements})); const subscriptions=tenantRows.filter(row=>row.workspace_id).map(row=>({tenantId:row.id,tenantName:row.name,workspaceId:row.workspace_id,workspaceName:row.workspace_name,planId:row.plan_id,status:row.subscription_status,expiresAt:row.expires_at})); const auditEvents=(await db.query("select * from audit_events order by created_at desc limit 200")).rows.map(row=>({id:row.id,tenantId:row.tenant_id,workspaceId:row.workspace_id,actorType:row.actor_type,actorId:row.actor_id,action:row.action,resourceType:row.resource_type,resourceId:row.resource_id,requestId:row.request_id,metadata:row.metadata,createdAt:row.created_at})); return {metrics:{tenants:tenantRows.length,activeTenants:tenantRows.filter(row=>row.status==='active').length,trials:tenantRows.filter(row=>row.status==='trial').length},tenants:tenantRows.map(row=>({id:row.id,name:row.name,status:row.status,workspaceId:row.workspace_id,workspaceName:row.workspace_name,planId:row.plan_id,subscriptionStatus:row.subscription_status,expiresAt:row.expires_at})),plans,subscriptions,licenses:await listLicenses(),auditEvents}; }
 
   const workflowService = createWorkflowService({ db, audit, meooRepository: meooLaunchRepository });
   const membershipLaunchService = createMembershipLaunchService({ db, customerService, audit, meooRepository: meooLaunchRepository });
-  const operatorLaunchService = createOperatorLaunchService({ db, audit });
+  const operatorLaunchService = createOperatorLaunchService({ db, audit, meooRepository: operatorRepository });
   const marketingService = createMarketingService({ db, audit, meooRepository: meooLaunchRepository });
   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
   return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorAuthConfigured, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, opsBootstrap, ServiceError, encryptSecret, decryptSecret };

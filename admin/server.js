@@ -17,6 +17,7 @@ const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = re
 const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
 const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { createMeooLaunchV1Repository } = require("./meoo-launch-v1-repository");
+const { createMeooOperatorRepository } = require("./meoo-operator-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
@@ -61,6 +62,7 @@ const PORT = Number(process.env.PORT) || 3456;
 const databasePromise = createDatabaseFromEnv();
 const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
 const meooAuthRepository = DATABASE_BACKEND === "meoo" ? createMeooAuthRepository() : null;
+const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorRepository() : null;
 const saasServicePromise = databasePromise.then(database => database ? createSaasService({
   db: database,
   tagRepository: meooAdapter,
@@ -71,7 +73,8 @@ const saasServicePromise = databasePromise.then(database => database ? createSaa
   appointmentReadRepository: meooAdapter ? createMeooAppointmentReadRepository({ adapter: meooAdapter }) : null,
   meooLaunchRepository: meooAdapter ? createMeooLaunchV1Repository({ adapter: meooAdapter }) : null,
   authRepository: database?.authRepository || meooAuthRepository,
-  configRepository: meooAdapter
+  configRepository: meooAdapter,
+  operatorRepository: meooOperatorRepository
 }) : null);
 const getSaasService = () => saasServicePromise;
 
