@@ -1,17 +1,18 @@
 #!/bin/sh
 set -eu
-cd /code/admin
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$ROOT/admin"
 unset DATABASE_URL
 export ATELIER_DB_BACKEND="${ATELIER_DB_BACKEND:-meoo}"
 export PRIVLAN_ADMIN_HOST="${PRIVLAN_ADMIN_HOST:-0.0.0.0}"
 export PORT="${PORT:-9000}"
 export ATELIER_ENVIRONMENT="${ATELIER_ENVIRONMENT:-staging}"
-if [ -f /code/.release-sha ]; then ATELIER_GIT_SHA="$(cat /code/.release-sha)"; fi
-if [ -f /code/release-sha ] && [ -z "${ATELIER_GIT_SHA:-}" ]; then ATELIER_GIT_SHA="$(cat /code/release-sha)"; fi
-if [ -z "${ATELIER_GIT_SHA:-}" ] && command -v git >/dev/null 2>&1 && [ -d /code/.git ]; then ATELIER_GIT_SHA="$(git -C /code rev-parse HEAD)"; fi
+if [ -f "$ROOT/.release-sha" ]; then ATELIER_GIT_SHA="$(cat "$ROOT/.release-sha")"; fi
+if [ -f "$ROOT/release-sha" ] && [ -z "${ATELIER_GIT_SHA:-}" ]; then ATELIER_GIT_SHA="$(cat "$ROOT/release-sha")"; fi
+if [ -z "${ATELIER_GIT_SHA:-}" ] && command -v git >/dev/null 2>&1 && [ -d "$ROOT/.git" ]; then ATELIER_GIT_SHA="$(git -C "$ROOT" rev-parse HEAD)"; fi
 export ATELIER_GIT_SHA="${ATELIER_GIT_SHA:-unknown}"
-if [ -f /code/.release-branch ]; then ATELIER_GIT_BRANCH="$(cat /code/.release-branch)"; fi
-if [ -f /code/release-branch ] && [ -z "${ATELIER_GIT_BRANCH:-}" ]; then ATELIER_GIT_BRANCH="$(cat /code/release-branch)"; fi
-if [ -z "${ATELIER_GIT_BRANCH:-}" ] && command -v git >/dev/null 2>&1 && [ -d /code/.git ]; then ATELIER_GIT_BRANCH="$(git -C /code branch --show-current)"; fi
+if [ -f "$ROOT/.release-branch" ]; then ATELIER_GIT_BRANCH="$(cat "$ROOT/.release-branch")"; fi
+if [ -f "$ROOT/release-branch" ] && [ -z "${ATELIER_GIT_BRANCH:-}" ]; then ATELIER_GIT_BRANCH="$(cat "$ROOT/release-branch")"; fi
+if [ -z "${ATELIER_GIT_BRANCH:-}" ] && command -v git >/dev/null 2>&1 && [ -d "$ROOT/.git" ]; then ATELIER_GIT_BRANCH="$(git -C "$ROOT" branch --show-current)"; fi
 export ATELIER_GIT_BRANCH="${ATELIER_GIT_BRANCH:-unknown}"
 exec node server.js
