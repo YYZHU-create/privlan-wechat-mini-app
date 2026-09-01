@@ -153,7 +153,7 @@ app.get("/health", async (req, res) => {
       return res.status(status).json({ app: "atelier-os", database: "not_configured", version: process.env.ATELIER_VERSION || "development" });
     }
     await database.health();
-    return res.json({ app: "atelier-os", database: "ok", version: process.env.ATELIER_VERSION || "development" });
+    return res.json({ app: "atelier-os", database: "ok", version: process.env.ATELIER_VERSION || "development", release: RUNTIME_IDENTITY.visible ? { commit: RUNTIME_IDENTITY.commitSha, branch: RUNTIME_IDENTITY.branch, environment: RUNTIME_IDENTITY.environment, buildTime: RUNTIME_IDENTITY.buildTime } : undefined });
   } catch (error) {
     return res.status(503).json({ app: "atelier-os", database: "unavailable", version: process.env.ATELIER_VERSION || "development" });
   }
