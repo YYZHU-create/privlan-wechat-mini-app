@@ -1,0 +1,19 @@
+CHANGED_BRANCH=codex/ai-template-generator-v1
+CHANGED_FIELD=production readiness closure evidence
+MODIFIED_FILE=C:\Users\Administrator\WorkBuddy\2026-08-29-ai-template-generator-v1\verification\production-readiness-closure-20260902\MODIFIED_FILE
+DIFF_FILE=C:\Users\Administrator\WorkBuddy\2026-08-29-ai-template-generator-v1\verification\production-readiness-closure-20260902\DIFF_FILE
+VERIFICATION_FILE=C:\Users\Administrator\WorkBuddy\2026-08-29-ai-template-generator-v1\verification\production-readiness-closure-20260902\VERIFICATION.txt
+ROLLBACK_FILE=C:\Users\Administrator\WorkBuddy\2026-08-29-ai-template-generator-v1\verification\production-readiness-closure-20260902\ROLLBACK.sh
+BASELINE_COMMAND=node --test test/deployment.test.js test/meoo-auth-runtime.test.js test/runtime-identity.test.js (cwd=admin)
+BASELINE_RESULT=11 passed, 0 failed, 0 skipped
+BASELINE_EXIT=0
+MODIFIED_COMMAND=node verification/production-readiness-20260902/fresh-schema-rehearsal.js; node verification/production-readiness-20260902/provider-rehearsal.js; node verification/production-readiness-20260902/schema-fingerprint.js; node verification/production-readiness-closure-20260902/verify-closure.js; npm test (cwd=admin); Invoke-WebRequest https://asmhysidbg5g.meoo.pub/health; meoo projects list --json; meoo secrets list --project asmhysidbg5g --json; git diff --check; git grep secret scan
+MODIFIED_RESULT=fresh core schema 12 migrations/66 tables/124 FKs; provider rehearsal 3 migrations/16 functions; digest f6ba28c3999a48a85aed47a79ddad46f6702e33f00d139f3ea0bb798e2e7567c; closure verifier PASS; full regression 201 passed/0 failed/1 skipped; staging HTTP 200/database ok; only staging project listed; secret values not read; diff check PASS; secret scan PASS
+MODIFIED_EXIT=0
+READINESS_CHECK_COMMAND=powershell -File scripts/production-readiness-check.ps1 -HealthUrl https://asmhysidbg5g.meoo.pub/health
+READINESS_CHECK_RESULT=staging health PASS; production readiness NOT_READY because production target, secret values, Docker/pg tools, and external services are not bound
+READINESS_CHECK_EXIT=0
+ROLLBACK_COMMAND=git-bash production-readiness-closure-20260902/ROLLBACK.sh
+ROLLBACK_RESULT=rollback-test-copy SHA256 equals BASELINE_FILE SHA256; MODIFIED_FILE remains changed
+ROLLBACK_EXIT=0
+RESTORED_BEHAVIOR=baseline report copy restored and hash verified; final report remains modified

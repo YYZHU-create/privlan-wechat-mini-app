@@ -1,0 +1,39 @@
+{
+  "environment": "production",
+  "productionProjectId": null,
+  "stagingProjectId": "asmhysidbg5g",
+  "expectedReleaseSha": "b8afbe2e595ddb572eb41a05c559bfc4b9f54454",
+  "expectedLatestMigration": "012_launch_v1_domains",
+  "database": {
+    "provider": "Meoo managed PostgreSQL",
+    "version": null,
+    "identity": "pending dedicated production project"
+  },
+  "providerMigrations": [
+    "001_appointment_transaction_rpc.sql",
+    "002_lock_down_core_data_access.sql",
+    "003_visible_write_paths.sql"
+  ],
+  "storage": {
+    "provider": "pending durable production object storage",
+    "bucket": null
+  },
+  "domains": {
+    "primary": null,
+    "api": null,
+    "operator": null
+  },
+  "backup": {
+    "destinationClass": "independent off-site object storage",
+    "cadence": "daily full plus provider PITR where available",
+    "retention": "30 days internal readiness target",
+    "encryption": "provider-managed encryption plus customer-managed key when available",
+    "rpo": "24h internal readiness target until approved SLA",
+    "rto": "not claimed until measured rehearsal"
+  },
+  "monitoring": {
+    "configurationIdentity": "atelier-os-production-observability",
+    "alertPolicyIdentity": "atelier-os-production-critical-v1"
+  },
+  "deploymentTimestamp": null
+}
