@@ -397,7 +397,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const password = String(process.env.ATELIER_OPS_PASSWORD || "");
     if (!password) return null;
     let row = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
-    if (!row) row = (await db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'ATELIER OS 管理员',$3,'super_admin','active') returning *", [id(), email, hashPassword(password)])).rows[0];
+    if (!row) row = (await db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'Feeldao OS 管理员',$3,'super_admin','active') returning *", [id(), email, hashPassword(password)])).rows[0];
     return row;
   }
   async function operatorAuthConfigured() {

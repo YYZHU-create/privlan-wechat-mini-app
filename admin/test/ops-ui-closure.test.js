@@ -6,10 +6,10 @@ const path = require("node:path");
 const source = fs.readFileSync(path.resolve(__dirname, "../ops-public/app.js"), "utf8");
 
 test("operator navigation exposes only PostgreSQL-backed SaaS pages", () => {
-  for (const view of ["overview", "tenants", "plans", "licenses", "subscriptions", "audit"]) {
+  for (const view of ["overview", "tenants", "plans", "licenses", "subscriptions", "audit", "system"]) {
     assert.match(source, new RegExp(`id: "${view}"`));
   }
-  assert.equal((source.match(/\{ id: "(?:overview|tenants|plans|licenses|subscriptions|audit)"/g) || []).length, 6);
+  assert.equal((source.match(/\{ id: "(?:overview|tenants|plans|licenses|subscriptions|audit|system)"/g) || []).length, 7);
 });
 
 test("operator UI contains no legacy-only actions or misleading control-plane copy", () => {
@@ -24,4 +24,16 @@ test("operator UI contains no legacy-only actions or misleading control-plane co
   assert.match(source, /\/ops\/v1\/health/);
   assert.match(source, /只读查看租户、工作区和订阅关系/);
   assert.match(source, /plan_catalog，本页面仅供运营核对/);
+});
+
+test("system page uses safe health signals and current Feeldao branding", () => {
+  assert.match(source, /view===\'system\'/);
+  assert.match(source, /fetch\("\/health"/);
+  assert.match(source, /\/ops\/v1\/health/);
+  assert.match(source, /api\("\/ops\/v1\/auth\/session"/);
+  assert.doesNotMatch(source, /audit-logs/);
+  assert.match(source, /密钥与凭证.*不展示/);
+  assert.match(source, /生产配置.*不展示/);
+  assert.doesNotMatch(source, /ATELIER OS/);
+  assert.doesNotMatch(source, /window\.confirm/);
 });

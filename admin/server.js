@@ -283,7 +283,7 @@ function ensureLocalOperator() {
     console.warn("ATELIER_OPS_PASSWORD 未配置，运营后台登录已禁用");
     return;
   }
-  state.operatorUsers.push({ id: requestId("operator"), email, name: "ATELIER OS 管理员", role: "super_admin", passwordHash: platformStore.hashPassword(password), passwordSource: process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap", passwordFingerprint: crypto.createHash("sha256").update(password).digest("hex"), status: "active", createdAt: new Date().toISOString() });
+  state.operatorUsers.push({ id: requestId("operator"), email, name: "Feeldao OS 管理员", role: "super_admin", passwordHash: platformStore.hashPassword(password), passwordSource: process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap", passwordFingerprint: crypto.createHash("sha256").update(password).digest("hex"), status: "active", createdAt: new Date().toISOString() });
   platformStore.appendAudit(state, { actorType: "system", actorId: "bootstrap", action: "operator.create", resourceType: "operator_user", resourceId: state.operatorUsers[0].id, tenantId: null, metadata: { localBootstrap: !process.env.ATELIER_OPS_PASSWORD } });
   writeSaasState(state);
 }
@@ -303,7 +303,7 @@ async function requireOperator(req, res, next) {
   const session = service
     ? await service.resolveOperatorSession(parseCookies(req).atelier_ops_session || String(req.get("x-atelier-ops-session") || ""))
     : operatorSession(req);
-  if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 ATELIER OS 运营后台" });
+  if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 Feeldao OS 运营后台" });
   req.operator = session;
   next();
 }
