@@ -158,7 +158,7 @@ test("Meoo Image Runtime scripts bind the application and exclude local secret c
   assert.match(start, /ATELIER_DB_BACKEND=.*meoo/);
   assert.match(start, /if \[ -z "\$\{ATELIER_GIT_SHA:-\}" \] && \[ -f "\$ROOT\/\.release-sha" \]/);
   assert.match(start, /unset DATABASE_URL/);
-  assert.match(start, /PRIVLAN_ADMIN_HOST=.*0\.0\.0\.0/);
+  assert.match(start, /HOST=.*0\.0\.0\.0/);
   assert.match(start, /PORT=.*9000/);
   assert.match(dockerignore, /^\.env$/m);
   assert.match(dockerignore, /^\.cutover-artifacts\/$/m);
