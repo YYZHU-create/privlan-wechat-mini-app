@@ -49,7 +49,7 @@ test("portable PostgreSQL backup restores merchant and workspace data", async ()
   }
 });
 
-test("health reports an unavailable PostgreSQL connection without exposing details", async () => {
+test("health is a liveness-only endpoint independent of PostgreSQL", async () => {
   const port = await freePort();
   const child = spawn(process.execPath, ["server.js"], {
     cwd: path.resolve(__dirname, ".."), windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
@@ -61,8 +61,8 @@ test("health reports an unavailable PostgreSQL connection without exposing detai
       try { response = await fetch(`http://127.0.0.1:${port}/health`); break; } catch (error) { await new Promise(resolve => setTimeout(resolve, 100)); }
     }
     assert.ok(response, "server did not start");
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), { app: "atelier-os", database: "unavailable", version: "development" });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: "ok" });
   } finally { child.kill(); }
 });
 
@@ -72,7 +72,13 @@ test("Docker and PostgreSQL operations files retain the production safety contra
   const backup = fs.readFileSync(path.join(ROOT, "scripts/backup-postgres.ps1"), "utf8");
   const restore = fs.readFileSync(path.join(ROOT, "scripts/restore-postgres.ps1"), "utf8");
   assert.match(dockerfile, /USER node/);
+  assert.match(dockerfile, /EXPOSE 9000/);
+  assert.match(dockerfile, /127\.0\.0\.1:9000\/health/);
   assert.match(dockerfile, /HEALTHCHECK/);
+  const server = fs.readFileSync(path.join(ROOT, "admin/server.js"), "utf8").replace(/\r\n/g, "\n");
+  assert.match(server, /process\.env\.PORT \|\| 9000/);
+  assert.match(server, /process\.env\.HOST \|\| process\.env\.PRIVLAN_ADMIN_HOST \|\| "0\.0\.0\.0"/);
+  assert.match(server, /app\.get\("\/health", \(req, res\) => \{\n  res\.status\(200\)\.json\(\{ status: "ok" \}\);\n\}\);/);
   assert.match(compose, /postgres:16-alpine/);
   assert.match(compose, /PRIVLAN_DISABLE_GIT_SYNC: "1"/);
   assert.match(compose, /atelier_postgres:\/var\/lib\/postgresql\/data/);

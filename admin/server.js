@@ -41,7 +41,7 @@ const PREVIEW_ROOT_BASE = path.resolve(process.env.PRIVLAN_PREVIEW_ROOT_BASE || 
 const PREVIEW_IMAGE_MAX_EDGE = 960;
 const PREVIEW_IMAGE_QUALITY = 72;
 const PREVIEW_PACKAGE_MAX_BYTES = 2 * 1024 * 1024;
-const HOST = process.env.PRIVLAN_ADMIN_HOST || "127.0.0.1";
+const HOST = process.env.HOST || process.env.PRIVLAN_ADMIN_HOST || "0.0.0.0";
 const ADMIN_TOKEN = String(process.env.PRIVLAN_ADMIN_TOKEN || "").trim();
 const SAAS_DATABASE_ENABLED = Boolean(process.env.DATABASE_URL || DATABASE_BACKEND === "meoo" || (process.env.NODE_ENV === "test" && process.env.ATELIER_TEST_DATABASE === "portable"));
 const LEGACY_LOCAL_MODE = !SAAS_DATABASE_ENABLED;
@@ -58,7 +58,7 @@ fs.mkdirSync(CONFIG_BACKUP_DIR, { recursive: true });
 fs.mkdirSync(TRASH_DIR, { recursive: true });
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3456;
+const PORT = Number(process.env.PORT || 9000);
 const databasePromise = createDatabaseFromEnv();
 const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
 const meooAuthRepository = DATABASE_BACKEND === "meoo" ? createMeooAuthRepository() : null;
@@ -176,18 +176,8 @@ registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runti
 registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 
-app.get("/health", async (req, res) => {
-  try {
-    const database = await databasePromise;
-    if (!database) {
-      const status = process.env.NODE_ENV === "production" ? 503 : 200;
-      return res.status(status).json({ app: "atelier-os", database: "not_configured", version: process.env.ATELIER_VERSION || "development" });
-    }
-    await database.health();
-    return res.json({ app: "atelier-os", database: "ok", version: process.env.ATELIER_VERSION || "development", release: RUNTIME_IDENTITY.visible ? { commit: RUNTIME_IDENTITY.commitSha, branch: RUNTIME_IDENTITY.branch, environment: RUNTIME_IDENTITY.environment, buildTime: RUNTIME_IDENTITY.buildTime } : undefined });
-  } catch (error) {
-    return res.status(503).json({ app: "atelier-os", database: "unavailable", version: process.env.ATELIER_VERSION || "development" });
-  }
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 // 静态服务小程序 images 目录（管理面板内预览图片用）
 app.use("/mp-images", express.static(IMAGES_DIR));
@@ -293,7 +283,7 @@ function ensureLocalOperator() {
     console.warn("ATELIER_OPS_PASSWORD 未配置，运营后台登录已禁用");
     return;
   }
-  state.operatorUsers.push({ id: requestId("operator"), email, name: "ATELIER OS 管理员", role: "super_admin", passwordHash: platformStore.hashPassword(password), passwordSource: process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap", passwordFingerprint: crypto.createHash("sha256").update(password).digest("hex"), status: "active", createdAt: new Date().toISOString() });
+  state.operatorUsers.push({ id: requestId("operator"), email, name: "Feeldao OS 管理员", role: "super_admin", passwordHash: platformStore.hashPassword(password), passwordSource: process.env.ATELIER_OPS_PASSWORD ? "environment" : "local_bootstrap", passwordFingerprint: crypto.createHash("sha256").update(password).digest("hex"), status: "active", createdAt: new Date().toISOString() });
   platformStore.appendAudit(state, { actorType: "system", actorId: "bootstrap", action: "operator.create", resourceType: "operator_user", resourceId: state.operatorUsers[0].id, tenantId: null, metadata: { localBootstrap: !process.env.ATELIER_OPS_PASSWORD } });
   writeSaasState(state);
 }
@@ -313,7 +303,7 @@ async function requireOperator(req, res, next) {
   const session = service
     ? await service.resolveOperatorSession(parseCookies(req).atelier_ops_session || String(req.get("x-atelier-ops-session") || ""))
     : operatorSession(req);
-  if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 ATELIER OS 运营后台" });
+  if (!session) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "请登录 Feeldao OS 运营后台" });
   req.operator = session;
   next();
 }

@@ -96,3 +96,8 @@ table { width:100%; border-collapse:collapse; }.table-panel th,.table-panel td {
 .subscription-table { margin-top:12px; }
 .generated-code-list { max-height:360px; overflow:auto; display:grid; gap:6px; padding:10px; border:1px solid var(--line); background:var(--surface-2); }
 .generated-code-list code { padding:7px 9px; border:1px solid var(--line); background:#fff; font-size:13px; user-select:all; }
+
+.system-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.system-grid .panel { min-height:220px; }
+.system-grid .health-list dd.success { color:var(--success); }
+@media(max-width:760px){.system-grid{grid-template-columns:1fr}.system-grid .panel{min-height:0}}
