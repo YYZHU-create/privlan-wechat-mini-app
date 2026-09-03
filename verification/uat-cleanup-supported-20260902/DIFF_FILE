@@ -1,0 +1,58 @@
+diff --git a/admin/test/meoo-live-fixtures.js b/admin/test/meoo-live-fixtures.js
+index 5768ba3..b604c68 100644
+--- a/admin/test/meoo-live-fixtures.js
++++ b/admin/test/meoo-live-fixtures.js
+@@ -93,8 +93,6 @@ async function cleanupFixture(fixture) {
+     ["workflow_events", { tenant_id: tenantId }],
+     ["workflow_tasks", { tenant_id: tenantId }],
+     ["workflow_instances", { tenant_id: tenantId }],
+-    ["workflow_versions", { tenant_id: tenantId }],
+-    ["workflow_definitions", { tenant_id: tenantId }],
+     ["marketing_redemptions", { tenant_id: tenantId }],
+     ["marketing_issuances", { tenant_id: tenantId }],
+     ["marketing_campaigns", { tenant_id: tenantId }],
+@@ -103,6 +101,8 @@ async function cleanupFixture(fixture) {
+     ["membership_redemptions", { tenant_id: tenantId }],
+     ["membership_overrides", { tenant_id: tenantId }],
+     ["membership_level_rules", { tenant_id: tenantId }],
++    ["membership_levels", { tenant_id: tenantId }],
++    ["membership_programs", { tenant_id: tenantId }],
+     ["customer_points_ledger", { tenant_id: tenantId }],
+     ["customer_points_accounts", { tenant_id: tenantId }],
+     ["customer_memberships", { tenant_id: tenantId }],
+@@ -111,12 +111,15 @@ async function cleanupFixture(fixture) {
+     ["customer_events", { tenant_id: tenantId }],
+     ["customer_tags", { tenant_id: tenantId }],
+     ["customers", { tenant_id: tenantId }],
++    ["orders", { tenant_id: tenantId }],
+     ["appointment_advisor_services", { tenant_id: tenantId }],
+     ["appointments", { tenant_id: tenantId }],
+     ["appointment_import_runs", { tenant_id: tenantId }],
+     ["staff_leaves", { tenant_id: tenantId }],
+     ["staff_schedules", { tenant_id: tenantId }],
+     ["staff_store_assignments", { tenant_id: tenantId }],
++    ["resource_store_assignments", { tenant_id: tenantId }],
++    ["resources", { tenant_id: tenantId }],
+     ["appointment_services", { tenant_id: tenantId }],
+     ["appointment_advisors", { tenant_id: tenantId }],
+     ["appointment_business_hours", { tenant_id: tenantId }],
+@@ -135,15 +138,16 @@ async function cleanupFixture(fixture) {
+     ["subscriptions", { tenant_id: tenantId }],
+     ["audit_events", { tenant_id: tenantId }],
+     ["legacy_imports", { tenant_id: tenantId }],
++    ["operator_feature_flag_overrides", { tenant_id: tenantId }],
+     ["merchant_sessions", userId ? { user_id: userId } : { workspace_id: workspaceId }],
+     ["memberships", userId ? { user_id: userId } : { workspace_id: workspaceId }],
+     ["staff_members", { tenant_id: tenantId }],
+     ["stores", { tenant_id: tenantId }],
+-    ["workspaces", { id: workspaceId }],
+-    ["users", userId ? { id: userId } : { login_identifier: "__no_match__" }],
+-    ["tenants", { id: tenantId }]
++    ["users", userId ? { id: userId } : { login_identifier: "__no_match__" }]
+   ];
+   for (const [table, filters] of removals) await client.remove(table, filters);
++  // Published workflow versions and their tenant/workspace roots are append-only protected history.
++  return { protectedWorkflowHistory: true, tenantId, workspaceId };
+ }
+ 
+ function scopedDatabase(fixture, override = {}) {

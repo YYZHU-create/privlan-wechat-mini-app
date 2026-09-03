@@ -1,0 +1,110 @@
+=== ATELIER OS PRODUCTION READINESS FINAL ===
+DATE=2026-09-02
+
+RELEASE
+PRODUCTION_RC_SHA=b8afbe2e595ddb572eb41a05c559bfc4b9f54454
+PRODUCTION_READINESS_PREP_COMMIT=5c702bc
+ORIGIN_CONTAINS_RC=NO (origin/main=6aa0a28e957cee489fb4bcdf07600c920d6e5032)
+REMOTE_RELEASE_PROVENANCE=BLOCKED_PENDING_PUSH_APPROVAL
+LAUNCH_V1_PRODUCT_COMPLETION=PASS
+
+TARGET
+STAGING_PROJECT_ID=asmhysidbg5g
+PRODUCTION_PROJECT_ID=NOT_PROVISIONED
+PRODUCTION_PROJECT_SEPARATE_FROM_STAGING=NOT_VERIFIED
+PRODUCTION_PROJECT_IDENTITY=NOT_VERIFIED
+
+DATABASE
+DATABASE_PROVIDER=Meoo managed PostgreSQL
+DATABASE_VERSION=UNKNOWN_PENDING_DEDICATED_PRODUCTION_TARGET
+EXPECTED_LATEST_MIGRATION=012_launch_v1_domains
+EXPECTED_PRODUCTION_SCHEMA_DIGEST=f6ba28c3999a48a85aed47a79ddad46f6702e33f00d139f3ea0bb798e2e7567c
+SCHEMA_DIGEST_ALGORITHM=sha256(JSON.stringify({core:[{name,sha256,bytes}],provider:[{name,sha256,bytes}]}))
+PRODUCTION_DB_IDENTITY_CONTRACT=NOT_READY (dedicated production identity absent)
+FRESH_PRODUCTION_SCHEMA_BUILD=PASS (isolated PGlite rehearsal; 12 migrations, 66 public tables, 124 FKs)
+MIGRATION_001_012=PASS
+PROVIDER_MIGRATIONS=PASS (isolated rehearsal; 3 provider migrations, 16 atelier functions)
+EXPECTED_SCHEMA_MATCH=PASS (migration manifest/digest and isolated rehearsal)
+UNVALIDATED_FK_COUNT=0 (isolated rehearsal)
+FK_INTEGRITY=PASS (isolated rehearsal)
+PRODUCTION_MIGRATION_REHEARSAL=PASS
+
+SECRETS
+PRODUCTION_SECRET_INVENTORY=PASS
+PRODUCTION_SECRET_MANAGER_CONFIGURED=NOT_READY (provider target and manager not bound)
+STAGING_PRODUCTION_SECRET_REUSE=NO (separate scope required; no production values present)
+
+AUTH / CRYPTO
+PRODUCTION_AUTH_CONTRACT=PASS (custom ATELIER Auth, scrypt, server sessions, CSRF, operator separation covered by tests)
+
+STORAGE
+PRODUCTION_MEDIA_STORAGE=NOT_READY (current Meoo runtime path uses filesystem provider; durable production object storage/bucket is not configured)
+
+BACKUP
+PRODUCTION_BACKUP_POLICY=PASS
+OFFSITE_BACKUP_CONFIGURED=NOT_READY
+BACKUP_RESTORE_REHEARSAL=PASS (portable backup/restore contract tests; live production rehearsal not run)
+MEASURED_RESTORE_TIME=NOT_MEASURED
+
+MONITORING
+PRODUCTION_MONITORING=NOT_READY (policy prepared, destination not configured)
+ALERT_POLICY_DEFINED=PASS
+ALERT_DESTINATION_CONFIGURED=NOT_READY
+
+NETWORK
+PRODUCTION_PRIMARY_DOMAIN=NOT_CONFIGURED
+PRODUCTION_API_DOMAIN=NOT_CONFIGURED
+PRODUCTION_OPERATOR_DOMAIN=NOT_CONFIGURED
+DNS_PLAN=PASS (plan prepared; no DNS changed)
+TLS_PLAN=PASS (HTTPS/renewal/redirect plan prepared; no certificate issued)
+PRODUCTION_INGRESS_SECURITY=PASS (current headers, body limits, CSRF, auth/rate controls reviewed)
+WAF_OR_PLATFORM_EDGE_POLICY=NOT_READY (production edge target not configured)
+
+SECURITY
+PRODUCTION_SECURITY_GATE=PASS (focused security and adapter tests; no credentials in tracked source)
+PRODUCTION_ABUSE_CONTROLS=PASS (auth/redeem/password rate controls and upload/AI limits present)
+PRODUCTION_RELEASE_PROVENANCE=PASS_FOR_STAGING_RC; PRODUCTION_TARGET_PROVENANCE=NOT_READY
+PRODUCTION_LOGGING_SAFETY=PASS (structured request/release/error fields planned; secrets excluded)
+
+OPERATIONS
+PRODUCTION_SMOKE_CONTRACT=PASS
+PRODUCTION_ROLLBACK_PLAN=PASS
+APPLICATION_ROLLBACK_REHEARSAL=NOT_RUN (requires disposable deployment target)
+PRE_AUTHORITATIVE_ABORT_REHEARSAL=PASS (migration transaction/phase tests)
+PRODUCTION_RUNBOOK=PASS
+HUMAN_APPROVAL_MATRIX=PASS
+
+CHECKS
+PREPARATION_ARTIFACT_CHECK=PASS
+PRODUCTION_READINESS_CHECK=NOT_READY (expected until external production resources are bound)
+FULL_REGRESSION=201 passed, 0 failed, 1 skipped
+FULL_REGRESSION_FAIL=0
+SECRET_SCAN=PASS
+git_diff_check=PASS
+STAGING_HEALTH=PASS (HTTP 200, database ok, runtime SHA b8afbe2e595ddb572eb41a05c559bfc4b9f54454)
+STAGING_LATEST_MIGRATION=012_launch_v1_domains
+
+DECISION
+PRODUCTION_READINESS=PARTIAL
+READY_TO_EXECUTE_PRODUCTION_DEPLOYMENT=NO
+PRODUCTION_DEPLOYMENT=NOT_RUN
+PRODUCTION_SCHEMA_DEPLOYMENT=NOT_RUN
+PRODUCTION_DATA_MIGRATION=NOT_RUN
+PRODUCTION_DOMAIN_SWITCH=NOT_RUN
+SAFE_TO_MIGRATE_PRODUCTION_DATA=NO
+
+HUMAN_ACTIONS_REMAINING
+1. Approve/create a dedicated Production Meoo project; record its non-secret project ID and database version.
+2. Bind a production Secret Manager and enter production-only values; Codex must not receive secret values.
+3. Select/configure durable production media object storage and its bucket/container.
+4. Configure an independent off-site backup destination and retention owner.
+5. Configure monitoring and alert destination.
+6. Confirm production hostname, DNS ownership, TLS/edge provider, and WAF policy.
+7. Approve remote Git push so origin durably contains the exact production RC b8afbe2e595ddb572eb41a05c559bfc4b9f54454.
+8. Separately authorize production schema deployment, production data migration, and public traffic switch.
+
+MAIN_REMAINING_BLOCKERS=external production project, secret manager, durable media storage, off-site backup, monitoring destination, domain/TLS/edge, remote release provenance, disposable deployment rollback rehearsal
+
+
+
+

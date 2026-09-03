@@ -1,0 +1,72 @@
+{
+  "configurationIdentity": "atelier-os-production-observability",
+  "metrics": [
+    "health availability",
+    "database availability",
+    "HTTP 5xx rate",
+    "request latency",
+    "deployment result",
+    "merchant auth failures",
+    "operator auth failures",
+    "workflow failures and retry exhaustion",
+    "marketing issue/redeem failures",
+    "AI generation/provider failures",
+    "media upload failures",
+    "storage availability",
+    "backup result"
+  ],
+  "alerts": [
+    {
+      "id": "health-unavailable",
+      "condition": "3 consecutive failed health checks",
+      "severity": "critical"
+    },
+    {
+      "id": "http-5xx-sustained",
+      "condition": "5xx rate above threshold for 5 minutes",
+      "severity": "critical"
+    },
+    {
+      "id": "database-unavailable",
+      "condition": "database health fails for 2 consecutive checks",
+      "severity": "critical"
+    },
+    {
+      "id": "deployment-failed",
+      "condition": "deployment provider reports failed release",
+      "severity": "critical"
+    },
+    {
+      "id": "backup-failed",
+      "condition": "scheduled backup or manifest verification fails",
+      "severity": "critical"
+    },
+    {
+      "id": "workflow-failure-spike",
+      "condition": "workflow failure/exhaustion rate exceeds baseline",
+      "severity": "high"
+    },
+    {
+      "id": "auth-failure-spike",
+      "condition": "auth failures exceed baseline over 10 minutes",
+      "severity": "high"
+    }
+  ],
+  "logFields": [
+    "release_sha",
+    "environment",
+    "request_id",
+    "tenant_id_when_safe",
+    "workspace_id_when_safe",
+    "error_class"
+  ],
+  "forbiddenFields": [
+    "password",
+    "session token",
+    "CSRF token",
+    "service-role key",
+    "API key",
+    "BYOK value",
+    "raw customer payload"
+  ]
+}

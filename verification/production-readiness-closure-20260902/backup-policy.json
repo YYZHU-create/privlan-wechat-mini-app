@@ -1,0 +1,13 @@
+{
+  "policyIdentity": "atelier-os-production-backup-v1",
+  "database": "PostgreSQL native custom format via scripts/backup-postgres.ps1",
+  "cadence": "daily full; provider PITR enabled when offered",
+  "retention": "30 days internal readiness target",
+  "offsiteDestinationClass": "independent object storage account/project",
+  "encryption": "encrypted at rest; key ownership to be selected by operator",
+  "verification": "SHA-256 manifest plus scheduled restore verification",
+  "media": "durable object-storage backup or coordinated volume snapshot; filesystem runtime storage is not accepted as final production media",
+  "rpo": "24h internal readiness target until approved SLA",
+  "rto": "not claimed until measured",
+  "owner": "production operations owner"
+}
