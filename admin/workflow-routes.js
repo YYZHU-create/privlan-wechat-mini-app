@@ -4,7 +4,7 @@ function success(res, data, message, status, requestId) {
 }
 
 function failure(res, error, requestId) {
-  return respondUnexpectedError(res, error, { requestId, code: error?.code || "INTERNAL_ERROR", message: "服务暂时不可用" });
+  return respondUnexpectedError(res, error, { requestId, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
 }
 
 function registerWorkflowRoutes(app) {

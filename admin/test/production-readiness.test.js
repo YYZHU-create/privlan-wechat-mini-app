@@ -4,7 +4,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { respondUnexpectedError } = require("../error-response");
-const { markTrustedPublicMessage } = require("../public-error");
+const { markTrustedPublicMessage, trustedDomainError, hasTrustedPublicMessage } = require("../public-error");
+const { ServiceError } = require("../saas-service");
+const { AppointmentError } = require("../appointment-service");
+const { TemplateError } = require("../ai-template-studio");
+const { WorkflowError } = require("../workflow-service");
+const { SupabaseAdapterError } = require("../meoo-supabase-adapter");
+const { MeooAiTemplateRepositoryError } = require("../meoo-ai-template-repository");
 const { buildMigrationManifest, checkManifest, normalizeMigrationSql } = require("../migration-manifest");
 const { checkMigrationHistoryCompatibility, compareVersions } = require("../check-migration-compatibility");
 const { createPortableTestDatabase } = require("../database");
@@ -16,32 +22,100 @@ function fakeResponse() {
   return { statusCode: null, payload: null, status(value) { this.statusCode = value; return this; }, json(value) { this.payload = value; return this; } };
 }
 
-test("unexpected errors never trust arbitrary status, code or message", () => {
+function capturedLogger() {
+  const entries = [];
+  return { entries, logger: { error(value) { entries.push(value); } } };
+}
+
+test("untrusted errors ignore status and code, while explicit infrastructure fallbacks remain controlled", () => {
   const marker = "postgresql://user:password@host/database; C:\\sensitive\\internal\\path; SELECT * FROM secret_table; Bearer secret-token; stack trace marker";
-  for (const [status, code] of [[400, "BAD_INTERNAL_CODE"], [409, "CONFLICT_INTERNAL_CODE"], [500, "SERVER_INTERNAL_CODE"]]) {
+  for (const [status, code] of [[400, "CURRENT_PASSWORD_REQUIRED"], [409, "CONFLICT_INTERNAL_CODE"], [500, "SERVER_INTERNAL_CODE"]]) {
     const response = fakeResponse();
-    respondUnexpectedError(response, Object.assign(new Error(marker), { status, code }), { requestId: `security_${status}`, code: "INTERNAL_ERROR", message: "服务暂时不可用，请稍后重试", logger: { error() {} } });
+    const captured = capturedLogger();
+    respondUnexpectedError(response, Object.assign(new Error(marker), { status, code }), { requestId: `security_${status}`, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用，请稍后重试", logger: captured.logger });
     const serialized = JSON.stringify(response.payload);
-    assert.equal(response.statusCode, status);
+    assert.equal(response.statusCode, 500);
     assert.equal(response.payload.code, "INTERNAL_ERROR");
     assert.equal(response.payload.error, "服务暂时不可用，请稍后重试");
+    assert.equal(captured.entries.length, 1);
     assert.doesNotMatch(serialized, /postgresql:\/\/|sensitive\\internal|SELECT \* FROM secret_table|Bearer secret-token|stack trace marker/i);
+  }
+
+  const response = fakeResponse();
+  const captured = capturedLogger();
+  respondUnexpectedError(response, Object.assign(new Error(marker), { status: 400, code: "CURRENT_PASSWORD_REQUIRED" }), { requestId: "body_400", fallbackStatus: 400, fallbackCode: "INVALID_REQUEST_BODY", fallbackMessage: "请求格式无效", logger: captured.logger });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.payload.code, "INVALID_REQUEST_BODY");
+  assert.equal(response.payload.error, "请求格式无效");
+  assert.equal(captured.entries.length, 1);
+});
+
+test("trusted domain errors preserve status, any legal code and public message without 4xx error logs", () => {
+  const cases = [
+    [400, "CURRENT_PASSWORD_REQUIRED", "请输入当前密码"],
+    [404, "AI_CONNECTION_NOT_FOUND", "模型连接不存在"],
+    [403, "STORE_BOOKING_UNAVAILABLE", "该门店暂时不接受新预约"],
+    [500, "TIMEZONE_INVALID", "门店时区配置无效"],
+    [400, "AI_TEMPLATE_COMPONENT_PAGE_INVALID", "区块不能用于页面：home"],
+    [404, "CAMPAIGN_NOT_FOUND", "活动不存在"],
+    [404, "OFFER_NOT_FOUND", "优惠不存在"],
+    [400, "AVATAR_SIZE_INVALID", "头像大小需小于 2 MB"],
+    [409, "NEW_DOMAIN_ERROR_CODE", "新的业务错误"],
+  ];
+  for (const [status, code, publicMessage] of cases) {
+    const response = fakeResponse();
+    const captured = capturedLogger();
+    const error = markTrustedPublicMessage(Object.assign(new Error("private internal text"), { status, code }), publicMessage);
+    respondUnexpectedError(response, error, { requestId: `trusted_${code}`, fallbackStatus: 503, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用", logger: captured.logger });
+    assert.equal(response.statusCode, status);
+    assert.equal(response.payload.code, code);
+    assert.equal(response.payload.message, publicMessage);
+    assert.equal(response.payload.error, publicMessage);
+    assert.equal(response.payload.requestId, `trusted_${code}`);
+    assert.equal(captured.entries.length, status >= 500 ? 1 : 0);
   }
 });
 
-test("trusted domain public messages are bounded and control characters fall back", () => {
-  const trusted = markTrustedPublicMessage(new Error("private internal text"), "输入格式错误");
+test("trusted public messages reject control characters and overlong values, while invalid codes use fallback", () => {
+  const invalidCode = markTrustedPublicMessage(Object.assign(new Error("private"), { status: 400, code: "bad-code" }), "输入格式错误");
   const response = fakeResponse();
-  respondUnexpectedError(response, trusted, { status: 400, code: "INVALID_INPUT", message: "服务暂时不可用" });
+  const captured = capturedLogger();
+  respondUnexpectedError(response, invalidCode, { requestId: "invalid_code", fallbackCode: "INTERNAL_ERROR", fallbackMessage: "请求格式无效", logger: captured.logger });
+  assert.equal(response.payload.code, "INTERNAL_ERROR");
   assert.equal(response.payload.error, "输入格式错误");
+  assert.equal(captured.entries.length, 1);
+
   for (const publicMessage of ["x".repeat(241), "包含\n控制字符"]) {
-    const invalid = markTrustedPublicMessage(new Error("private"), publicMessage);
+    const error = markTrustedPublicMessage(new Error("private"), publicMessage);
     const fallback = fakeResponse();
-    respondUnexpectedError(fallback, invalid, { status: 400, code: "INVALID_INPUT", message: "请求格式无效" });
+    respondUnexpectedError(fallback, error, { requestId: "invalid_message", fallbackStatus: 400, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "请求格式无效", logger: capturedLogger().logger });
+    assert.equal(fallback.statusCode, 400);
     assert.equal(fallback.payload.error, "请求格式无效");
   }
 });
 
+test("trusted errors with invalid status fall back and remain error-logged", () => {
+  const response = fakeResponse();
+  const captured = capturedLogger();
+  const error = markTrustedPublicMessage(Object.assign(new Error("private"), { status: 200, code: "NEW_DOMAIN_ERROR_CODE" }), "业务错误");
+  respondUnexpectedError(response, error, { requestId: "trusted_invalid_status", fallbackStatus: 400, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "请求格式无效", logger: captured.logger });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.payload.code, "NEW_DOMAIN_ERROR_CODE");
+  assert.equal(captured.entries.length, 1);
+});
+
+test("all route-caught domain error constructors carry the trusted identity", () => {
+  const errors = [
+    new ServiceError(400, "CURRENT_PASSWORD_REQUIRED", "请输入当前密码"),
+    new AppointmentError(409, "APPOINTMENT_CONFLICT", "预约冲突"),
+    new TemplateError(400, "AI_TEMPLATE_COMPONENT_PAGE_INVALID", "模板页面无效"),
+    new WorkflowError(409, "WORKFLOW_STATUS_INVALID", "Workflow 状态无效"),
+    trustedDomainError(404, "CAMPAIGN_NOT_FOUND", "活动不存在"),
+    new SupabaseAdapterError("NOT_FOUND", "resource not found", 404),
+    new MeooAiTemplateRepositoryError("AI_TEMPLATE_DRAFT_NOT_FOUND", "模板草稿不存在", 404),
+  ];
+  for (const error of errors) assert.equal(hasTrustedPublicMessage(error), true);
+});
 test("migration manifest is deterministic across line endings and matches the committed baseline", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "feeldao-manifest-"));
   try {

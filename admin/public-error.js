@@ -10,4 +10,8 @@ function hasTrustedPublicMessage(error) {
   return Boolean(error && error[TRUSTED_PUBLIC_MESSAGE] === true);
 }
 
-module.exports = { markTrustedPublicMessage, hasTrustedPublicMessage };
+function trustedDomainError(status, code, publicMessage) {
+  return markTrustedPublicMessage(Object.assign(new Error(publicMessage), { status, code }), publicMessage);
+}
+
+module.exports = { markTrustedPublicMessage, hasTrustedPublicMessage, trustedDomainError };

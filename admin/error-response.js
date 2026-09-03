@@ -1,25 +1,30 @@
 const { hasTrustedPublicMessage } = require("./public-error");
 
-const SAFE_ERROR_CODES = new Set([
+const FALLBACK_ERROR_CODES = new Set([
   "INTERNAL_ERROR", "SYNC_FAILED", "PREVIEW_FAILED", "LEGACY_API_FAILED", "MEDIA_UPLOAD_FAILED", "REQUEST_TOO_LARGE", "INVALID_REQUEST_BODY",
-  "AUTH_REQUIRED", "OPS_AUTH_REQUIRED", "AI_GATEWAY_TOKEN_MISSING", "AI_GATEWAY_UNAUTHORIZED", "AI_QUERY_EMPTY", "AI_QUOTA_EXHAUSTED", "AI_PROVIDER_KEY_MISSING", "AI_PROVIDER_TEST_FAILED", "TENANT_SCOPE_MISMATCH", "OPS_INVALID_CREDENTIALS", "DATABASE_REQUIRED", "DATABASE_UNAVAILABLE", "CSRF_INVALID", "WORKSPACE_ACCESS_DENIED", "SUBSCRIPTION_REQUIRED",
-  "INVALID_PASSWORD", "INVALID_CREDENTIALS", "PASSWORD_REUSE_NOT_ALLOWED", "CURRENT_PASSWORD_INVALID", "INVALID_PASSWORD_REQUEST", "AI_CONNECTION_INVALID", "AI_BASE_URL_INVALID", "AI_KEY_REQUIRED", "AI_MODE_INVALID", "AI_MODE_UNSUPPORTED",
-  "APPOINTMENT_CONFLICT", "APPOINTMENT_NOT_FOUND", "APPOINTMENT_SCOPE_INVALID", "APPOINTMENT_SETTINGS_INVALID", "APPOINTMENT_SERVICE_INVALID", "APPOINTMENT_SERVICE_NOT_FOUND", "APPOINTMENT_STATUS_INVALID", "APPOINTMENT_GATEWAY_NOT_CONFIGURED", "GATEWAY_AUTH_INVALID", "STORE_NOT_FOUND", "SLOT_UNAVAILABLE", "FOLLOW_UP_INVALID",
-  "LICENSE_INVALID", "LICENSE_DISABLED", "LICENSE_EXPIRED", "LICENSE_REDEEMED", "LICENSE_NOT_DISABLEABLE", "INVALID_LICENSE_REQUEST", "TRIAL_ALREADY_USED", "SUBSCRIPTION_NOT_FOUND",
-  "INVALID_MEDIA_DATA", "MEDIA_TYPE_MISMATCH", "MEDIA_CONTENT_MISMATCH", "MEDIA_TOO_LARGE", "MEDIA_DIMENSIONS_INVALID", "INVALID_OBJECT_KEY", "ASSET_NOT_FOUND",
-  "AI_TEMPLATE_ERROR", "AI_TEMPLATE_PROMPT_REQUIRED", "AI_TEMPLATE_INPUT_REJECTED", "AI_TEMPLATE_INVALID_DOCUMENT", "AI_TEMPLATE_UNSUPPORTED_COMPONENT", "AI_TEMPLATE_OUTPUT_REJECTED", "AI_TEMPLATE_DRAFT_NOT_FOUND", "AI_TEMPLATE_DRAFT_NOT_EDITABLE", "AI_TEMPLATE_DRAFT_REVISION_CONFLICT", "AI_TEMPLATE_CONFIG_VERSION_CONFLICT", "AI_TEMPLATE_IDEMPOTENCY_REQUIRED", "AI_TEMPLATE_IDEMPOTENCY_CONFLICT", "AI_SKILL_SOURCE_REQUIRED", "AI_SKILL_NOT_FOUND", "CONFIG_NOT_FOUND", "CONFIG_VERSION_CONFLICT", "TEMPLATE_NOT_FOUND",
-  "WORKFLOW_DEFINITION_INVALID", "WORKFLOW_DEFINITION_EXISTS", "WORKFLOW_DEFINITION_NOT_FOUND", "WORKFLOW_KEY_REQUIRED", "WORKFLOW_TASKS_INVALID", "WORKFLOW_TASK_INVALID", "WORKFLOW_TASK_REQUIRED", "WORKFLOW_INSTANCE_NOT_FOUND", "WORKFLOW_INSTANCE_NOT_RUNNING", "WORKFLOW_TASK_NOT_FOUND", "WORKFLOW_TASK_NOT_PENDING", "WORKFLOW_TASK_NOT_FAILED", "WORKFLOW_STATUS_INVALID", "WORKFLOW_IDEMPOTENCY_PENDING", "WORKFLOW_RETRY_EXHAUSTED",
-  "TENANT_SUSPENDED", "TENANT_NOT_FOUND", "CUSTOMER_NOT_FOUND", "STAFF_NOT_FOUND", "STAFF_INVALID", "STAFF_SCHEDULE_INVALID", "STAFF_LEAVE_INVALID", "STAFF_LEAVE_NOT_FOUND", "PROFILE_NOT_FOUND", "PROFILE_NAME_INVALID", "MEMBERSHIP_NOT_FOUND", "MEMBERSHIP_REQUIRED", "MEMBERSHIP_LEVEL_INVALID", "MEMBERSHIP_LEVEL_NOT_FOUND", "MEMBERSHIP_PROGRAM_NOT_FOUND", "MEMBERSHIP_RULE_INVALID", "MEMBERSHIP_OVERRIDE_INVALID", "BENEFIT_NOT_ELIGIBLE", "RELATED_TYPE_INVALID", "TAG_INVALID", "TAG_EXISTS", "TAG_LINK_NOT_FOUND", "FOLDER_NOT_FOUND", "INVALID_FOLDER", "FEATURE_FLAG_INVALID", "FEATURE_FLAG_NOT_FOUND", "RESOURCE_NOT_FOUND", "RESOURCE_INVALID", "NOT_FOUND", "INVALID_INPUT", "IDEMPOTENCY_REQUIRED", "RATE_LIMITED", "ACCOUNT_EXISTS", "INVALID_LOGIN"
+  "AI_TEMPLATE_ERROR", "AI_CONNECTION_INVALID", "PLATFORM_BOOTSTRAP_FAILED", "PLATFORM_AI_CONNECTION_TEST_FAILED", "DATABASE_UNAVAILABLE"
 ]);
+const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/;
 
-function normalizeStatus(error, requestedStatus) {
-  const candidate = Number(requestedStatus ?? error?.status);
-  return Number.isInteger(candidate) && candidate >= 400 && candidate <= 599 ? candidate : 500;
+function isValidStatus(value) {
+  const status = Number(value);
+  return Number.isInteger(status) && status >= 400 && status <= 599;
+}
+
+function normalizeStatus(error, fallbackStatus, trusted = hasTrustedPublicMessage(error)) {
+  if (trusted && isValidStatus(error?.status)) return Number(error.status);
+  return isValidStatus(fallbackStatus) ? Number(fallbackStatus) : 500;
 }
 
 function safeCode(value, fallback) {
   const code = String(value || "");
-  return SAFE_ERROR_CODES.has(code) ? code : fallback;
+  if (!ERROR_CODE_PATTERN.test(code)) return fallback;
+  return code;
+}
+
+function fallbackCode(value) {
+  const code = String(value || "");
+  return FALLBACK_ERROR_CODES.has(code) ? code : "INTERNAL_ERROR";
 }
 
 function safeClientMessage(error, fallback) {
@@ -33,13 +38,22 @@ function writeErrorLog({ requestId, code, status, logger = console }) {
   logger.error(JSON.stringify({ level: "error", requestId, code, status, event: "request_failed" }));
 }
 
-function respondUnexpectedError(res, error, { requestId, status, code = "INTERNAL_ERROR", message = "服务暂时不可用，请稍后重试", logger } = {}) {
-  const resolvedStatus = normalizeStatus(error, status);
-  const fallbackCode = safeCode(code, "INTERNAL_ERROR");
-  const resolvedCode = safeCode(error?.code, fallbackCode);
-  const responseMessage = safeClientMessage(error, message);
-  writeErrorLog({ requestId, code: resolvedCode, status: resolvedStatus, logger });
+function respondUnexpectedError(res, error, {
+  requestId,
+  fallbackStatus,
+  fallbackCode: requestedFallbackCode = "INTERNAL_ERROR",
+  fallbackMessage = "服务暂时不可用，请稍后重试",
+  logger
+} = {}) {
+  const trusted = hasTrustedPublicMessage(error);
+  const trustedStatusValid = trusted && isValidStatus(error?.status);
+  const trustedCodeValid = trusted && ERROR_CODE_PATTERN.test(String(error?.code || ""));
+  const resolvedStatus = normalizeStatus(error, fallbackStatus, trusted);
+  const safeFallbackCode = fallbackCode(requestedFallbackCode);
+  const resolvedCode = trusted ? safeCode(error?.code, safeFallbackCode) : safeFallbackCode;
+  const responseMessage = safeClientMessage(error, fallbackMessage);
+  if (!trusted || !trustedStatusValid || !trustedCodeValid || resolvedStatus >= 500) writeErrorLog({ requestId, code: resolvedCode, status: resolvedStatus, logger });
   return res.status(resolvedStatus).json({ ok: false, code: resolvedCode, message: responseMessage, error: responseMessage, data: null, requestId });
 }
 
-module.exports = { normalizeStatus, respondUnexpectedError, safeClientMessage, safeCode, writeErrorLog };
+module.exports = { ERROR_CODE_PATTERN, FALLBACK_ERROR_CODES, normalizeStatus, respondUnexpectedError, safeClientMessage, safeCode, writeErrorLog };

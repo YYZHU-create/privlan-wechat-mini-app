@@ -757,7 +757,7 @@ app.get("/api/dashboard", (req, res) => {
       lastSync: cfg._lastSync || null,
     });
   } catch (e) {
-    respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") });
+    respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") });
   }
 });
 
@@ -798,7 +798,7 @@ app.get("/api/platform/bootstrap", (req, res) => {
       }
     });
   } catch (error) {
-    respondUnexpectedError(res, error, { code: "PLATFORM_BOOTSTRAP_FAILED", message: "平台资料暂时不可用，请稍后重试", requestId: requestId("platform") });
+    respondUnexpectedError(res, error, { fallbackCode: "PLATFORM_BOOTSTRAP_FAILED", fallbackMessage: "平台资料暂时不可用，请稍后重试", requestId: requestId("platform") });
   }
 });
 
@@ -1135,7 +1135,7 @@ app.post("/ops/v1/ai/connections", (req, res) => {
     state.aiConnections.push(connection);
     appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.create", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { provider: connection.providerName, model: connection.model } });
     res.status(201).json({ ok: true, data: platformStore.publicConnection(connection) });
-  } catch (error) { respondUnexpectedError(res, error, { status: 400, code: "AI_CONNECTION_INVALID", message: "平台模型配置无效", requestId: requestId("ops-ai") }); }
+  } catch (error) { respondUnexpectedError(res, error, { fallbackStatus: 400, fallbackCode: "AI_CONNECTION_INVALID", fallbackMessage: "平台模型配置无效", requestId: requestId("ops-ai") }); }
 });
 
 app.post("/ops/v1/ai/connections/:id/test", async (req, res) => {
@@ -1150,7 +1150,7 @@ app.post("/ops/v1/ai/connections/:id/test", async (req, res) => {
   } catch (error) {
     connection.lastTestOk = false; connection.lastTestAt = new Date().toISOString(); connection.lastError = "连接测试失败，请检查模型配置";
     appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { ok: false } });
-    respondUnexpectedError(res, error, { code: "PLATFORM_AI_CONNECTION_TEST_FAILED", status: 502, message: "连接测试失败，请检查模型配置", requestId: requestId("opsai") });
+    respondUnexpectedError(res, error, { fallbackCode: "PLATFORM_AI_CONNECTION_TEST_FAILED", fallbackStatus: 502, fallbackMessage: "连接测试失败，请检查模型配置", requestId: requestId("opsai") });
   }
 });
 
@@ -1291,14 +1291,14 @@ app.delete("/ops/v1/impersonation-sessions/:id", (req, res) => {
 
 // ---- Config API ----
 app.get("/api/config", (req, res) => {
-  try { res.json(readConfig()); } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  try { res.json(readConfig()); } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 app.post("/api/config", (req, res) => {
   try {
     writeConfig(req.body);
     const ownedPaths = ["admin/config.json", ...collectConfigAssetPaths(req.body)];
     res.json({ ok: true, git: autoSyncGitHub("editor save", ownedPaths) });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 // ---- Media Library API ----
@@ -1310,7 +1310,7 @@ app.get("/api/media/folders", (req, res) => {
       return result;
     }, {});
     res.json(data.folders.map(folder => ({ ...folder, count: counts[folder.id] || 0 })));
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/media/folders", (req, res) => {
@@ -1327,7 +1327,7 @@ app.post("/api/media/folders", (req, res) => {
     data.folders.push(folder);
     writeMediaFolders(data);
     res.json({ ok: true, folder: { ...folder, count: 0 } });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.patch("/api/media/folders/:id", (req, res) => {
@@ -1341,7 +1341,7 @@ app.patch("/api/media/folders/:id", (req, res) => {
     folder.name = name;
     writeMediaFolders(data);
     res.json({ ok: true, folder });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.delete("/api/media/folders/:id", (req, res) => {
@@ -1354,7 +1354,7 @@ app.delete("/api/media/folders/:id", (req, res) => {
     data.folders.splice(index, 1);
     writeMediaFolders(data);
     res.json({ ok: true });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.get("/api/media", (req, res) => {
@@ -1387,7 +1387,7 @@ app.get("/api/media", (req, res) => {
        };
     }).sort((a, b) => b.mtime.localeCompare(a.mtime));
     res.json(files);
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/media/upload", (req, res) => {
@@ -1417,7 +1417,7 @@ app.post("/api/media/upload", (req, res) => {
     }
     const folder = folderData.folders.find(item => item.id === requestedFolderId);
     res.json({ ok: true, name: destName, path: `/mp-images/${destName}`, mpPath: `/images/${destName}`, kind, size: buf.length, sizeKB: Math.round(buf.length / 1024), large: buf.length > 5 * 1024 * 1024, packageEligible: buf.length <= 5 * 1024 * 1024, packageWarning: buf.length > 5 * 1024 * 1024 ? "该素材应迁移至 CDN/COS 后再用于正式发布。" : "", folderId: requestedFolderId, folderName: folder?.name || "" });
-  } catch (e) { respondUnexpectedError(res, e, { code: "MEDIA_UPLOAD_FAILED", status: e.status, message: "素材上传失败，请稍后重试", requestId: requestId("media") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "MEDIA_UPLOAD_FAILED", fallbackStatus: 400, fallbackMessage: "素材上传失败，请稍后重试", requestId: requestId("media") }); }
 });
 
 app.post("/api/media/move", (req, res) => {
@@ -1436,7 +1436,7 @@ app.post("/api/media/move", (req, res) => {
     }
     writeMediaFolders(data);
     res.json({ ok: true, moved: names.length, folderId });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/media/delete", (req, res) => {
@@ -1460,14 +1460,14 @@ app.post("/api/media/delete", (req, res) => {
     writeMediaFolders(folderData);
     writeTrashManifest(trash);
     res.json({ ok: true, deleted, missing, recoverableUntil: new Date(Date.now() + 30 * 86400000).toISOString() });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.get("/api/media/trash", (req, res) => {
   try {
     const data = purgeExpiredMediaTrash();
     res.json(data.items.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)));
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/media/trash/restore", (req, res) => {
@@ -1491,7 +1491,7 @@ app.post("/api/media/trash/restore", (req, res) => {
     writeTrashManifest(data);
     writeMediaFolders(folderData);
     res.json({ ok: true, restored });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 // ---- Custom Fonts API ----
@@ -1502,7 +1502,7 @@ app.get("/api/fonts", (req, res) => {
       const stat = fs.statSync(path.join(FONTS_DIR, name));
       return { name, path: `/mp-fonts/${name}`, mpPath: `/fonts/${name}`, sizeKB: Math.round(stat.size / 1024) };
     }));
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/fonts/upload", (req, res) => {
@@ -1522,11 +1522,11 @@ app.post("/api/fonts/upload", (req, res) => {
     }
     fs.writeFileSync(path.join(FONTS_DIR, destName), buf);
     res.json({ ok: true, name: destName, path: `/mp-fonts/${destName}`, mpPath: `/fonts/${destName}`, sizeKB: Math.round(buf.length / 1024) });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.get("/api/system-fonts", (req, res) => {
-  try { res.json(listSystemFonts()); } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  try { res.json(listSystemFonts()); } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.post("/api/fonts/import-system", (req, res) => {
@@ -1551,7 +1551,7 @@ app.post("/api/fonts/import-system", (req, res) => {
     if (!fs.existsSync(path.join(FONTS_DIR, destName))) fs.copyFileSync(sourcePath, path.join(FONTS_DIR, destName));
     const stat = fs.statSync(path.join(FONTS_DIR, destName));
     res.json({ ok: true, name: destName, mpPath: `/fonts/${destName}`, path: `/mp-fonts/${destName}`, format: source.format, sizeKB: Math.round(stat.size / 1024) });
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 app.delete("/api/media/:name", (req, res) => {
@@ -1571,12 +1571,12 @@ app.delete("/api/media/:name", (req, res) => {
     } else {
       res.status(404).json({ error: "文件不存在" });
     }
-  } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 // ---- Presets API ----
 app.get("/api/presets", (req, res) => {
-  try { res.json(readConfig().themePresets || {}); } catch (e) { respondUnexpectedError(res, e, { code: "LEGACY_API_FAILED", message: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
+  try { res.json(readConfig().themePresets || {}); } catch (e) { respondUnexpectedError(res, e, { fallbackCode: "LEGACY_API_FAILED", fallbackMessage: "操作失败，请稍后重试", requestId: requestId("legacy") }); }
 });
 
 // ---- Sync API ----
@@ -1620,7 +1620,7 @@ app.post("/api/sync", async (req, res) => {
     writeSaasState(state);
     res.json({ ok: true, ...result, warnings, lastSync: cfg._lastSync, version, publishJob, git: autoSyncGitHub("mini program sync", [...ownedPaths, "admin/saas-state.json"]) });
   } catch (e) {
-    respondUnexpectedError(res, e, { code: "SYNC_FAILED", message: "同步失败，请稍后重试", requestId: requestId("sync") });
+    respondUnexpectedError(res, e, { fallbackCode: "SYNC_FAILED", fallbackMessage: "同步失败，请稍后重试", requestId: requestId("sync") });
   }
 });
 
@@ -1658,7 +1658,7 @@ app.post("/api/preview", (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}`, previewReport });
   } catch (e) {
-    respondUnexpectedError(res, e, { code: "PREVIEW_FAILED", status: 502, message: "预览生成失败，请检查本地开发环境后重试", requestId: requestId("preview") });
+    respondUnexpectedError(res, e, { fallbackCode: "PREVIEW_FAILED", fallbackStatus: 502, fallbackMessage: "预览生成失败，请检查本地开发环境后重试", requestId: requestId("preview") });
   }
 });
 
@@ -1672,9 +1672,9 @@ app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   const status = Number(error?.status) === 413 ? 413 : 400;
   return respondUnexpectedError(res, error, {
-    code: status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_REQUEST_BODY",
-    status,
-    message: status === 413 ? "请求内容过大" : "请求格式无效",
+    fallbackCode: status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_REQUEST_BODY",
+    fallbackStatus: status,
+    fallbackMessage: status === 413 ? "请求内容过大" : "请求格式无效",
     requestId: requestId("body")
   });
 });
