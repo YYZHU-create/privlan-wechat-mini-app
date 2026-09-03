@@ -85,6 +85,8 @@ test("runtime, Docker, CI, and Meoo contracts stay aligned", () => {
   assert.equal(packageJson.packageManager, "pnpm@11.7.0");
   assert.match(dockerfile, /^FROM node:22-bookworm-slim/m);
   assert.match(dockerfile, /corepack prepare pnpm@11\.7\.0 --activate/);
+  assert.match(dockerfile, /mkdir -p \/app\/images \/app\/fonts \/app\/admin\/data \/app\/admin\/config-backups \/app\/admin\/media-trash/);
+  assert.match(dockerfile, /chown -R node:node \/app\/images \/app\/fonts \/app\/admin \/app\/runtime-build\.json/);
   assert.match(ci, /NODE_VERSION: 22/);
   assert.match(ci, /Docker build and isolated smoke/);
   assert.match(ci, /Set up Node\.js for smoke assertions/);
