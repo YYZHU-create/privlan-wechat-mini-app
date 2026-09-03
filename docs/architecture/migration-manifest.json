@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "migrations": [
+    {
+      "version": "001_saas_mvp",
+      "file": "001_saas_mvp.sql",
+      "sha256": "3c01059a3027dc8819b73235e8e64a97c497372644717d90aefb359027e5b6f5"
+    },
+    {
+      "version": "002_workspace_resources",
+      "file": "002_workspace_resources.sql",
+      "sha256": "809a7b1a39ba52c6624a5ec609c1f92d215e363aefaff3a5b7ff8579e7c310b5"
+    },
+    {
+      "version": "003_appointments",
+      "file": "003_appointments.sql",
+      "sha256": "0df1dee129dafed1297290946ced0c733d87389a12dbfb345244b78bd1416194"
+    },
+    {
+      "version": "004_appointment_rule_controls",
+      "file": "004_appointment_rule_controls.sql",
+      "sha256": "70a1b3797f54ee74552bab3dc0f631a0e96d65ec600118da0cbd9f466733740a"
+    },
+    {
+      "version": "005_customer_identity_membership",
+      "file": "005_customer_identity_membership.sql",
+      "sha256": "12d4f07965424b570ca9e4246e3d8cb23812719f49743076e17981daa9e3f814"
+    },
+    {
+      "version": "006_product_completeness_uat",
+      "file": "006_product_completeness_uat.sql",
+      "sha256": "8893521155819b65dd3bc466e5bd0872e07108fd741947c33fe4a34113982122"
+    },
+    {
+      "version": "007_operation_engine_foundation",
+      "file": "007_operation_engine_foundation.sql",
+      "sha256": "5afc37414d103ff66555cddea7d907c9811e8a10171b6752d4c20baffd9e5d29"
+    },
+    {
+      "version": "008_workflow_runtime",
+      "file": "008_workflow_runtime.sql",
+      "sha256": "e723ee958a96b5ac0c7a81eb565af1d7ffa52436fafe26cb6cd998ca614a3620"
+    },
+    {
+      "version": "009_workflow_integration",
+      "file": "009_workflow_integration.sql",
+      "sha256": "7eb3628b26d3f534cd36a8148d8d2fb511b8e4e1ababe9d794fcf4f6bb00a5e7"
+    },
+    {
+      "version": "010_workflow_event_contract_immutability",
+      "file": "010_workflow_event_contract_immutability.sql",
+      "sha256": "f8bc7f557be1fafc68c170fcbb8d4da2fc1e536ff6926dbcc6621be4dd63e973"
+    },
+    {
+      "version": "011_ai_template_studio",
+      "file": "011_ai_template_studio.sql",
+      "sha256": "e7df0a637ef349706e05b08522086f7960a03ad32f2d5458f024c0239c64117e"
+    },
+    {
+      "version": "012_launch_v1_domains",
+      "file": "012_launch_v1_domains.sql",
+      "sha256": "17b609ab2ff3bdca40305786523af9ba8c65a4db052152fbf212643a4f1e2458"
+    }
+  ],
+  "digest": "ed616d9fcd4c600808e6fc68e3ee921e5aeebbed31cc06bb687d951c043f13d3"
+}

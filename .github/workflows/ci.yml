@@ -52,6 +52,87 @@ jobs:
           node --check ops-public/app.js
           node --check server.js
           node --check saas-service.js
+          node --check runtime-identity.js
+          node --check migration-manifest.js
+          node --check check-schema-compatibility.js
+
+      - name: Check migration manifest
+        run: node migration-manifest.js --check
 
       - name: Run full application regression
         run: pnpm test
+
+  docker-smoke:
+    name: Docker build and isolated smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js for smoke assertions
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build immutable candidate image
+        env:
+          IMAGE_TAG: feeldao-os:${{ github.sha }}
+        run: |
+          set -eu
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker build \
+            --build-arg ATELIER_GIT_SHA="${GITHUB_SHA}" \
+            --build-arg ATELIER_GIT_BRANCH="${branch}" \
+            --build-arg ATELIER_BUILD_TIME="${build_time}" \
+            --build-arg ATELIER_ENVIRONMENT=production \
+            --tag "${IMAGE_TAG}" .
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+
+      - name: Validate image configuration and sensitive files
+        run: |
+          set -eu
+          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE_TAG")" = "node"
+          docker image inspect "$IMAGE_TAG" --format '{{json .Config.ExposedPorts}}' | grep -q '9000/tcp'
+          docker image inspect "$IMAGE_TAG" --format '{{json .Config.Healthcheck}}' | grep -q '/health'
+          scan_container="feeldao-image-scan-${GITHUB_RUN_ID}"
+          trap 'docker rm -f "$scan_container" >/dev/null 2>&1 || true' EXIT
+          docker create --name "$scan_container" "$IMAGE_TAG" >/dev/null
+          if docker export "$scan_container" | tar -tf - | grep -E '(^|/)(\.env($|\.)|runtime-secrets\.json|[^/]+\.pem|[^/]+\.key|[^/]+\.(bak|backup|dump)|\.git)(/|$)'; then
+            echo "IMAGE_SENSITIVE_FILE_SCAN=FAIL"
+            exit 1
+          fi
+          if docker history --no-trunc "$IMAGE_TAG" | grep -Eqi '(password|secret|token|database_url)'; then
+            echo "DOCKER_HISTORY_SECRET_SCAN=FAIL"
+            exit 1
+          fi
+          echo "IMAGE_SENSITIVE_FILE_SCAN=PASS"
+          echo "DOCKER_HISTORY_SECRET_SCAN=PASS"
+
+      - name: Run isolated container smoke test
+        run: |
+          set -eu
+          name="feeldao-smoke-${GITHUB_RUN_ID}"
+          port="19000"
+          trap 'docker logs "$name" 2>&1 || true; docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$name" -p "127.0.0.1:${port}:9000" \
+            -e HOST=0.0.0.0 \
+            -e PORT=9000 \
+            -e ATELIER_DB_BACKEND=native \
+            -e ATELIER_OPS_EMAIL=ops-smoke@example.invalid \
+            -e ATELIER_OPS_PASSWORD=local-ci-operator-password \
+            -e PRIVLAN_DISABLE_GIT_SYNC=1 \
+            "$IMAGE_TAG" >/dev/null
+          for attempt in $(seq 1 45); do
+            if node -e 'fetch(process.argv[1]).then(async r=>{const body=await r.json();process.exit(r.ok && body && body.status === "ok" ? 0 : 1)}).catch(()=>process.exit(1))' "http://127.0.0.1:${port}/health"; then break; fi
+            sleep 1
+            if [ "$attempt" = 45 ]; then exit 1; fi
+          done
+          curl --fail --silent --show-error "http://127.0.0.1:${port}/ops/" | grep -q 'Feeldao OS'
+          curl --fail --silent --show-error "http://127.0.0.1:${port}/ops/app.js" >/dev/null
+          node -e 'fetch(process.argv[1]).then(async r=>{const body=await r.json();process.exit(r.status === 200 && body.ok === true && body.data === null ? 0 : 1)})' "http://127.0.0.1:${port}/ops/v1/auth/session"
+          node -e 'fetch(process.argv[1]).then(async r=>{const body=await r.json();process.exit(r.status === 401 && body.code === "OPS_AUTH_REQUIRED" ? 0 : 1)})' "http://127.0.0.1:${port}/ops/v1/health"
+          echo "REMOTE_CONTAINER_SMOKE=PASS"

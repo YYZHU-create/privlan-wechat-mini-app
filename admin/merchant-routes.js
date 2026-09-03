@@ -7,6 +7,7 @@ const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
+const { respondUnexpectedError } = require("./error-response");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -21,9 +22,7 @@ function cookies(req) {
 }
 function success(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
 function failure(res, error, id = requestId()) {
-  const status = Number(error?.status || 500);
-  const message = status >= 500 && !(error instanceof ServiceError) ? "服务暂时不可用" : String(error?.message || "请求失败");
-  return res.status(status).json({ ok: false, code: error?.code || "INTERNAL_ERROR", message, error: message, data: null, requestId: id });
+  return respondUnexpectedError(res, error, { requestId: id, code: error?.code || "INTERNAL_ERROR", message: "服务暂时不可用", allowClientMessage: true });
 }
 function setSessionCookies(res, session) {
   const secure = process.env.NODE_ENV === "production";

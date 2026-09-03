@@ -1,5 +1,6 @@
+const { respondUnexpectedError } = require("./error-response");
 function ok(res,data,message, status=200,id){return res.status(status).json({ok:true,code:"OK",message,data,requestId:id});}
-function fail(res,e,id){return res.status(Number(e?.status||500)).json({ok:false,code:e?.code||"INTERNAL_ERROR",message:Number(e?.status||500)>=500?"服务暂时不可用":String(e?.message||"请求失败"),data:null,requestId:id});}
+function fail(res,e,id){return respondUnexpectedError(res,e,{requestId:id,code:e?.code||"INTERNAL_ERROR",message:"服务暂时不可用",allowClientMessage:true});}
 function registerLaunchV1Routes(app){
   const run=(fn)=>(req,res)=>Promise.resolve().then(()=>fn(req)).then(v=>ok(res,v,"操作成功",200,req.requestId)).catch(e=>fail(res,e,req.requestId));
   app.get("/v1/membership/activity",run(req=>req.saasService.membershipLaunchService.activity(req.merchantScope)));
