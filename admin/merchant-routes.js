@@ -7,6 +7,7 @@ const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
+const { respondUnexpectedError } = require("./error-response");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -21,9 +22,7 @@ function cookies(req) {
 }
 function success(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
 function failure(res, error, id = requestId()) {
-  const status = Number(error?.status || 500);
-  const message = status >= 500 && !(error instanceof ServiceError) ? "服务暂时不可用" : String(error?.message || "请求失败");
-  return res.status(status).json({ ok: false, code: error?.code || "INTERNAL_ERROR", message, error: message, data: null, requestId: id });
+  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
 }
 function setSessionCookies(res, session) {
   const secure = process.env.NODE_ENV === "production";
@@ -305,9 +304,7 @@ function registerOpsSaasRoutes(app, getService) {
     const id = requestId("ops_health");
     try { return success(res, await (await getService()).operatorHealth(), "运营服务状态已获取", 200, id); }
     catch (error) {
-      error.status = 503;
-      error.code = "DATABASE_UNAVAILABLE";
-      return failure(res, error, id);
+      return respondUnexpectedError(res, error, { requestId: id, fallbackStatus: 503, fallbackCode: "DATABASE_UNAVAILABLE", fallbackMessage: "服务暂时不可用" });
     }
   });
   app.get("/ops/v1/bootstrap", async (req, res) => {

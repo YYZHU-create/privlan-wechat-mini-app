@@ -1,8 +1,10 @@
+const { markTrustedPublicMessage } = require("./public-error");
 class DatabaseBackendError extends Error {
   constructor(code, message) {
     super(message);
     this.code = code;
     this.status = 500;
+    markTrustedPublicMessage(this, message);
   }
 }
 

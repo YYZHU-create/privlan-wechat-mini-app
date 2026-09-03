@@ -1,10 +1,11 @@
 const { createAiTemplateService, TemplateError } = require("./ai-template-studio");
 const { createMeooAiTemplateRepository } = require("./meoo-ai-template-repository");
+const { respondUnexpectedError } = require("./error-response");
 
 function registerAiTemplateRoutes(app) {
   const services = new WeakMap();
   const studio = req => { if (!services.has(req.saasService)) { const repository = req.saasService.db?.kind === "meoo" ? createMeooAiTemplateRepository() : null; services.set(req.saasService, createAiTemplateService({ db: req.saasService.db, audit: req.saasService.recordAudit, repository })); } return services.get(req.saasService); };
-  const fail = (res, error, id) => res.status(Number(error.status || 500)).json({ ok: false, code: error.code || "AI_TEMPLATE_ERROR", message: error.message || "模板服务暂时不可用", error: error.message || "模板服务暂时不可用", data: null, requestId: id });
+  const fail = (res, error, id) => respondUnexpectedError(res, error, { requestId: id, fallbackCode: "AI_TEMPLATE_ERROR", fallbackMessage: "模板服务暂时不可用" });
   const call = fn => async (req, res) => { try { return res.json({ ok: true, code: "OK", data: await fn(studio(req), req.merchantScope, req), requestId: req.requestId }); } catch (error) { return fail(res, error, req.requestId); } };
   app.post("/v1/ai/templates/generate", call((s, scope, req) => s.generate(scope, req.body || {})));
   app.get("/v1/ai/templates/drafts", call((s, scope) => s.listDrafts(scope)));

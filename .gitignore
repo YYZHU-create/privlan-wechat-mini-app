@@ -22,3 +22,12 @@ admin/.platform-master-key
 admin/.ops-bootstrap.json
 .DS_Store
 .runtime.env
+.release-sha
+.release-branch
+.release-environment
+.release-build-time
+release-sha
+release-branch
+release-environment
+release-build-time
+runtime-build.json

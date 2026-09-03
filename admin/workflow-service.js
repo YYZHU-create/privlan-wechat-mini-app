@@ -1,7 +1,8 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 
 class WorkflowError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; markTrustedPublicMessage(this, message); }
 }
 
 function id() { return crypto.randomUUID(); }

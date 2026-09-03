@@ -75,12 +75,16 @@ test("Docker and PostgreSQL operations files retain the production safety contra
   assert.match(dockerfile, /EXPOSE 9000/);
   assert.match(dockerfile, /127\.0\.0\.1:9000\/health/);
   assert.match(dockerfile, /HEALTHCHECK/);
+  assert.match(dockerfile, /corepack prepare pnpm@11\.7\.0 --activate/);
+  assert.match(dockerfile, /runtime-build\.json/);
   const server = fs.readFileSync(path.join(ROOT, "admin/server.js"), "utf8").replace(/\r\n/g, "\n");
   assert.match(server, /process\.env\.PORT \|\| 9000/);
   assert.match(server, /process\.env\.HOST \|\| process\.env\.PRIVLAN_ADMIN_HOST \|\| "0\.0\.0\.0"/);
   assert.match(server, /app\.get\("\/health", \(req, res\) => \{\n  res\.status\(200\)\.json\(\{ status: "ok" \}\);\n\}\);/);
   assert.match(compose, /postgres:16-alpine/);
   assert.match(compose, /PRIVLAN_DISABLE_GIT_SYNC: "1"/);
+  assert.match(compose, /ATELIER_AUTO_MIGRATE: "0"/);
+  assert.match(compose, /\$\{ATELIER_PORT:-9000\}:9000/);
   assert.match(compose, /atelier_postgres:\/var\/lib\/postgresql\/data/);
   assert.match(backup, /pg_dump/);
   assert.match(backup, /SHA256/);

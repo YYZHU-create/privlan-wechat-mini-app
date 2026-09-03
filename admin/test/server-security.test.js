@@ -22,7 +22,7 @@ async function request(pathname, options = {}) {
   const text = await response.text();
   let data = null;
   try { data = JSON.parse(text); } catch (error) { data = text; }
-  return { status: response.status, data };
+  return { status: response.status, data, headers: response.headers };
 }
 
 async function waitForServer() {
@@ -119,4 +119,56 @@ test("ordinary JSON is capped at 2 MB while the isolated media route accepts a l
 test("preview command uses the active WeChat DevTools service instead of a hard-coded port", () => {
   const source = fs.readFileSync(path.join(ADMIN_DIR, "server.js"), "utf8");
   assert.doesNotMatch(source, /preview[^\n]+--port\s+9420/);
+});
+
+test("sync failures never disclose internal error markers to HTTP clients", async () => {
+  const port = await availablePort();
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "privlan-sync-error-"));
+  const images = path.join(temp, "images"); const fonts = path.join(temp, "fonts");
+  fs.mkdirSync(images); fs.mkdirSync(fonts);
+  const configPath = path.join(temp, "config.json");
+  fs.copyFileSync(path.join(ADMIN_DIR, "config.json"), configPath);
+  fs.writeFileSync(path.join(temp, "media-folders.json"), JSON.stringify({ folders: [], assignments: {} }));
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: ADMIN_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, NODE_ENV: "test", PORT: String(port), PRIVLAN_ADMIN_HOST: "0.0.0.0", PRIVLAN_ADMIN_TOKEN: ADMIN_TOKEN, PRIVLAN_ROOT: temp, PRIVLAN_CONFIG_PATH: configPath, PRIVLAN_CONFIG_BACKUP_DIR: path.join(temp, "backups"), PRIVLAN_IMAGES_DIR: images, PRIVLAN_FONTS_DIR: fonts, PRIVLAN_MEDIA_FOLDERS_PATH: path.join(temp, "media-folders.json"), PRIVLAN_MEDIA_TRASH_DIR: path.join(temp, "trash"), PRIVLAN_OPS_BOOTSTRAP_PATH: path.join(temp, "ops-bootstrap.json"), ATELIER_STATE_PATH: path.join(temp, "state.json"), ATELIER_MASTER_KEY: Buffer.alloc(32, 9).toString("base64"), ATELIER_OPS_PASSWORD: "ops-test-password", PRIVLAN_DISABLE_GIT_SYNC: "1", ATELIER_TEST_SYNC_THROW: "1" }
+  });
+  const url = `http://127.0.0.1:${port}`;
+  try {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      try { if ((await fetch(`${url}/health`)).ok) break; } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (attempt === 59) throw new Error("sync test server did not start");
+    }
+    const response = await fetch(`${url}/api/sync`, { method: "POST", headers: { "Content-Type": "application/json", "x-privlan-token": ADMIN_TOKEN }, body: "{}" });
+    const payload = await response.json();
+    const serialized = JSON.stringify(payload);
+    assert.equal(response.status, 500);
+    assert.equal(payload.code, "SYNC_FAILED");
+    assert.match(payload.requestId, /^sync_/);
+    assert.doesNotMatch(serialized, /fake database password|C:\\sensitive\\internal\\path|SELECT \* FROM secret_table|stack trace marker|stack/i);
+  } finally {
+    child.kill();
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("liveness remains public while operator readiness requires authentication and hides backend errors", async () => {
+  const liveness = await request("/health");
+  assert.equal(liveness.status, 200);
+  assert.deepEqual(liveness.data, { status: "ok" });
+
+  const unauthenticated = await request("/ops/v1/health");
+  assert.equal(unauthenticated.status, 401);
+  assert.equal(unauthenticated.data.code, "OPS_AUTH_REQUIRED");
+
+  const login = await request("/ops/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "ops-admin@localhost", password: "ops-test-password" }) });
+  assert.equal(login.status, 200);
+  const cookie = String(login.headers?.get?.("set-cookie") || "");
+  assert.match(cookie, /atelier_ops_session=/);
+  const readiness = await request("/ops/v1/health", { headers: { cookie } });
+  assert.equal(readiness.status, 503);
+  assert.equal(readiness.data.code, "DATABASE_UNAVAILABLE");
+  assert.equal(readiness.data.error, "服务暂时不可用");
+  assert.doesNotMatch(JSON.stringify(readiness.data), /database_url|postgresql|password|stack/i);
 });

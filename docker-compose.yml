@@ -21,13 +21,13 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${ATELIER_PORT:-3456}:3456"
+      - "${ATELIER_PORT:-9000}:9000"
     environment:
       NODE_ENV: production
-      PORT: 3456
+      PORT: 9000
       PRIVLAN_ADMIN_HOST: 0.0.0.0
       DATABASE_URL: postgresql://atelier_os:${POSTGRES_PASSWORD}@postgres:5432/atelier_os
-      ATELIER_AUTO_MIGRATE: "1"
+      ATELIER_AUTO_MIGRATE: "0"
       ATELIER_VERSION: ${ATELIER_VERSION:-mvp-1.0}
       ATELIER_LICENSE_PEPPER: ${ATELIER_LICENSE_PEPPER:?set ATELIER_LICENSE_PEPPER}
       ATELIER_MASTER_KEY: ${ATELIER_MASTER_KEY:?set ATELIER_MASTER_KEY}

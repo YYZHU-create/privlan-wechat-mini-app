@@ -1,11 +1,8 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 
 class SupabaseAdapterError extends Error {
-  constructor(code, message, status = 500) {
-    super(message);
-    this.code = code;
-    this.status = status;
-  }
+  constructor(code, message, status = 500) { super(message); this.code = code; this.status = status; markTrustedPublicMessage(this, message); }
 }
 
 function scopeValues(scope) {

@@ -1,10 +1,11 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 const { DateTime, assertTimezone, businessWindow, isSlotAligned, overlaps, storeDay, storeWeekday, utcInstant } = require("./appointment-time");
 const { createCustomerService } = require("./customer-service");
 const { createDomainEventMetadata } = require("./domain-event");
 
 class AppointmentError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; markTrustedPublicMessage(this, message); }
 }
 
 const ACTIVE_STATUSES = ["pending", "confirmed"];

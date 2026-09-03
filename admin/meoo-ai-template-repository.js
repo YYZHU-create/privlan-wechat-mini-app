@@ -1,7 +1,8 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 
 class MeooAiTemplateRepositoryError extends Error {
-  constructor(code, message, status = 503) { super(message); this.code = code; this.status = status; }
+  constructor(code, message, status = 503) { super(message); this.code = code; this.status = status; markTrustedPublicMessage(this, message); }
 }
 
 function scopeValues(scope) {
@@ -27,7 +28,7 @@ function createMeooAiTemplateRepository({ url = process.env.SUPABASE_URL, servic
       const text = await response.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
       if (!response.ok) {
         const status = response.status >= 500 ? 503 : response.status;
-        throw new MeooAiTemplateRepositoryError(body?.code || "DATABASE_UNAVAILABLE", status >= 500 ? "database request failed" : (body?.message || "database request failed"), status);
+        throw new MeooAiTemplateRepositoryError("DATABASE_UNAVAILABLE", "database request failed", status);
       }
       return body;
     } catch (error) {

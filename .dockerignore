@@ -1,8 +1,6 @@
 # Meoo Image Runtime deployment context
 .env
 .env.*
-!.env.example
-!.env.local.example
 .cutover-artifacts/
 **/node_modules
 **/*.log
@@ -22,3 +20,19 @@ platform/
 docker-compose.yml
 DEPLOYMENT.md
 images/pinterest_video.mp4
+.git/
+runtime-secrets.json
+**/runtime-secrets.json
+**/*.pem
+**/*.key
+**/*.bak
+**/*.backup
+**/*.dump
+**/evidence/
+evidence/
+**/*-evidence-*/
+admin/upload-cache/
+admin/tmp/
+backups/
+**/backups/
+admin/uploads/

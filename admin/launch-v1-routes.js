@@ -1,5 +1,7 @@
+const { respondUnexpectedError } = require("./error-response");
+const { trustedDomainError } = require("./public-error");
 function ok(res,data,message, status=200,id){return res.status(status).json({ok:true,code:"OK",message,data,requestId:id});}
-function fail(res,e,id){return res.status(Number(e?.status||500)).json({ok:false,code:e?.code||"INTERNAL_ERROR",message:Number(e?.status||500)>=500?"服务暂时不可用":String(e?.message||"请求失败"),data:null,requestId:id});}
+function fail(res,e,id){return respondUnexpectedError(res,e,{requestId:id,fallbackCode:"INTERNAL_ERROR",fallbackMessage:"服务暂时不可用"});}
 function registerLaunchV1Routes(app){
   const run=(fn)=>(req,res)=>Promise.resolve().then(()=>fn(req)).then(v=>ok(res,v,"操作成功",200,req.requestId)).catch(e=>fail(res,e,req.requestId));
   app.get("/v1/membership/activity",run(req=>req.saasService.membershipLaunchService.activity(req.merchantScope)));
@@ -25,12 +27,10 @@ function registerLaunchV1Routes(app){
   app.get("/v1/marketing/campaigns/:id/analytics",run(req=>m(req).analytics(req.merchantScope,req.params.id)));
 }
 function registerLaunchV1OpsRoutes(app,getService){
-  const run=(fn)=>(req,res)=>Promise.resolve().then(async()=>{if(!req.operator) throw Object.assign(new Error("运营会话无效"),{status:401,code:"OPS_AUTH_REQUIRED"}); req.saasService=await getService(); return fn(req)}).then(v=>ok(res,v,"操作成功",200,req.requestId||Date.now().toString())).catch(e=>fail(res,e,req.requestId));
+  const run=(fn)=>(req,res)=>Promise.resolve().then(async()=>{if(!req.operator) throw trustedDomainError(401, "OPS_AUTH_REQUIRED", "运营会话无效"); req.saasService=await getService(); return fn(req)}).then(v=>ok(res,v,"操作成功",200,req.requestId||Date.now().toString())).catch(e=>fail(res,e,req.requestId));
   app.patch("/ops/v1/tenants/:id/status",run(req=>req.saasService.operatorLaunchService.setTenantStatus(req.operator,req.params.id,req.body?.status,{requestId:req.requestId})));
   app.post("/ops/v1/feature-flags",run(req=>req.saasService.operatorLaunchService.upsertFlag(req.operator,req.body||{},{requestId:req.requestId})));
   app.patch("/ops/v1/feature-flags/:key/overrides",run(req=>req.saasService.operatorLaunchService.setOverride(req.operator,req.params.key,req.body?.tenantId,req.body?.workspaceId,req.body?.enabled,{requestId:req.requestId})));
   app.get("/ops/v1/tenants/:tenantId/workspaces/:workspaceId/diagnostics",run(req=>req.saasService.operatorLaunchService.diagnostics(req.params.tenantId,req.params.workspaceId)));
 }
 module.exports={registerLaunchV1Routes,registerLaunchV1OpsRoutes};
-
-

@@ -1,9 +1,10 @@
 const crypto = require("node:crypto");
 const { AppointmentError } = require("./appointment-service");
+const { respondUnexpectedError } = require("./error-response");
 
 function requestId(prefix = "appointment") { return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`; }
 function ok(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
-function fail(res, error, id = requestId()) { const status = Number(error?.status || 500); const message = status >= 500 && !(error instanceof AppointmentError) ? "服务暂时不可用" : String(error?.message || "请求失败"); return res.status(status).json({ ok: false, code: error?.code || "INTERNAL_ERROR", message, data: null, requestId: id }); }
+function fail(res, error, id = requestId()) { return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" }); }
 
 function verifyGateway(req) {
   const expected = String(process.env.ATELIER_APPOINTMENT_GATEWAY_TOKEN || "");

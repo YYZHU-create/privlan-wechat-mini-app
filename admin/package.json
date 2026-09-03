@@ -18,5 +18,10 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
     "@playwright/test": "^1.62.1"
-  }
+  },
+  "engines": {
+    "node": "22.x",
+    "pnpm": "11.7.0"
+  },
+  "packageManager": "pnpm@11.7.0"
 }

@@ -1,3 +1,4 @@
+const { trustedDomainError } = require("./public-error");
 const crypto = require("node:crypto");
 
 function scopeQuery(scope, extra = []) {
@@ -42,7 +43,7 @@ function createMeooCustomerRepository({ adapter } = {}) {
 
   async function get360(scope, customerId) {
     const customer = (await rows("customers", scope, `${scopeQuery(scope, [["id", customerId]])}&limit=1`)).find(row => String(row.id) === String(customerId));
-    if (!customer) throw Object.assign(new Error("客户不存在"), { status: 404, code: "CUSTOMER_NOT_FOUND" });
+    if (!customer) throw trustedDomainError(404, "CUSTOMER_NOT_FOUND", "客户不存在");
     const appointments = await rows("appointments", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=start_at.desc&limit=200`);
     const orders = await rows("orders", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=created_at.desc&limit=200`);
     const events = await rows("customer_events", scope, `${scopeQuery(scope, [["customer_id", customerId]])}&order=occurred_at.desc&limit=200`);
@@ -131,12 +132,12 @@ function createMeooAppointmentReadRepository({ adapter } = {}) {
   }
   async function requireStaff(scope, staffId) {
     const staff = (await listStaff(scope)).find(item => String(item.id) === String(staffId));
-    if (!staff) throw Object.assign(new Error("员工不存在"), { status: 404, code: "STAFF_NOT_FOUND" });
+    if (!staff) throw trustedDomainError(404, "STAFF_NOT_FOUND", "员工不存在");
     return staff;
   }
   async function requireStaffAssignment(scope, staffId) {
     const assignment = (await rows("staff_store_assignments", scope, `${scopeQuery(scope, [["staff_id", staffId]])}&limit=1`))[0];
-    if (!assignment) throw Object.assign(new Error("员工不存在"), { status: 404, code: "STAFF_NOT_FOUND" });
+    if (!assignment) throw trustedDomainError(404, "STAFF_NOT_FOUND", "员工不存在");
     return assignment;
   }
   async function listStaffSchedules(scope, staffId) {
@@ -155,12 +156,12 @@ function createMeooAppointmentReadRepository({ adapter } = {}) {
   }
   async function getAppointment(scope, id) {
     const row = (await rows("appointments", scope, `${scopeQuery(scope, [["id", id]])}&limit=1`))[0];
-    if (!row) throw Object.assign(new Error("预约不存在"), { status: 404, code: "APPOINTMENT_NOT_FOUND" });
+    if (!row) throw trustedDomainError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
     return { id: row.id, number: row.appointment_number, customerId: row.customer_id, customerName: row.customer_name_snapshot, customerPhone: maskPhone(row.customer_phone_snapshot), storeName: row.store_name || scope.storeName || scope.workspace?.storeName || null, storeId: row.store_id, serviceName: row.service_name_snapshot, advisorName: row.advisor_name_snapshot, startAt: row.start_at, serviceEndAt: row.service_end_at, occupiedUntil: row.occupied_until, durationMinutes: Number(row.duration_minutes_snapshot), bufferMinutes: Number(row.buffer_minutes_snapshot), timezone: row.timezone_snapshot, notes: row.notes, source: row.source, status: row.status, statusLabel: publicStatus(row.status), createdAt: row.created_at };
   }
   async function timeline(scope, id) {
     const appointment = (await rows("appointments", scope, `${scopeQuery(scope, [["id", id]])}&select=id,customer_id&limit=1`))[0];
-    if (!appointment) throw Object.assign(new Error("预约不存在"), { status: 404, code: "APPOINTMENT_NOT_FOUND" });
+    if (!appointment) throw trustedDomainError(404, "APPOINTMENT_NOT_FOUND", "预约不存在");
     const [events, audits] = await Promise.all([
       rows("customer_events", scope, `${scopeQuery(scope, [["customer_id", appointment.customer_id]])}&order=occurred_at.desc&limit=200`),
       rows("audit_events", scope, `${scopeQuery(scope, [["resource_id", id]])}&resource_type=eq.appointment&order=created_at.desc&limit=200`)

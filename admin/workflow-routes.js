@@ -1,10 +1,10 @@
+const { respondUnexpectedError } = require("./error-response");
 function success(res, data, message, status, requestId) {
   return res.status(status).json({ ok: true, code: "OK", message, data, requestId });
 }
 
 function failure(res, error, requestId) {
-  const status = Number(error?.status || 500);
-  return res.status(status).json({ ok: false, code: error?.code || "INTERNAL_ERROR", message: status >= 500 ? "服务暂时不可用" : String(error.message || "请求失败"), data: null, requestId });
+  return respondUnexpectedError(res, error, { requestId, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
 }
 
 function registerWorkflowRoutes(app) {

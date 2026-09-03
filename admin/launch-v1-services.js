@@ -1,8 +1,9 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 const id = () => crypto.randomUUID();
 const scope = s => [s.tenantId, s.workspaceId, s.storeId];
 const json = v => JSON.stringify(v ?? {});
-function err(status, code, message){ return Object.assign(new Error(message), {status, code}); }
+function err(status, code, message){ const error = Object.assign(new Error(message), {status, code}); return markTrustedPublicMessage(error, message); }
 
 function createMembershipLaunchService({db, customerService, audit, meooRepository = null}) {
   async function evaluate(scopeObj, customerId, context={}) {
@@ -111,5 +112,3 @@ function createMarketingService({db,audit,meooRepository = null}) {
   return {audienceList,audienceCreate,audienceUpdate,audienceMembers,offers,createOffer,offerUpdate,offerStatus,issue,redeem,campaigns,createCampaign,campaignUpdate,setCampaignStatus,analytics};
 }
 module.exports={createMembershipLaunchService,createOperatorLaunchService,createMarketingService};
-
-
