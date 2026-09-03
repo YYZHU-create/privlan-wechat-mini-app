@@ -1,3 +1,4 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 
 const COMPONENTS = Object.freeze([
@@ -37,7 +38,7 @@ const CAPABILITIES = Object.freeze([
 const FORBIDDEN = /(?:ignore\s+(?:all\s+)?previous|忽略之前|系统提示|system prompt|隐藏规则|api\s*key|密码|token|cookie|authorization|跨租户|other tenant|读取客户数据|read all customers|execute\s+(?:shell|sql|python)|执行\s*(?:命令|shell|sql)|修改数据库|外部网址|arbitrary\s*(?:url|code|tool)|javascript|<\/?(?:script|wxml|wxss))/i;
 
 class TemplateError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; markTrustedPublicMessage(this, message); }
 }
 
 function id() { return crypto.randomUUID(); }

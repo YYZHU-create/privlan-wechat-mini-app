@@ -34,10 +34,10 @@ node admin/migration-manifest.js --check
 The read-only Production verification command is run only after the platform owner provides an approved read-only access path:
 
 ```sh
-DATABASE_URL="$READ_ONLY_DATABASE_URL" node admin/check-schema-compatibility.js
+DATABASE_URL="$READ_ONLY_DATABASE_URL" node admin/check-migration-compatibility.js
 ```
 
-The checker opens `BEGIN READ ONLY`, applies a local statement timeout, reads only `schema_migrations`, and never runs migrations. `ATELIER_AUTO_MIGRATE` remains `0` for the deployed application service.
+The migration history checker opens `BEGIN READ ONLY`, applies a local statement timeout, reads only `schema_migrations`, and never runs migrations. It validates migration history only; full schema compatibility remains `NOT_VERIFIED`. Record `MIGRATION_HISTORY_COMPATIBILITY=PASS` only for matching migration history, and record `FULL_SCHEMA_COMPATIBILITY=NOT_VERIFIED` unless a separate catalog contract has been verified. `ATELIER_AUTO_MIGRATE` remains `0` for the deployed application service.
 
 ## Post-deployment authenticated gate
 

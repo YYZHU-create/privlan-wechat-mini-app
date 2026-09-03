@@ -1,3 +1,4 @@
+const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
 const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
 const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
@@ -10,7 +11,7 @@ const { DEFAULT_WORKFLOW_MAPPINGS } = require("./workflow-integration-mappings")
 const { createMembershipLaunchService, createOperatorLaunchService, createMarketingService } = require("./launch-v1-services");
 
 class ServiceError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; markTrustedPublicMessage(this, message); }
 }
 
 function id() { return crypto.randomUUID(); }

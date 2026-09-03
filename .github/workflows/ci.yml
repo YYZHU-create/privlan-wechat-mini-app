@@ -54,6 +54,7 @@ jobs:
           node --check saas-service.js
           node --check runtime-identity.js
           node --check migration-manifest.js
+          node --check check-migration-compatibility.js
           node --check check-schema-compatibility.js
 
       - name: Check migration manifest

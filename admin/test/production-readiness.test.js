@@ -4,8 +4,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { respondUnexpectedError } = require("../error-response");
+const { markTrustedPublicMessage } = require("../public-error");
 const { buildMigrationManifest, checkManifest, normalizeMigrationSql } = require("../migration-manifest");
-const { checkSchemaCompatibility } = require("../check-schema-compatibility");
+const { checkMigrationHistoryCompatibility, compareVersions } = require("../check-migration-compatibility");
 const { createPortableTestDatabase } = require("../database");
 const { validateRollbackPlan } = require("../../scripts/validate-rollback-plan");
 
@@ -15,16 +16,30 @@ function fakeResponse() {
   return { statusCode: null, payload: null, status(value) { this.statusCode = value; return this; }, json(value) { this.payload = value; return this; } };
 }
 
-test("unexpected server errors have stable responses and controlled request-id logging", () => {
+test("unexpected errors never trust arbitrary status, code or message", () => {
+  const marker = "postgresql://user:password@host/database; C:\\sensitive\\internal\\path; SELECT * FROM secret_table; Bearer secret-token; stack trace marker";
+  for (const [status, code] of [[400, "BAD_INTERNAL_CODE"], [409, "CONFLICT_INTERNAL_CODE"], [500, "SERVER_INTERNAL_CODE"]]) {
+    const response = fakeResponse();
+    respondUnexpectedError(response, Object.assign(new Error(marker), { status, code }), { requestId: `security_${status}`, code: "INTERNAL_ERROR", message: "服务暂时不可用，请稍后重试", logger: { error() {} } });
+    const serialized = JSON.stringify(response.payload);
+    assert.equal(response.statusCode, status);
+    assert.equal(response.payload.code, "INTERNAL_ERROR");
+    assert.equal(response.payload.error, "服务暂时不可用，请稍后重试");
+    assert.doesNotMatch(serialized, /postgresql:\/\/|sensitive\\internal|SELECT \* FROM secret_table|Bearer secret-token|stack trace marker/i);
+  }
+});
+
+test("trusted domain public messages are bounded and control characters fall back", () => {
+  const trusted = markTrustedPublicMessage(new Error("private internal text"), "输入格式错误");
   const response = fakeResponse();
-  const logged = [];
-  const marker = "fake database password; C:\\sensitive\\internal\\path; SELECT * FROM secret_table; stack trace marker";
-  respondUnexpectedError(response, new Error(marker), { requestId: "sync_test_request", code: "SYNC_FAILED", message: "同步失败，请稍后重试", logger: { error(value) { logged.push(value); } } });
-  const serialized = JSON.stringify(response.payload);
-  assert.equal(response.statusCode, 500);
-  assert.deepEqual(response.payload, { ok: false, code: "SYNC_FAILED", message: "同步失败，请稍后重试", error: "同步失败，请稍后重试", data: null, requestId: "sync_test_request" });
-  assert.doesNotMatch(serialized, /fake database password|sensitive\\internal|SELECT \* FROM secret_table|stack trace marker/i);
-  assert.deepEqual(logged, ['{"level":"error","requestId":"sync_test_request","code":"SYNC_FAILED","status":500,"event":"request_failed"}']);
+  respondUnexpectedError(response, trusted, { status: 400, code: "INVALID_INPUT", message: "服务暂时不可用" });
+  assert.equal(response.payload.error, "输入格式错误");
+  for (const publicMessage of ["x".repeat(241), "包含\n控制字符"]) {
+    const invalid = markTrustedPublicMessage(new Error("private"), publicMessage);
+    const fallback = fakeResponse();
+    respondUnexpectedError(fallback, invalid, { status: 400, code: "INVALID_INPUT", message: "请求格式无效" });
+    assert.equal(fallback.payload.error, "请求格式无效");
+  }
 });
 
 test("migration manifest is deterministic across line endings and matches the committed baseline", () => {
@@ -52,7 +67,7 @@ test("portable isolated database has the committed migration versions", async ()
   } finally { await db.close(); }
 });
 
-test("schema compatibility checker issues only a read-only transaction and migration metadata query", async () => {
+test("migration history checker issues only a read-only transaction and migration metadata query", async () => {
   const calls = [];
   class Client {
     constructor(options) { this.options = options; }
@@ -60,17 +75,23 @@ test("schema compatibility checker issues only a read-only transaction and migra
     async query(sql) { calls.push(sql); if (/SELECT version/.test(sql)) return { rows: buildMigrationManifest().migrations.map(item => ({ version: item.version })) }; return { rows: [] }; }
     async end() { calls.push("end"); }
   }
-  const result = await checkSchemaCompatibility({ connectionString: "postgresql://redacted", createClient: Client });
+  const result = await checkMigrationHistoryCompatibility({ connectionString: "postgresql://redacted", createClient: Client });
   assert.equal(result.ok, true);
   assert.deepEqual(calls, ["connect", "BEGIN READ ONLY", "SET LOCAL statement_timeout = '5000ms'", "SELECT version FROM schema_migrations ORDER BY version ASC", "ROLLBACK", "end"]);
+  assert.deepEqual(compareVersions(["001", "002"], ["001"]), { missing: ["002"], unexpected: [], ok: false });
+  assert.deepEqual(compareVersions(["001"], ["001", "003"]), { missing: [], unexpected: ["003"], ok: false });
+  assert.equal(compareVersions(["001", "002"], ["002", "001"]).ok, false);
+  assert.doesNotMatch(fs.readFileSync(path.join(ROOT, "admin/check-migration-compatibility.js"), "utf8"), /\\bSCHEMA_COMPATIBILITY=(?:PASS|FAIL|ERROR)/);
   assert.ok(calls.every(sql => !/insert|update|delete|create|alter|drop/i.test(sql)));
 });
 
-test("rollback plan validation fails closed and accepts only matching explicit targets", () => {
-  const complete = { CURRENT_RELEASE_SHA: "a".repeat(40), CURRENT_IMAGE_DIGEST: "sha256:abc", TARGET_RELEASE_SHA: "b".repeat(40), TARGET_IMAGE_DIGEST: "sha256:def", CURRENT_ROUTE_OWNER: "service/current", ROLLBACK_ROUTE_OWNER: "service/rollback", EXPECTED_PRODUCTION_PROJECT: "project-prod", EXPECTED_PRODUCTION_SERVICE: "service-prod", ACTUAL_PRODUCTION_PROJECT: "project-prod", ACTUAL_PRODUCTION_SERVICE: "service-prod" };
+test("rollback plan validation enforces field-specific strict formats and matching targets", () => {
+  const complete = { CURRENT_RELEASE_SHA: "a".repeat(40), CURRENT_IMAGE_DIGEST: `sha256:${"c".repeat(64)}`, TARGET_RELEASE_SHA: "b".repeat(64), TARGET_IMAGE_DIGEST: `sha256:${"d".repeat(64)}`, ROLLBACK_ROUTE_OWNER: "service/rollback", CURRENT_ROUTE_OWNER: "service/current", EXPECTED_PRODUCTION_PROJECT: "project-prod", EXPECTED_PRODUCTION_SERVICE: "service-prod", ACTUAL_PRODUCTION_PROJECT: "project-prod", ACTUAL_PRODUCTION_SERVICE: "service-prod" };
   assert.equal(validateRollbackPlan(complete).ok, true);
+  for (const field of ["CURRENT_RELEASE_SHA", "TARGET_RELEASE_SHA"]) for (const value of ["abc", "latest", "unknown", "a".repeat(40) + " ", "a".repeat(40) + "\n", "a".repeat(39), "a".repeat(40) + "$(x)"]) assert.equal(validateRollbackPlan({ ...complete, [field]: value }).ok, false);
+  for (const field of ["CURRENT_IMAGE_DIGEST", "TARGET_IMAGE_DIGEST"]) for (const value of ["sha256:abc", "latest", "unknown", `sha256:${"A".repeat(64)}`, `sha256:${"e".repeat(63)}`, `sha256:${"e".repeat(64)} `, `sha256:${"e".repeat(64)};`]) assert.equal(validateRollbackPlan({ ...complete, [field]: value }).ok, false);
   assert.equal(validateRollbackPlan({ ...complete, ACTUAL_PRODUCTION_PROJECT: "project-staging" }).ok, false);
-  assert.equal(validateRollbackPlan({ ...complete, TARGET_IMAGE_DIGEST: "" }).ok, false);
+  assert.equal(validateRollbackPlan({ ...complete, ACTUAL_PRODUCTION_SERVICE: "" }).ok, false);
 });
 
 test("runtime, Docker, CI, and Meoo contracts stay aligned", () => {
@@ -109,5 +130,8 @@ test("current runbooks distinguish liveness, authenticated readiness, and deploy
   assert.match(deployment, /authenticated `GET \/ops\/v1\/health`/);
   assert.match(deployment, /Node\.js 22/);
   assert.match(rollback, /validate-rollback-plan\.js/);
+  assert.match(deployment, /migration history checker/i);
+  assert.match(deployment, /FULL_SCHEMA_COMPATIBILITY=NOT_VERIFIED/);
+  assert.doesNotMatch(deployment, /SCHEMA_COMPATIBILITY=PASS/);
   for (const name of ["DEDICATED_PRODUCTION_MEOO_PROJECT_ID", "CURRENT_PRODUCTION_IMAGE_DIGEST", "ROLLBACK_ROUTE_TARGET"]) assert.match(inputs, new RegExp(name));
 });

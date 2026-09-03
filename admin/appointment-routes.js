@@ -4,7 +4,7 @@ const { respondUnexpectedError } = require("./error-response");
 
 function requestId(prefix = "appointment") { return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`; }
 function ok(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
-function fail(res, error, id = requestId()) { return respondUnexpectedError(res, error, { requestId: id, code: error?.code || "INTERNAL_ERROR", message: "服务暂时不可用", allowClientMessage: true }); }
+function fail(res, error, id = requestId()) { return respondUnexpectedError(res, error, { requestId: id, code: error?.code || "INTERNAL_ERROR", message: "服务暂时不可用" }); }
 
 function verifyGateway(req) {
   const expected = String(process.env.ATELIER_APPOINTMENT_GATEWAY_TOKEN || "");

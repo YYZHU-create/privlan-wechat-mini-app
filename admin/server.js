@@ -1,3 +1,4 @@
+const { markTrustedPublicMessage } = require("./public-error");
 /**
  * PRIVLAN 小程序管理面板 — 本地服务端 (WordPress 风格)
  * Express 提供 REST API + 静态文件服务
@@ -642,15 +643,15 @@ const MEDIA_FORMATS = [
 
 function decodeMediaUpload(name, data) {
   const match = String(data || "").match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/);
-  if (!match || match[2].length % 4 !== 0) throw Object.assign(new Error("媒体数据必须是有效的 Base64 Data URL"), { status: 400 });
+  if (!match || match[2].length % 4 !== 0) throw markTrustedPublicMessage(Object.assign(new Error("媒体数据必须是有效的 Base64 Data URL"), { status: 400 }), "媒体数据必须是有效的 Base64 Data URL");
   const mime = match[1].toLowerCase();
   const encoded = match[2];
   const buffer = Buffer.from(encoded, "base64");
-  if (!buffer.length || buffer.toString("base64").replace(/=+$/, "") !== encoded.replace(/=+$/, "")) throw Object.assign(new Error("媒体 Base64 数据无效"), { status: 400 });
+  if (!buffer.length || buffer.toString("base64").replace(/=+$/, "") !== encoded.replace(/=+$/, "")) throw markTrustedPublicMessage(Object.assign(new Error("媒体 Base64 数据无效"), { status: 400 }), "媒体 Base64 数据无效");
   const extension = path.extname(String(name || "")).toLowerCase();
   const declared = MEDIA_FORMATS.find(item => item.extensions.includes(extension) && item.mimes.includes(mime));
-  if (!declared) throw Object.assign(new Error("文件扩展名与 MIME 类型不一致"), { status: 400 });
-  if (!declared.matches(buffer)) throw Object.assign(new Error("文件内容与声明的媒体格式不一致"), { status: 400 });
+  if (!declared) throw markTrustedPublicMessage(Object.assign(new Error("文件扩展名与 MIME 类型不一致"), { status: 400 }), "文件扩展名与 MIME 类型不一致");
+  if (!declared.matches(buffer)) throw markTrustedPublicMessage(Object.assign(new Error("文件内容与声明的媒体格式不一致"), { status: 400 }), "文件内容与声明的媒体格式不一致");
   return { buffer, kind: declared.kind, format: declared.format, mime, extension };
 }
 
@@ -843,7 +844,7 @@ app.post(["/api/ai/query", "/v1/ai/query"], async (req, res) => {
       const latest = readSaasState();
       latest.aiUsageEvents.unshift({ id, tenantId, storeId, provider: "gateway", model: null, billingMode: platformStore.findScopedPolicy(latest, tenantId, storeId).mode, resultCode: providerFailureCode, inputTokens: 0, outputTokens: 0, weightedPoints: 0, createdAt: new Date().toISOString() });
       writeSaasState(latest);
-      if (error.code === "AI_QUOTA_EXHAUSTED") return aiFailure(res, 402, error.code, error.message, id);
+      if (error.code === "AI_QUOTA_EXHAUSTED") return aiFailure(res, 402, "AI_QUOTA_EXHAUSTED", "客服配额已用尽，请稍后重试", id);
     }
     aiUsage.fallbackRequests += 1;
     const fallback = fallbackFaq(text, cfg);
@@ -879,7 +880,7 @@ app.post("/v1/ai/connections", (req, res) => {
     writeSaasState(state);
     return aiSuccess(res, { status: 201, message: "模型连接已加密保存", data: platformStore.publicConnection(connection), requestId: id });
   } catch (error) {
-    return aiFailure(res, error.status || 400, error.code || "AI_CONNECTION_INVALID", error.message, id);
+    return aiFailure(res, error.status || 400, error.code || "AI_CONNECTION_INVALID", "模型连接参数无效", id);
   }
 });
 
@@ -897,7 +898,7 @@ app.post("/v1/ai/connections/:id/test", async (req, res) => {
   } catch (error) {
     connection.lastTestOk = false; connection.lastTestAt = new Date().toISOString(); connection.lastError = error.message.slice(0, 240); connection.updatedAt = connection.lastTestAt;
     appendAuditAndWrite(state, { actorType: "merchant", actorId: "local_owner", action: "ai.connection.test", resourceType: "ai_connection", resourceId: connection.id, tenantId: state.workspace.tenantId, metadata: { ok: false, code: "PROVIDER_TEST_FAILED" } });
-    return aiFailure(res, error.status || 502, error.code || "AI_PROVIDER_TEST_FAILED", `${error.message}。请检查接口地址、模型名称和 API Key。`, id, platformStore.publicConnection(connection));
+    return aiFailure(res, error.status || 502, error.code || "AI_PROVIDER_TEST_FAILED", "模型连接测试失败，请检查配置", id, platformStore.publicConnection(connection));
   }
 });
 
@@ -1134,7 +1135,7 @@ app.post("/ops/v1/ai/connections", (req, res) => {
     state.aiConnections.push(connection);
     appendAuditAndWrite(state, { actorType: "operator", actorId: req.operator.userId, action: "platform_ai.connection.create", resourceType: "ai_connection", resourceId: connection.id, tenantId: null, metadata: { provider: connection.providerName, model: connection.model } });
     res.status(201).json({ ok: true, data: platformStore.publicConnection(connection) });
-  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+  } catch (error) { respondUnexpectedError(res, error, { status: 400, code: "AI_CONNECTION_INVALID", message: "平台模型配置无效", requestId: requestId("ops-ai") }); }
 });
 
 app.post("/ops/v1/ai/connections/:id/test", async (req, res) => {
@@ -1416,7 +1417,7 @@ app.post("/api/media/upload", (req, res) => {
     }
     const folder = folderData.folders.find(item => item.id === requestedFolderId);
     res.json({ ok: true, name: destName, path: `/mp-images/${destName}`, mpPath: `/images/${destName}`, kind, size: buf.length, sizeKB: Math.round(buf.length / 1024), large: buf.length > 5 * 1024 * 1024, packageEligible: buf.length <= 5 * 1024 * 1024, packageWarning: buf.length > 5 * 1024 * 1024 ? "该素材应迁移至 CDN/COS 后再用于正式发布。" : "", folderId: requestedFolderId, folderName: folder?.name || "" });
-  } catch (e) { respondUnexpectedError(res, e, { code: "MEDIA_UPLOAD_FAILED", status: e.status, message: "素材上传失败，请稍后重试", allowClientMessage: true, requestId: requestId("media") }); }
+  } catch (e) { respondUnexpectedError(res, e, { code: "MEDIA_UPLOAD_FAILED", status: e.status, message: "素材上传失败，请稍后重试", requestId: requestId("media") }); }
 });
 
 app.post("/api/media/move", (req, res) => {
