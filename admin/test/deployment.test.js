@@ -75,7 +75,7 @@ test("Docker and PostgreSQL operations files retain the production safety contra
   assert.match(dockerfile, /EXPOSE 9000/);
   assert.match(dockerfile, /127\.0\.0\.1:9000\/health/);
   assert.match(dockerfile, /HEALTHCHECK/);
-  const server = fs.readFileSync(path.join(ROOT, "admin/server.js"), "utf8");
+  const server = fs.readFileSync(path.join(ROOT, "admin/server.js"), "utf8").replace(/\r\n/g, "\n");
   assert.match(server, /process\.env\.PORT \|\| 9000/);
   assert.match(server, /process\.env\.HOST \|\| process\.env\.PRIVLAN_ADMIN_HOST \|\| "0\.0\.0\.0"/);
   assert.match(server, /app\.get\("\/health", \(req, res\) => \{\n  res\.status\(200\)\.json\(\{ status: "ok" \}\);\n\}\);/);
