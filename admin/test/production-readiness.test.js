@@ -88,6 +88,7 @@ test("runtime, Docker, CI, and Meoo contracts stay aligned", () => {
   assert.match(ci, /NODE_VERSION: 22/);
   assert.match(ci, /Docker build and isolated smoke/);
   assert.match(ci, /Set up Node\.js for smoke assertions/);
+  for (const name of ["DATABASE_URL", "ATELIER_LICENSE_PEPPER", "ATELIER_MASTER_KEY", "ATELIER_APPOINTMENT_GATEWAY_TOKEN", "ATELIER_OPENID_HASH_KEY"]) assert.match(ci, new RegExp(`-e ${name}=`));
   assert.match(setup, /EXPECTED_NODE_MAJOR=22/);
   assert.match(setup, /EXPECTED_PNPM_VERSION=11\.7\.0/);
   for (const pattern of [/\.git\//, /runtime-secrets\.json/, /\*\*\/\*\.pem/, /\*\*\/\*\.key/, /verification\//]) assert.match(dockerignore, pattern);

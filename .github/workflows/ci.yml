@@ -122,8 +122,13 @@ jobs:
             -e HOST=0.0.0.0 \
             -e PORT=9000 \
             -e ATELIER_DB_BACKEND=native \
+            -e DATABASE_URL=postgresql://smoke:smoke@127.0.0.1:1/feeldao_smoke \
+            -e ATELIER_LICENSE_PEPPER=pppppppppppppppppppppppppppppppp \
+            -e ATELIER_MASTER_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
             -e ATELIER_OPS_EMAIL=ops-smoke@example.invalid \
             -e ATELIER_OPS_PASSWORD=local-ci-operator-password \
+            -e ATELIER_APPOINTMENT_GATEWAY_TOKEN=gggggggggggggggggggggggggggggggg \
+            -e ATELIER_OPENID_HASH_KEY=oooooooooooooooooooooooooooooooo \
             -e PRIVLAN_DISABLE_GIT_SYNC=1 \
             "$IMAGE_TAG" >/dev/null
           for attempt in $(seq 1 45); do
