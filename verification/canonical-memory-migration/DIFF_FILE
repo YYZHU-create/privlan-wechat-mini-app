@@ -1,0 +1,11 @@
+warning: in the working copy of 'C:\Users\Administrator\.codex\visualizations\2026\09\06\01a0758e-485c-7fe0-82f7-cf4856061e79\feeldao-canonical-migration\docs\context\CURRENT_STATE.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\Administrator\.codex\visualizations\2026\09\06\01a0758e-485c-7fe0-82f7-cf4856061e79\feeldao-canonical-migration\verification\canonical-memory-migration\MODIFIED_FILE', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\Administrator\\.codex\\visualizations\\2026\\09\\06\\01a0758e-485c-7fe0-82f7-cf4856061e79\\feeldao-canonical-migration\\docs\\context\\CURRENT_STATE.md" "b/C:\\Users\\Administrator\\.codex\\visualizations\\2026\\09\\06\\01a0758e-485c-7fe0-82f7-cf4856061e79\\feeldao-canonical-migration\\verification\\canonical-memory-migration\\MODIFIED_FILE"
+index 02335fb..4b3fe64 100644
+--- "a/C:\\Users\\Administrator\\.codex\\visualizations\\2026\\09\\06\\01a0758e-485c-7fe0-82f7-cf4856061e79\\feeldao-canonical-migration\\docs\\context\\CURRENT_STATE.md"
++++ "b/C:\\Users\\Administrator\\.codex\\visualizations\\2026\\09\\06\\01a0758e-485c-7fe0-82f7-cf4856061e79\\feeldao-canonical-migration\\verification\\canonical-memory-migration\\MODIFIED_FILE"
+@@ -153,3 +153,4 @@ STATUS=RESOLVED
+ ## Historical state rule
+
+ Historical ports, URLs, SHAs, runtime observations, database credentials, and deployment results are evidence only. Revalidate them before using them as current production truth.
++MIGRATION_ARTIFACT_STATE=MODIFIED_COPY
