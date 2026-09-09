@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /home/project
+          sudo -n install -d -o "$(id -u)" -g "$(id -g)" /home/project
           cp -a ./. /home/project/
           cd /home/project
           cat > package.json <<'JSON'
