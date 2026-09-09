@@ -34,10 +34,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /home/project
           mkdir -p /home/project
           cp -a ./. /home/project/
-          cat > /home/project/package.json <<'JSON'
+          cd /home/project
+          cat > package.json <<'JSON'
           {
             "name": "feeldao-v12-ci-validation",
             "private": true,
@@ -45,7 +45,6 @@ jobs:
             "devDependencies": { "typescript": "5.9.3" }
           }
           JSON
-          cd /home/project
           printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
           printf 'POSIX_HARNESS_ROOT=/home/project\n'
           test "$(uname -s)" = Linux
