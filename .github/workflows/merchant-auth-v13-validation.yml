@@ -1,4 +1,4 @@
-name: Merchant Auth v12 frozen validation
+name: Merchant Auth v13 validation
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
           cd /home/project
           cat > package.json <<'JSON'
           {
-            "name": "feeldao-v12-ci-validation",
+            "name": "feeldao-v13-ci-validation",
             "private": true,
             "packageManager": "pnpm@11.7.0",
             "devDependencies": { "typescript": "5.9.3" }
@@ -53,18 +53,18 @@ jobs:
           grep -Fq 'const ROOT = "/home/project";' /home/project/tests/privlan-merchant-login/build.mjs
           printf 'POSIX_HARNESS_ROOT_MATCH=YES\n'
 
-      - name: Verify frozen identity
+      - name: Verify V13 and V12 rollback identities
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
-          v12=$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')
+          v13=$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')
           v11=$(sha256sum archive/index.v11.ts | awk '{print $1}')
-          test "$v12" = 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
+          test "$v13" = b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
           test "$v11" = 692a7da254ab4f479762aaba2e219f603b57a41b6e283d8e35b8681ede86bb7a
           test "$(grep -oF 'https://esm.sh/@supabase/supabase-js@2.115.0' functions/privlan-merchant-api/index.ts | wc -l)" -ge 1
           test "$(grep -oE '@supabase/supabase-js@2([^.]|$)' functions/privlan-merchant-api/index.ts | wc -l)" = 0
-          printf 'V12_CANDIDATE_SHA=%s\nV11_ARCHIVE_SHA=%s\n' "$v12" "$v11"
+          printf 'V13_CANDIDATE_SHA=%s\nV12_ROLLBACK_SHA=%s\nV11_ARCHIVE_SHA=%s\n' "$v13" "$(sha256sum archive/v12/index.ts | awk '{print $1}')" "$v11"
           printf 'SUPABASE_EXACT_PIN_PRESENT=YES\nFLOATING_SUPABASE_IMPORT_COUNT=0\n'
 
       - name: Install dependencies
@@ -91,15 +91,15 @@ jobs:
           node tests/privlan-merchant-login/build.mjs
           printf 'FUNCTION_BUILD_EXIT=0\n'
 
-      - name: Frozen tests
+      - name: V13 tests
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
-          node --test tests/privlan-merchant-login/*.test.mjs | tee /tmp/merchant-auth-v12-tests.log
+          node --test tests/privlan-merchant-login/*.test.mjs | tee /tmp/merchant-auth-v13-tests.log
           node - <<'NODE'
           const fs = require('node:fs');
-          const text = fs.readFileSync('/tmp/merchant-auth-v12-tests.log', 'utf8');
+          const text = fs.readFileSync('/tmp/merchant-auth-v13-tests.log', 'utf8');
           const get = (key) => {
             const m = text.match(new RegExp('^# ' + key + ' (\\d+)$', 'm'));
             if (!m) throw new Error('missing ' + key);
@@ -109,7 +109,7 @@ jobs:
           const pass = get('pass');
           const fail = get('fail');
           const skipped = get('skipped');
-          if (total !== 169 || pass !== 169 || fail !== 0) {
+          if (total !== 172 || pass !== 172 || fail !== 0) {
             throw new Error(`unexpected test counts ${total}/${pass}/${fail}`);
           }
           for (const marker of [
@@ -148,5 +148,6 @@ jobs:
         run: |
           set -euo pipefail
           cd /home/project
-          test "$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')" = 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
-          printf 'POST_TEST_CANDIDATE_SHA_MATCH=YES\nPOST_TEST_MANIFEST_MATCH=YES\n'
+          test "$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')" = b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
+          test "$(sha256sum archive/v12/index.ts | awk '{print $1}')" = 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
+          printf 'POST_TEST_V13_SHA_MATCH=YES\nPOST_TEST_V12_ROLLBACK_SHA_MATCH=YES\n'

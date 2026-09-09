@@ -5,3 +5,11 @@ Current Production procedures are maintained in [docs/runbooks/production-deploy
 `/health` is a public liveness endpoint that returns only `{"status":"ok"}`. Production readiness requires the authenticated Operator health, login, session, and audit gates documented in the deployment runbook.
 
 Internal `ATELIER_*` environment variables remain compatibility identifiers. Deployment metadata is supplied through verified environment values or a build-generated `runtime-build.json`; stale repository release files are not trusted.
+
+## Merchant Auth function
+
+Merchant Auth deployment source: `functions/privlan-merchant-api/index.ts`
+
+Rollback source: `archive/v12/index.ts`
+
+The V13 deployment candidate is identified by the reviewed Git revision and its source SHA256. Runtime scope configuration is supplied by the deployment environment.

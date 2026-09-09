@@ -1,0 +1,54 @@
+V13 Merchant Auth runtime-scope remediation
+
+BRANCH=codex/merchant-auth-v12-ci-validation
+HEAD=4246b1a03e7019f939e38c080708444367379f70
+RUNTIME_SOURCE=functions/privlan-merchant-api/index.ts
+V13_SHA256=b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
+V12_FROZEN_SOURCE=archive/v12/index.ts
+V12_ROLLBACK_SHA256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
+V12_FROZEN_RECHECK=PASS
+
+CHANGESET
+- Probe tenant/workspace identities come only from MERCHANT_STORAGE_PROBE_TENANT_ID and MERCHANT_STORAGE_PROBE_WORKSPACE_ID.
+- Missing, incomplete, or non-UUID configuration closes all four probe routes with 404 before Storage access.
+- Configured foreign scope preserves endpoint-specific 403, merchant.authorization_denied audit, and zero Storage access.
+- Owner fail-closed and the exact Supabase 2.115.0 import remain unchanged.
+- Existing fixture assertions remain; four storage fixtures inject synthetic runtime configuration and probe-runtime-config.test.mjs adds three V13 cases.
+
+BASELINE
+INPUT=archive/v12/index.ts sha256 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
+BUILD_COMMAND=C:\Users\Administrator\AppData\Local\Temp\feeldao-v13-node-22.22.2\node-v22.22.2-win-x64\node.exe tmp\v12-baseline-build.mjs <repo> C:\home\project\node_modules\typescript\bin\tsc archive\v12\index.ts v12-mbuild
+BUILD_RESULT=built -> tmp\v12-mbuild\out
+BUILD_EXIT=0
+TEST_COMMAND=Node 22.22.2 --test <temporary Windows-URL-compatible copies of the seven existing test files>
+TEST_RESULT=# tests 169; # pass 169; # fail 0
+TEST_EXIT=0
+
+MODIFIED
+INPUT=functions/privlan-merchant-api/index.ts sha256 b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
+BUILD_COMMAND=C:\Users\Administrator\AppData\Local\Temp\feeldao-v13-node-22.22.2\node-v22.22.2-win-x64\node.exe tmp\v13-local-build.mjs <repo> C:\home\project\node_modules\typescript\bin\tsc
+BUILD_RESULT=built -> tmp\mbuild\out
+BUILD_EXIT=0
+TEST_COMMAND=Node 22.22.2 --test <temporary Windows-URL-compatible copies of all eight test files>
+TEST_RESULT=# tests 172; # pass 172; # fail 0
+TEST_EXIT=0
+DENO_COMMAND=C:\Users\Administrator\AppData\Local\Temp\v12-deno-check-72b3d120-69fd-4549-9520-280b80e840d3\deno.exe check --no-lock --reload functions/privlan-merchant-api/index.ts
+DENO_RESULT=Check functions/privlan-merchant-api/index.ts
+DENO_EXIT=0
+
+ROLLBACK
+COMMAND=C:\Program Files\Git\bin\sh.exe verification\merchant-auth-v13-runtime-scope\ROLLBACK.sh verification\merchant-auth-v13-runtime-scope\rollback-test-root
+INPUT_SHA256=b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
+RESULT_SHA256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
+RESULT=restored V12 source bytes in isolated rollback copy
+EXIT=0
+
+SECURITY
+REAL_PRIVLAN_UUID_HITS=0
+RUNTIME_CONFIGURATION_KEYS=PASS
+NO_LEGACY_UUID_FALLBACK=PASS
+FOREIGN_SCOPE_403_AUDIT_STORAGE_FREE=PASS
+EXACT_SUPABASE_PIN_2_115_0=PASS
+OWNER_FAIL_CLOSED=PASS
+AUTHORIZATION_DENIED_AUDIT=PASS
+GIT_DIFF_CHECK=PASS

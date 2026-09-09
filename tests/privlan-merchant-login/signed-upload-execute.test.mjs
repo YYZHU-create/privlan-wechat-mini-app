@@ -38,7 +38,7 @@ console.error = (...a) => logged.push({ level: "error", event: a[0], fields: a[1
 /* ---------- 可控 env + 捕获 handler ---------- */
 globalThis.__DenoEnv = {
   get: (k) =>
-    k === "SUPABASE_URL" ? "https://mock.invalid" : k === "SUPABASE_SERVICE_ROLE_KEY" ? SERVICE_ROLE_KEY : undefined,
+    k === "SUPABASE_URL" ? "https://mock.invalid" : k === "SUPABASE_SERVICE_ROLE_KEY" ? SERVICE_ROLE_KEY : k === "MERCHANT_STORAGE_PROBE_TENANT_ID" ? "11111111-1111-4111-8111-111111111111" : k === "MERCHANT_STORAGE_PROBE_WORKSPACE_ID" ? "22222222-2222-4222-8222-222222222222" : undefined,
 };
 let handler = null;
 globalThis.__DenoServe = (cb) => {

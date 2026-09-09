@@ -1,20 +1,17 @@
-# source/index.ts 的落点绑定
+# Merchant Auth deployment paths
 
-```
-DEPLOYABLE_PATH=functions/privlan-merchant-api/index.ts
+```text
+MERCHANT_AUTH_DEPLOYMENT_SOURCE=functions/privlan-merchant-api/index.ts
+MERCHANT_AUTH_V13_SHA256=b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
 EDGE_FUNCTION_NAME=privlan-merchant-api
-CANDIDATE=v12
-SHA256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
-SIZE_BYTES=99193
-LINE_COUNT=2390
+MERCHANT_AUTH_ROLLBACK_SOURCE=archive/v12/index.ts
+MERCHANT_AUTH_V12_ROLLBACK_SHA256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
 ```
 
-本文件与 `functions/privlan-merchant-api/index.ts` 是同一份字节（复制后已复算 sha256 相等）。
-链路的四段同一性依赖它：
+Merchant Auth deployment source:
+`functions/privlan-merchant-api/index.ts`
 
-```
-TESTED_SOURCE = ARCHIVED_SOURCE = HANDOFF_SOURCE = FUTURE_DEPLOY_SOURCE
-```
+Rollback source:
+`archive/v12/index.ts`
 
-部署时**必须**直接取本文件（或 archive/v12/index.ts）落到 `functions/privlan-merchant-api/index.ts`，
-不得在外部环境重新格式化、重新排版或"顺手修一下"任何字符 —— 一旦 sha256 变了，本包的全部证据即失效。
+The deployment candidate is the reviewed Git revision containing the V13 source. The V12 archive is retained for byte-verified rollback.

@@ -1055,29 +1055,19 @@ function logStorageReadFail(requestId: string, stage: string, error: unknown): v
 /* ---------- 7.6 临时签发探针的模块级常量（SIGNED_UPLOAD_ISSUANCE_PROBE） ---------- */
 
 /**
- * 一次性探针，不是通用上传 API。身份由部署期 runtime configuration 显式提供：
- * 未配置、配置不完整或配置非 UUID 时，所有 probe 路由关闭且不会触及 Storage。
+ * 一次性探针，不是通用上传 API。身份常量写死在源码里正是为了让它无法被泛化：
+ * 任何非本轮 canonical Staging 身份的会话都会在路由内被 403 掉。
  * 本轮结束后应连同路由一起摘除。
  */
 const PROBE_ROUTE = "/internal/storage/signed-upload-probe";
-const PROBE_TENANT_ID = (Deno.env.get("MERCHANT_STORAGE_PROBE_TENANT_ID") || "").trim();
-const PROBE_WORKSPACE_ID = (Deno.env.get("MERCHANT_STORAGE_PROBE_WORKSPACE_ID") || "").trim();
+const PROBE_TENANT_ID = "1460dca3-802f-4cb7-808d-2cb1865fb0a1";
+const PROBE_WORKSPACE_ID = "f013b82e-b869-4f52-9598-8eb53deed303";
 const PROBE_BASENAME = "icon-back.png";
-const PROBE_SCOPE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** 临时 Storage probe 仅在部署显式提供完整 UUID scope 时开放；源码不保存任何租户身份。 */
-function hasConfiguredProbeScope(): boolean {
-  return PROBE_SCOPE_UUID.test(PROBE_TENANT_ID) && PROBE_SCOPE_UUID.test(PROBE_WORKSPACE_ID);
-}
-
-function matchesConfiguredProbeScope(scope: Pick<Scope, "tenantId" | "workspaceId">): boolean {
-  return hasConfiguredProbeScope() && scope.tenantId === PROBE_TENANT_ID && scope.workspaceId === PROBE_WORKSPACE_ID;
-}
 
 /* ---------- 7.6b E1.5 执行切片的模块级常量（SIGNED_UPLOAD_EXECUTION_SLICE） ---------- */
 
 /**
- * 与探针同一 deployment-configured scope（复用上方配置），差别只在授权范围：
+ * 与探针同一 canonical 身份（复用上方常量），差别只在授权范围：
  * 探针 token 六不落；本端点经 E1.5 明确授权，把短期、限定上传用途的
  * signed authorization 返回给当前真实 authenticated browser。
  * 服务端权威指纹：浏览器脚本必须在上传前用它们闸住内嵌字节。
@@ -1095,7 +1085,7 @@ const EXECUTE_EXPECTED_MIMETYPE = "image/png";
  * 而「云服务」面板只能建根级扁平对象，产不出 5 层 canonical key。
  * Storage 内网直连不经 Kong，故该路径不受网关限制约束（本切片即为实证）。
  *
- * scope lock 与权威指纹复用探针/execute 同一组 runtime configuration：本切片只写 canonical 的
+ * 身份锁与权威指纹复用探针/execute 同一组常量：本切片只写 canonical 的
  * icon-back.png（307B / 固定 sha256）。泛化到 64 个素材属另一切片，
  * 需先解决 basename 白名单与逐素材权威指纹，届时再放开。
  */
@@ -1479,7 +1469,7 @@ async function handle(req: Request): Promise<Response> {
    *   token 六不落  不进响应体、不进日志、不进库、不进文件、不回显、不返回任何客户端
    *   upsert=false  固定，防覆盖已迁移素材
    *   已存在即拒    canonical 对象已在则 409，杜绝把 storage.objects 撑出第 2 行
-   *   身份锁定      仅对 deployment-configured 租户/工作区开放，其他身份一律 403
+   *   身份锁定      只对本轮 canonical Staging 租户/工作区开放，其他身份（含 Production）一律 403
    */
   if (path === PROBE_ROUTE) {
     // 不用 405：405 会确认路由存在，统一按未知路由处理
@@ -1487,11 +1477,7 @@ async function handle(req: Request): Promise<Response> {
     if (!sessionWritesAllowed().allowed) {
       return failure(new ServiceError(503, "SESSION_BACKEND_READONLY", "会话写入已被实例闸门关闭"), requestId);
     }
-    if (!hasConfiguredProbeScope()) {
-      logEvent("warn", "signed_upload_probe_disabled", { requestId, operation: "signed_upload_probe", stage: "probe_scope_configuration" });
-      return failure(new ServiceError(404, "ROUTE_NOT_FOUND", "接口不存在"), requestId);
-    }
-    if (!matchesConfiguredProbeScope(scope)) {
+    if (scope.tenantId !== PROBE_TENANT_ID || scope.workspaceId !== PROBE_WORKSPACE_ID) {
       logEvent("warn", "signed_upload_probe_scope_refused", {
         requestId,
         operation: "signed_upload_probe",
@@ -1659,11 +1645,7 @@ async function handle(req: Request): Promise<Response> {
     if (!sessionWritesAllowed().allowed) {
       return failure(new ServiceError(503, "SESSION_BACKEND_READONLY", "会话写入已被实例闸门关闭"), requestId);
     }
-    if (!hasConfiguredProbeScope()) {
-      logEvent("warn", "signed_upload_execute_disabled", { requestId, operation: "signed_upload_execute", stage: "probe_scope_configuration" });
-      return failure(new ServiceError(404, "ROUTE_NOT_FOUND", "接口不存在"), requestId);
-    }
-    if (!matchesConfiguredProbeScope(scope)) {
+    if (scope.tenantId !== PROBE_TENANT_ID || scope.workspaceId !== PROBE_WORKSPACE_ID) {
       logEvent("warn", "signed_upload_execute_scope_refused", {
         requestId,
         operation: "signed_upload_execute",
@@ -1778,11 +1760,7 @@ async function handle(req: Request): Promise<Response> {
     if (!sessionWritesAllowed().allowed) {
       return failure(new ServiceError(503, "SESSION_BACKEND_READONLY", "会话写入已被实例闸门关闭"), requestId);
     }
-    if (!hasConfiguredProbeScope()) {
-      logEvent("warn", "proxy_upload_disabled", { requestId, operation: "proxy_upload", stage: "probe_scope_configuration" });
-      return failure(new ServiceError(404, "ROUTE_NOT_FOUND", "接口不存在"), requestId);
-    }
-    if (!matchesConfiguredProbeScope(scope)) {
+    if (scope.tenantId !== PROBE_TENANT_ID || scope.workspaceId !== PROBE_WORKSPACE_ID) {
       logEvent("warn", "proxy_upload_scope_refused", {
         requestId,
         operation: "proxy_upload",
@@ -2010,11 +1988,7 @@ async function handle(req: Request): Promise<Response> {
     if (!sessionWritesAllowed().allowed) {
       return failure(new ServiceError(503, "SESSION_BACKEND_READONLY", "会话写入已被实例闸门关闭"), requestId);
     }
-    if (!hasConfiguredProbeScope()) {
-      logEvent("warn", "capacity_test_disabled", { requestId, operation: "capacity_test", stage: "probe_scope_configuration" });
-      return failure(new ServiceError(404, "ROUTE_NOT_FOUND", "接口不存在"), requestId);
-    }
-    if (!matchesConfiguredProbeScope(scope)) {
+    if (scope.tenantId !== PROBE_TENANT_ID || scope.workspaceId !== PROBE_WORKSPACE_ID) {
       logEvent("warn", "capacity_test_scope_refused", {
         requestId,
         operation: "capacity_test",

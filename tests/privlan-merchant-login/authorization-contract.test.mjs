@@ -58,7 +58,7 @@ console.warn = (...args) => logged.push({ level: "warn", event: args[0], fields:
 const hasEvent = (event) => logged.some((l) => l.event === event);
 
 /* ---------- 可控 env ---------- */
-const ENV = { SUPABASE_URL: "https://mock.invalid", SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY };
+const ENV = { SUPABASE_URL: "https://mock.invalid", SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY, MERCHANT_STORAGE_PROBE_TENANT_ID: "11111111-1111-4111-8111-111111111111", MERCHANT_STORAGE_PROBE_WORKSPACE_ID: "22222222-2222-4222-8222-222222222222" };
 globalThis.__DenoEnv = { get: (key) => ENV[key] };
 
 let handler = null;
