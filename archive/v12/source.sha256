@@ -1,0 +1,21 @@
+0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55  index.ts
+99193  bytes
+2390  lines
+version_candidate=v12
+status=CANDIDATE_NOT_DEPLOYED
+deployed_online_version=v11
+
+[re-cut] 本归档于 v12 首次出片后被重新切过一次。
+  v12-first-cut  sha256=2e6ea235f8ed2bac5d9964eedd11f0d12b52ac1fe8aa1e9e19e8e23e23b20860  97766 bytes  2374 lines
+  v12-recut      sha256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55  99193 bytes  2390 lines
+  重切原因：用户裁定「不要把属性 6 无差别推到全函数，只把成功授予访问权限的 login/session
+  issuance 路径升级为 required fail-closed，并确保 Audit 失败时新 Session 被可靠补偿撤销、
+  Token 不返回」。改动 = 1 处实参升级 + 2 处注释重写，共 +16 行 / +1427 字节。
+  合法性依据：v12 从未部署（deployed_online_version 恒为 v11），故 v12 是「同一候选的重新出片」
+  而非「覆盖已发布版本」。首切片哈希在此保留，可完整追溯，不作删除。
+
+created_via=cp from functions/privlan-merchant-api/index.ts (byte-identical)
+triple_identity_verified=working file / v12/index.ts / index.v12.ts 三者 sha256 前 12 位均为 0010ca398495（同一次 copyFileSync 产生，由 Node crypto 复算，非转录）
+rollback_anchor=archive/privlan-merchant-api/index.v11.ts sha256=692a7da254ab4f479762aaba2e219f603b57a41b6e283d8e35b8681ede86bb7a (UNCHANGED, 90225 bytes, 2179 lines)
+note=平台无版本控制面，deploy-function 覆盖即不可逆；本文件与 index.ts 是 v12 的唯一源码证据。
+     回滚到 v11 = 把 index.v11.ts 复制回工作文件后 redeploy。
