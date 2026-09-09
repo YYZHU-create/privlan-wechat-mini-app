@@ -1,5 +1,5 @@
 BRANCH=codex/merchant-auth-v12-ci-validation
-HEAD_BEFORE_COMMIT=4246b1a03e7019f939e38c080708444367379f70
+HEAD_BEFORE_CLEANUP_COMMIT=30336b367e50bb60214358767467f309c07eaa79
 BASELINE
 COMMAND=Node 22.22.2 tmp/v12-baseline-build.mjs <repo> C:\home\project\node_modules\typescript\bin\tsc archive/v12/index.ts v12-mbuild; Node 22.22.2 --test <7 V12 compatibility test files>
 INPUT=archive/v12/index.ts
@@ -17,16 +17,11 @@ COMMAND=Deno 2.9.2 check --no-lock --reload functions/privlan-merchant-api/index
 RESULT=Check functions/privlan-merchant-api/index.ts
 EXIT=0
 ROLLBACK
-COMMAND=C:\Program Files\Git\bin\sh.exe verification/merchant-auth-v13-canonical-promotion/ROLLBACK.sh verification/merchant-auth-v13-canonical-promotion/rollback-test-root-canonical-promotion
+COMMAND=ROLLBACK.sh <temporary isolated copy>
 INPUT_SHA256=b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
 RESULT_SHA256=0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
-RESULT=restored V12 bytes in isolated rollback copy
+RESULT=restored V12 bytes in isolated copy
 EXIT=0
-DOCUMENTATION
-DEPLOYMENT_SOURCE=functions/privlan-merchant-api/index.ts
-ROLLBACK_SOURCE=archive/v12/index.ts
-SAFETY
-GIT_DIFF_CHECK=PASS
-MIGRATION_CHANGES=NONE
-UI_CHANGES=NONE
-SECRET_OR_ENV_FILE_CHANGES=NONE
+CLEANUP
+VERIFICATION_ARTIFACTS=compact metadata only; no source snapshots, test copies, or raw test logs
+RUNTIME_BEHAVIOR_CHANGED=NO

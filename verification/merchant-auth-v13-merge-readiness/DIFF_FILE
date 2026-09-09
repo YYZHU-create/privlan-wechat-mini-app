@@ -1,0 +1,27 @@
+ .github/workflows/merchant-auth-v13-validation.yml |  132 +-
+ .../authorization-contract.test.mjs                |    1 -
+ .../BASELINE_FILE                                  | 2389 -------------------
+ .../BASELINE_HASHES.txt                            |    4 -
+ .../BASELINE_TEST_OUTPUT.txt                       | 1027 ---------
+ .../DENO_CHECK_OUTPUT.txt                          |   48 -
+ .../DIFF_FILE                                      |  333 ---
+ .../MODIFIED_FILE                                  | 2415 --------------------
+ .../MODIFIED_TEST_OUTPUT.txt                       | 1085 ---------
+ .../ROLLBACK_TEST_OUTPUT.txt                       |    1 -
+ .../VERIFICATION.txt                               |   32 -
+ .../archive/v12/index.ts                           | 2389 -------------------
+ .../functions/privlan-merchant-api/index.ts        | 2389 -------------------
+ .../MODIFIED_FILE                                  |    3 +
+ .../ROLLBACK.sh                                    |    0
+ .../merchant-auth-v13-merge-readiness/SHA256.txt   |    3 +
+ .../merchant-auth-v13-runtime-scope/BASELINE_FILE  | 2389 -------------------
+ .../BASELINE_TEST_OUTPUT.txt                       | 1024 ---------
+ .../DENO_CHECK_OUTPUT.txt                          |   47 -
+ .../merchant-auth-v13-runtime-scope/DIFF_FILE      |  109 -
+ .../merchant-auth-v13-runtime-scope/MODIFIED_FILE  | 2415 --------------------
+ .../MODIFIED_TEST_OUTPUT.txt                       | 1082 ---------
+ .../merchant-auth-v13-runtime-scope/ROLLBACK.sh    |    8 -
+ .../VERIFICATION.txt                               |   54 -
+ .../rollback-test-root/archive/v12/index.ts        | 2389 -------------------
+ .../functions/privlan-merchant-api/index.ts        | 2389 -------------------
+ 26 files changed, 43 insertions(+), 24114 deletions(-)

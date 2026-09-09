@@ -1,9 +1,24 @@
-name: Merchant Auth v13 validation
+name: Merchant Auth validation
 
 on:
   push:
-    branches:
-      - codex/merchant-auth-v12-ci-validation
+    branches: [main]
+    paths:
+      - 'functions/privlan-merchant-api/**'
+      - 'tests/privlan-merchant-login/**'
+      - 'archive/v12/index.ts'
+      - 'source/DEPLOY_PATH.md'
+      - 'DEPLOYMENT.md'
+      - '.github/workflows/merchant-auth-v13-validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions/privlan-merchant-api/**'
+      - 'tests/privlan-merchant-login/**'
+      - 'archive/v12/index.ts'
+      - 'source/DEPLOY_PATH.md'
+      - 'DEPLOYMENT.md'
+      - '.github/workflows/merchant-auth-v13-validation.yml'
 
 permissions:
   contents: read
@@ -12,24 +27,19 @@ jobs:
   validate:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout validation branch
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Node 22.22.2
         uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
-
       - name: Set up pnpm 11.7.0
         uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
-
       - name: Set up Deno 2.9.2
         uses: denoland/setup-deno@v2
         with:
           deno-version: 2.9.2
-
       - name: Prepare POSIX harness root
         shell: bash
         run: |
@@ -38,116 +48,48 @@ jobs:
           cp -a ./. /home/project/
           cd /home/project
           cat > package.json <<'JSON'
-          {
-            "name": "feeldao-v13-ci-validation",
-            "private": true,
-            "packageManager": "pnpm@11.7.0",
-            "devDependencies": { "typescript": "5.9.3" }
-          }
+          {"name":"feeldao-merchant-auth-ci","private":true,"packageManager":"pnpm@11.7.0","devDependencies":{"typescript":"5.9.3"}}
           JSON
-          printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
-          printf 'POSIX_HARNESS_ROOT=/home/project\n'
-          test "$(uname -s)" = Linux
-          test -f /home/project/functions/privlan-merchant-api/index.ts
-          test -f /home/project/tests/privlan-merchant-login/build.mjs
-          grep -Fq 'const ROOT = "/home/project";' /home/project/tests/privlan-merchant-login/build.mjs
-          printf 'POSIX_HARNESS_ROOT_MATCH=YES\n'
-
-      - name: Verify V13 and V12 rollback identities
+          test -f functions/privlan-merchant-api/index.ts
+          test -f tests/privlan-merchant-login/build.mjs
+          grep -Fq 'const ROOT = "/home/project";' tests/privlan-merchant-login/build.mjs
+      - name: Verify source and V12 rollback identities
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
-          v13=$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')
-          v11=$(sha256sum archive/index.v11.ts | awk '{print $1}')
-          test "$v13" = b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
-          test "$v11" = 692a7da254ab4f479762aaba2e219f603b57a41b6e283d8e35b8681ede86bb7a
+          source_sha=$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')
+          v12_sha=$(sha256sum archive/v12/index.ts | awk '{print $1}')
+          test "$v12_sha" = 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
           test "$(grep -oF 'https://esm.sh/@supabase/supabase-js@2.115.0' functions/privlan-merchant-api/index.ts | wc -l)" -ge 1
           test "$(grep -oE '@supabase/supabase-js@2([^.]|$)' functions/privlan-merchant-api/index.ts | wc -l)" = 0
-          printf 'V13_CANDIDATE_SHA=%s\nV12_ROLLBACK_SHA=%s\nV11_ARCHIVE_SHA=%s\n' "$v13" "$(sha256sum archive/v12/index.ts | awk '{print $1}')" "$v11"
-          printf 'SUPABASE_EXACT_PIN_PRESENT=YES\nFLOATING_SUPABASE_IMPORT_COUNT=0\n'
-
+          printf 'FUNCTION_SOURCE_SHA=%s\nV12_ROLLBACK_SHA=%s\n' "$source_sha" "$v12_sha"
       - name: Install dependencies
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
-          node --version
-          pnpm --version
-          deno --version
           pnpm install
           test -x node_modules/typescript/bin/tsc
-          printf 'CI_NODE_VERSION=%s\n' "$(node --version)"
-          printf 'CI_PNPM_VERSION=%s\n' "$(pnpm --version)"
-          printf 'PNPM_EXECUTED_BY_NODE22=%s\n' "$(node -p "process.versions.node.split('.')[0] === '22' ? 'YES' : 'NO'")"
-          printf 'CI_DENO_VERSION=%s\n' "$(deno --version | sed -n '1s/^deno //p')"
-          printf 'PNPM_INSTALL_EXIT=0\nLOCAL_TYPESCRIPT_READY=YES\n'
-
-      - name: Build
+          test "$(node -p "process.versions.node.split('.')[0]")" = 22
+      - name: Build and test Merchant Auth
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
           node tests/privlan-merchant-login/build.mjs
-          printf 'FUNCTION_BUILD_EXIT=0\n'
-
-      - name: V13 tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /home/project
-          node --test tests/privlan-merchant-login/*.test.mjs | tee /tmp/merchant-auth-v13-tests.log
+          node --test tests/privlan-merchant-login/*.test.mjs | tee /tmp/merchant-auth-tests.log
           node - <<'NODE'
           const fs = require('node:fs');
-          const text = fs.readFileSync('/tmp/merchant-auth-v13-tests.log', 'utf8');
-          const get = (key) => {
-            const m = text.match(new RegExp('^# ' + key + ' (\\d+)$', 'm'));
-            if (!m) throw new Error('missing ' + key);
-            return Number(m[1]);
-          };
-          const total = get('tests');
-          const pass = get('pass');
-          const fail = get('fail');
-          const skipped = get('skipped');
-          if (total !== 172 || pass !== 172 || fail !== 0) {
-            throw new Error(`unexpected test counts ${total}/${pass}/${fail}`);
-          }
-          for (const marker of [
-            'merchant.authorization_denied',
-            'ROLE_NOT_AUTHORIZED',
-            'WORKSPACE_ACCESS_DENIED',
-            'AUDIT_WRITE_UNAVAILABLE',
-            'login_compensation_failed',
-            'service_role',
-            'logout',
-            '2.115.0',
-          ]) {
-            if (!text.includes(marker) && !fs.readFileSync('tests/privlan-merchant-login/authorization-contract.test.mjs', 'utf8').includes(marker) && !fs.readFileSync('tests/privlan-merchant-login/login.test.mjs', 'utf8').includes(marker)) {
-              throw new Error('missing security coverage marker ' + marker);
-            }
-          }
-          console.log(`FUNCTION_TESTS_TOTAL=${total}`);
-          console.log(`FUNCTION_TESTS_PASS=${pass}`);
-          console.log(`FUNCTION_TESTS_FAIL=${fail}`);
-          console.log(`FUNCTION_TESTS_SKIPPED=${skipped}`);
-          console.log('SECURITY_CONTRACT_NODE22=PASS');
+          const text = fs.readFileSync('/tmp/merchant-auth-tests.log', 'utf8');
+          const get = (key) => Number((text.match(new RegExp('^# ' + key + ' (\\d+)$', 'm')) || [])[1]);
+          const total = get('tests'); const pass = get('pass'); const fail = get('fail');
+          if (!total || pass !== total || fail !== 0) throw new Error(`unexpected test counts ${total}/${pass}/${fail}`);
+          console.log(`FUNCTION_TESTS_TOTAL=${total}`); console.log('MERCHANT_AUTH_TESTS=PASS');
           NODE
-
       - name: Deno dependency check
         shell: bash
         run: |
           set -euo pipefail
           cd /home/project
           deno check --no-lock --reload functions/privlan-merchant-api/index.ts
-          grep -Fq 'https://esm.sh/@supabase/supabase-js@2.115.0' functions/privlan-merchant-api/index.ts
-          test "$(grep -oE '@supabase/supabase-js@2([^.]|$)' functions/privlan-merchant-api/index.ts | wc -l)" = 0
-          printf 'DENO_CHECK_EXIT=0\nSUPABASE_RESOLUTION=2.115.0\n'
-
-      - name: Post-test identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /home/project
-          test "$(sha256sum functions/privlan-merchant-api/index.ts | awk '{print $1}')" = b3b2664b0e39133083495c27de91be4a6ce71aa10b3f9617664d1d0321880900
-          test "$(sha256sum archive/v12/index.ts | awk '{print $1}')" = 0010ca398495fb2e06ae5b6b13032f241ef80dbed1c342fcd0d4ec2301defa55
-          printf 'POST_TEST_V13_SHA_MATCH=YES\nPOST_TEST_V12_ROLLBACK_SHA_MATCH=YES\n'

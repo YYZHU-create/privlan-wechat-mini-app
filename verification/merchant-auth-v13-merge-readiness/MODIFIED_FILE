@@ -1,0 +1,3 @@
+CANONICAL_RUNTIME=functions/privlan-merchant-api/index.ts
+ROLLBACK_RUNTIME=archive/v12/index.ts
+VALIDATION=Node 22.22.2; Deno 2.9.2; Merchant Auth tests

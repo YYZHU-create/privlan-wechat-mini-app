@@ -690,4 +690,3 @@ test("A29. required 策略集合封闭：恰好 6 处 true = 5 处授权拒绝 +
     "merchant.logout",
   ]);
 });
-

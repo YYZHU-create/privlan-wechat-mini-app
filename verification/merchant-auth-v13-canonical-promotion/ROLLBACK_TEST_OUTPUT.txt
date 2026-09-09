@@ -1,1 +1,0 @@
-COMMAND=C:\Program Files\Git\bin\sh.exe verification/merchant-auth-v13-canonical-promotion/ROLLBACK.sh C:\Users\Administrator\WorkBuddy\feeldao-merchant-auth-v12-ci-validation\verification\merchant-auth-v13-canonical-promotion\rollback-test-root-canonical-promotion
