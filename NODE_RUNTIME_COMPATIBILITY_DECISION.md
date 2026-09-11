@@ -26,7 +26,7 @@ WORKTREE_NOTE=Existing unrelated worktree changes were preserved; this task chan
 - Frozen install: PASS under both exact runtimes using pnpm 11.7.0.
 - Dependency scan: no native `.node` modules, no lifecycle install hooks, no scanned deprecated Node API patterns; JavaScript syntax checks passed (`SYNTAX_FAILED=0`).
 - Build: NOT_CONFIGURED; `pnpm run build` exits 1 because no `build` script exists. This is an existing project contract gap, not a Node 24 failure.
-- Local Docker build: NOT_RUN because Docker CLI is unavailable on this host; hosted Docker smoke passed in GitHub Actions run `34568481292`.
+- Local Docker build: NOT_RUN because Docker CLI is unavailable on this host; hosted Docker smoke passed in GitHub Actions run `34568744507`.
 
 ## Decision
 
@@ -63,7 +63,7 @@ IMPLEMENTED=
 CURRENT_VERIFICATION=
 - Node `22.23.2`: install dependency set already present; full test suite PASS (exit 0); `/health` smoke HTTP 200.
 - Node `24.15.0`: full test suite PASS (exit 0); `/health` smoke HTTP 200.
-- GitHub Actions run `34568481292` on commit `773381e11725555845714c6f4031d77b5c3a91d6` passed Node 22, exact Node 24.15.0, and Docker smoke jobs.
+- GitHub Actions run `34568744507` on commit `cb11916dbc3a18467d7a2761685c6a106dd9c61a` passed Node 22, exact Node 24.15.0, and Docker smoke jobs.
 - Docker image build, container start, `/health` HTTP 200, port 9000, startup log check, and cleanup all passed on the hosted Linux runner.
 - `COMPATIBILITY_STATUS=PASS`.
 
