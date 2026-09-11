@@ -26,7 +26,7 @@ WORKTREE_NOTE=Existing unrelated worktree changes were preserved; this task chan
 - Frozen install: PASS under both exact runtimes using pnpm 11.7.0.
 - Dependency scan: no native `.node` modules, no lifecycle install hooks, no scanned deprecated Node API patterns; JavaScript syntax checks passed (`SYNTAX_FAILED=0`).
 - Build: NOT_CONFIGURED; `pnpm run build` exits 1 because no `build` script exists. This is an existing project contract gap, not a Node 24 failure.
-- Docker build: NOT_RUN because Docker CLI is unavailable on this host; Dockerfile was structurally inspected only.
+- Local Docker build: NOT_RUN because Docker CLI is unavailable on this host; hosted Docker smoke passed in GitHub Actions run `34568481292`.
 
 ## Decision
 
@@ -39,7 +39,7 @@ REQUIRED_CHANGES=
 4. Keep `.node-version=22` and `Dockerfile` base `node:22-bookworm-slim` as the reproducible production baseline.
 5. Decide separately whether to add a `build` script; the current container path starts `server.js` directly and the missing script is not evidence of Node incompatibility.
 
-COMPATIBILITY_STATUS=PARTIAL
+COMPATIBILITY_STATUS=PASS
 RISK_LEVEL=MEDIUM
 
 Rationale: Node 22.23.2 and the Meoo Builder target Node 24.15.0 pass the local application test and liveness smoke. Hosted CI and Docker smoke evidence remain outstanding because Docker is unavailable on this host.
@@ -49,7 +49,7 @@ SECRET_CHANGE=NO
 DEPLOYMENT=NO
 CODE_CHANGE=NO
 
-NEXT_ACTION=Run the committed Node 22 and exact Node 24.15.0 CI jobs plus Docker smoke on a Docker-capable runner; promote COMPATIBILITY_STATUS to PASS only after all three hosted gates pass.
+NEXT_ACTION=Keep the Node 22/24.15 CI matrix and Docker smoke attached to future runtime changes; no deployment action is implied by this gate.
 
 ## Implementation status (2026-09-11)
 
@@ -63,8 +63,9 @@ IMPLEMENTED=
 CURRENT_VERIFICATION=
 - Node `22.23.2`: install dependency set already present; full test suite PASS (exit 0); `/health` smoke HTTP 200.
 - Node `24.15.0`: full test suite PASS (exit 0); `/health` smoke HTTP 200.
-- Docker: NOT_RUN because the local Docker CLI is unavailable.
-- `COMPATIBILITY_STATUS=PARTIAL` until the CI jobs and Docker smoke produce hosted evidence.
+- GitHub Actions run `34568481292` on commit `773381e11725555845714c6f4031d77b5c3a91d6` passed Node 22, exact Node 24.15.0, and Docker smoke jobs.
+- Docker image build, container start, `/health` HTTP 200, port 9000, startup log check, and cleanup all passed on the hosted Linux runner.
+- `COMPATIBILITY_STATUS=PASS`.
 
 ## Audit artifacts
 
