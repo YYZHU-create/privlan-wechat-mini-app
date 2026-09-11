@@ -17,13 +17,16 @@ concurrency:
 
 env:
   PNPM_VERSION: 11.7.0
-  NODE_VERSION: 22
 
 jobs:
   test:
-    name: Admin tests
+    name: Admin tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24.15.0']
     defaults:
       run:
         working-directory: admin
@@ -36,7 +39,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ matrix.node-version }}
 
       - name: Enable Corepack and pin pnpm
         run: |
@@ -46,6 +49,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Record build status
+        run: |
+          if node -e 'process.exit(require("./package.json").scripts?.build ? 0 : 1)'; then
+            echo "BUILD_STATUS=AVAILABLE"
+          else
+            echo "BUILD_STATUS=NOT_CONFIGURED"
+          fi
 
       - name: Check JavaScript syntax
         run: |
@@ -76,7 +87,7 @@ jobs:
       - name: Set up Node.js for smoke assertions
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 22
 
       - name: Build immutable candidate image
         env:
