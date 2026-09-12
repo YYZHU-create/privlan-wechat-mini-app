@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "source_commit": "c3614ae2b48f8b25a79967a4aa2d7789e57c50d7",
+  "bundle_file": "atomic-013-014.sql",
+  "bundle_sha256": "C4FAAF04A291538B0203BA6AEE4DD5E7C49C2319941D14AE9E845B47CED09986",
+  "migrations": [
+    {
+      "file": "013_asset_contract_v1.sql",
+      "sha256": "053784542786EC73CF678A0334ABF9E09E07BD4B4412C67CDE0B84AE5D34A28B"
+    },
+    {
+      "file": "014_asset_access_hardening.sql",
+      "sha256": "82657B870C2B8568A854DBC069475603326B55DD9C118DDDA9A1EC281DD7F2AB"
+    }
+  ],
+  "execution_model": "ONE_SQL_FILE / ONE_RAW_SQL_REQUEST / ONE_EXPLICIT_TRANSACTION",
+  "registry_strategy": "AFTER_SUCCESSFUL_SCHEMA_COMMIT"
+}

@@ -60,7 +60,17 @@
       "version": "012_launch_v1_domains",
       "file": "012_launch_v1_domains.sql",
       "sha256": "17b609ab2ff3bdca40305786523af9ba8c65a4db052152fbf212643a4f1e2458"
+    },
+    {
+      "version": "013_asset_contract_v1",
+      "file": "013_asset_contract_v1.sql",
+      "sha256": "053784542786ec73cf678a0334abf9e09e07bd4b4412c67cde0b84ae5d34a28b"
+    },
+    {
+      "version": "014_asset_access_hardening",
+      "file": "014_asset_access_hardening.sql",
+      "sha256": "82657b870c2b8568a854dbc069475603326b55dd9c118ddda9a1ec281dd7f2ab"
     }
   ],
-  "digest": "ed616d9fcd4c600808e6fc68e3ee921e5aeebbed31cc06bb687d951c043f13d3"
+  "digest": "6000acde7821e8a3b938a46fc2f3c8c30423b757322d09c12a945720c621ce4f"
 }
