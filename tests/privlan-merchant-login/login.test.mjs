@@ -590,6 +590,82 @@ test("30 决定性错误形状完全不受 gateway 规则影响（42501 权限�
   assert.equal(body.code, "SCOPE_BACKEND_UNAVAILABLE");
 });
 
+/* ================= login scope/read-stage observability ================= */
+
+test("31 user lookup 失败：503、零写入，并记录非敏感固定 stage", async () => {
+  loadFixture();
+  dbState.errors["users:select"] = { code: "ECONNRESET", statusCode: 503, message: "synthetic failure" };
+  dbState.fail["users:select"] = 1;
+  const { status, body } = await login();
+
+  assert.equal(status, 503);
+  assert.equal(body.code, "SCOPE_BACKEND_UNAVAILABLE");
+  assert.equal(sessions().length, 0);
+  assert.equal(audits("merchant.login").length, 0);
+  const fields = eventOf("login_scope_read_failed").fields;
+  assert.deepEqual(Object.keys(fields).sort(), [
+    "attempt", "dbCode", "errKind", "event", "httpStatus", "requestId", "retryEligible", "retryExhausted", "stage",
+  ]);
+  assert.equal(fields.stage, "user_lookup");
+  assert.equal(fields.errKind, "transport");
+  assert.equal(fields.dbCode, "ECONNRESET");
+  assert.equal(fields.httpStatus, 503);
+  assert.equal(fields.retryEligible, false);
+  assert.equal(fields.attempt, 1);
+  assert.equal(fields.retryExhausted, false);
+  assert.equal(body.stage, undefined);
+  assert.equal(body.dbCode, undefined);
+  assert.equal(body.errKind, undefined);
+
+  const dump = JSON.stringify(logged);
+  for (const sensitive of [PASSWORD, LOGIN, "cookie", "token", "csrf", "mock-service-role-key", "https://mock.invalid", "SELECT", "synthetic failure"]) {
+    assert.ok(!dump.includes(sensitive), `结构化日志不得含 ${sensitive}`);
+  }
+});
+
+test("32 membership lookup 失败：记录 membership_lookup 且不新增 retry", async () => {
+  loadFixture();
+  dbState.errors["memberships:select"] = { code: "ECONNREFUSED", statusCode: 503, message: "synthetic failure" };
+  dbState.fail["memberships:select"] = 1;
+  const { status, body } = await login();
+
+  assert.equal(status, 503);
+  assert.equal(body.code, "SCOPE_BACKEND_UNAVAILABLE");
+  assert.equal(sessions().length, 0);
+  assert.equal(audits("merchant.login").length, 0);
+  const fields = eventOf("login_scope_read_failed").fields;
+  assert.equal(fields.stage, "membership_lookup");
+  assert.equal(fields.retryEligible, false);
+  assert.equal(fields.attempt, 1);
+  assert.equal(fields.retryExhausted, false);
+  assert.equal(selectCount("memberships"), 1, "初始 membership 读保持原有单次读取语义");
+  assert.equal(retryEvents().length, 0);
+});
+
+test("33 canonical workspace 连续瞬时失败：记录重试证据且客户端不见内部字段", async () => {
+  loadFixture();
+  dbState.errors["workspaces:select"] = { code: "UNKNOWN", statusCode: 429, message: "synthetic failure" };
+  dbState.fail["workspaces:select"] = 99;
+  const { status, body } = await login();
+
+  assert.equal(status, 503);
+  assert.equal(body.code, "SCOPE_BACKEND_UNAVAILABLE");
+  assert.equal(sessions().length, 0);
+  assert.equal(audits("merchant.login").length, 0);
+  assert.equal(selectCount("workspaces"), 3, "既有 readWithRetry 上限保持三次");
+  const fields = eventOf("login_scope_read_failed").fields;
+  assert.equal(fields.stage, "workspace_lookup");
+  assert.equal(fields.errKind, "gateway");
+  assert.equal(fields.dbCode, "UNKNOWN");
+  assert.equal(fields.httpStatus, 429);
+  assert.equal(fields.retryEligible, true);
+  assert.equal(fields.attempt, 3);
+  assert.equal(fields.retryExhausted, true);
+  for (const key of ["stage", "dbCode", "errKind", "retryEligible", "attempt", "retryExhausted"]) {
+    assert.equal(body[key], undefined, `公开响应不得暴露 ${key}`);
+  }
+});
+
 after(() => {
   console.error = realError;
   console.warn = realWarn;

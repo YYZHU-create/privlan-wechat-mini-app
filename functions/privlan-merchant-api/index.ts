@@ -190,6 +190,49 @@ function logEvent(level: "error" | "warn", event: string, fields: Record<string,
 
 type DbErrorKind = "transport" | "timeout" | "postgrest" | "db" | "gateway" | "unknown";
 
+type LoginReadStage =
+  | "user_lookup"
+  | "membership_lookup"
+  | "workspace_lookup"
+  | "tenant_lookup"
+  | "store_lookup"
+  | "subscription_lookup"
+  | "unknown_lookup";
+
+function loginReadStageFromScopeStage(stage: string): LoginReadStage {
+  switch (stage) {
+    case "users": return "user_lookup";
+    case "memberships": return "membership_lookup";
+    case "workspaces": return "workspace_lookup";
+    case "tenants": return "tenant_lookup";
+    case "stores": return "store_lookup";
+    case "subscriptions": return "subscription_lookup";
+    default: return "unknown_lookup";
+  }
+}
+
+function logLoginScopeReadFailed(input: {
+  requestId: string;
+  stage: LoginReadStage;
+  errKind: DbErrorKind;
+  dbCode: string;
+  httpStatus: number;
+  retryEligible: boolean;
+  attempt: number;
+  retryExhausted: boolean;
+}): void {
+  logEvent("error", "login_scope_read_failed", {
+    requestId: input.requestId,
+    stage: input.stage,
+    errKind: input.errKind,
+    dbCode: input.dbCode,
+    httpStatus: input.httpStatus,
+    retryEligible: input.retryEligible,
+    attempt: input.attempt,
+    retryExhausted: input.retryExhausted,
+  });
+}
+
 const rawDbCode = (error: unknown): string => {
   if (!error || typeof error !== "object") return "";
   const code = (error as { code?: unknown }).code;
@@ -285,7 +328,9 @@ const READ_BACKOFF_MS = [120, 350]; // 递增退避
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-type ReadResult = { data: any; error: any };
+type ReadAttemptResult = { data: any; error: any };
+type ReadRetryEvidence = { retryEligible: boolean; attempt: number; retryExhausted: boolean };
+type ReadResult = ReadAttemptResult & { retry: ReadRetryEvidence };
 type ReadCtx = { requestId: string; operation: string; stage: string };
 
 /**
@@ -293,9 +338,14 @@ type ReadCtx = { requestId: string; operation: string; stage: string };
  * 「查询成功但行为空」不是错误（error 为 null），因此天然不会被重试。
  * 第二次即使成功也必须留痕，不得把基础设施抖动完全隐藏。
  */
-async function readWithRetry(run: () => PromiseLike<ReadResult>, ctx: ReadCtx): Promise<ReadResult> {
+async function readWithRetry(run: () => PromiseLike<ReadAttemptResult>, ctx: ReadCtx): Promise<ReadResult> {
   const first = await run();
-  if (!first.error || !isTransientReadError(first.error)) return first;
+  if (!first.error || !isTransientReadError(first.error)) {
+    return {
+      ...first,
+      retry: { retryEligible: false, attempt: 1, retryExhausted: false },
+    };
+  }
 
   let last = first;
   let attempts = 1;
@@ -327,7 +377,14 @@ async function readWithRetry(run: () => PromiseLike<ReadResult>, ctx: ReadCtx): 
     attempts,
     recovered: !last.error,
   });
-  return last;
+  return {
+    ...last,
+    retry: {
+      retryEligible: true,
+      attempt: attempts,
+      retryExhausted: Boolean(last.error && isTransientReadError(last.error) && attempts === READ_MAX_ATTEMPTS),
+    },
+  };
 }
 
 function newRequestId(prefix = "req"): string {
@@ -420,6 +477,9 @@ type ScopeFailure = {
   dbCode?: string;
   errKind?: DbErrorKind;
   httpStatus?: number;
+  retryEligible?: boolean;
+  attempt?: number;
+  retryExhausted?: boolean;
 };
 type CoreResult = { ok: true; core: ScopeCore } | ScopeFailure;
 type ScopeResult = { ok: true; scope: Scope } | ScopeFailure;
@@ -438,13 +498,16 @@ async function resolveCanonicalScope(
   const requestId = input.requestId ?? "";
   /** 全部是 SELECT 型只读查询，故统一走有界重试；stage 与日志一一对应 */
   const readonly = (stage: string) => ({ requestId, operation: "resolve_scope", stage });
-  const dbFail = (stage: string, error: unknown): ScopeFailure => ({
+  const dbFail = (stage: string, result: ReadResult): ScopeFailure => ({
     ok: false,
     kind: "db_error",
     stage,
-    dbCode: dbErrorCode(error),
-    errKind: classifyDbError(error),
-    httpStatus: rawDbStatus(error),
+    dbCode: dbErrorCode(result.error),
+    errKind: classifyDbError(result.error),
+    httpStatus: rawDbStatus(result.error),
+    retryEligible: result.retry.retryEligible,
+    attempt: result.retry.attempt,
+    retryExhausted: result.retry.retryExhausted,
   });
 
   let user: Record<string, any> | null = input.userRow ?? null;
@@ -458,7 +521,7 @@ async function resolveCanonicalScope(
           .maybeSingle(),
       readonly("users"),
     );
-    if (res.error) return dbFail("users", res.error);
+    if (res.error) return dbFail("users", res);
     user = res.data as Record<string, any> | null;
   }
   if (!user) return { ok: false, kind: "row_missing", stage: "users" };
@@ -476,7 +539,7 @@ async function resolveCanonicalScope(
         .maybeSingle(),
     readonly("memberships"),
   );
-  if (membershipRes.error) return dbFail("memberships", membershipRes.error);
+  if (membershipRes.error) return dbFail("memberships", membershipRes);
   if (!membershipRes.data) return { ok: false, kind: "row_missing", stage: "memberships" };
 
   const workspaceRes = await readWithRetry(
@@ -488,7 +551,7 @@ async function resolveCanonicalScope(
         .maybeSingle(),
     readonly("workspaces"),
   );
-  if (workspaceRes.error) return dbFail("workspaces", workspaceRes.error);
+  if (workspaceRes.error) return dbFail("workspaces", workspaceRes);
   if (!workspaceRes.data) return { ok: false, kind: "row_missing", stage: "workspaces" };
 
   const tenantRes = await readWithRetry(
@@ -500,7 +563,7 @@ async function resolveCanonicalScope(
         .maybeSingle(),
     readonly("tenants"),
   );
-  if (tenantRes.error) return dbFail("tenants", tenantRes.error);
+  if (tenantRes.error) return dbFail("tenants", tenantRes);
   if (!tenantRes.data) return { ok: false, kind: "row_missing", stage: "tenants" };
 
   const storeRes = await readWithRetry(
@@ -513,7 +576,7 @@ async function resolveCanonicalScope(
         .maybeSingle(),
     readonly("stores"),
   );
-  if (storeRes.error) return dbFail("stores", storeRes.error);
+  if (storeRes.error) return dbFail("stores", storeRes);
 
   const subscriptionRes = await readWithRetry(
     () =>
@@ -525,7 +588,7 @@ async function resolveCanonicalScope(
         .maybeSingle(),
     readonly("subscriptions"),
   );
-  if (subscriptionRes.error) return dbFail("subscriptions", subscriptionRes.error);
+  if (subscriptionRes.error) return dbFail("subscriptions", subscriptionRes);
 
   const subscription = subscriptionRes.data;
   const expired = subscription?.expires_at ? new Date(subscription.expires_at).getTime() <= Date.now() : false;
@@ -1225,6 +1288,16 @@ async function handle(req: Request): Promise<Response> {
       .maybeSingle();
 
     if (userRow.error) {
+      logLoginScopeReadFailed({
+        requestId,
+        stage: "user_lookup",
+        errKind: classifyDbError(userRow.error),
+        dbCode: dbErrorCode(userRow.error),
+        httpStatus: rawDbStatus(userRow.error),
+        retryEligible: false,
+        attempt: 1,
+        retryExhausted: false,
+      });
       // 读失败 ≠ 口令错误：压成 401 既会误判凭据，又会白写一条 merchant.login_failed 审计
       logEvent("error", "login_scope_build_failed", {
         requestId,
@@ -1259,6 +1332,16 @@ async function handle(req: Request): Promise<Response> {
       .limit(1)
       .maybeSingle();
     if (membership.error) {
+      logLoginScopeReadFailed({
+        requestId,
+        stage: "membership_lookup",
+        errKind: classifyDbError(membership.error),
+        dbCode: dbErrorCode(membership.error),
+        httpStatus: rawDbStatus(membership.error),
+        retryEligible: false,
+        attempt: 1,
+        retryExhausted: false,
+      });
       // 读失败 ≠ 越权：403 WORKSPACE_ACCESS_DENIED 只用于「确实没有 membership」
       logEvent("error", "login_scope_build_failed", {
         requestId,
@@ -1323,6 +1406,18 @@ async function handle(req: Request): Promise<Response> {
     });
     if (!built.ok) {
       const dbError = built.kind === "db_error";
+      if (dbError) {
+        logLoginScopeReadFailed({
+          requestId,
+          stage: loginReadStageFromScopeStage(built.stage),
+          errKind: built.errKind || "unknown",
+          dbCode: built.dbCode || "UNKNOWN",
+          httpStatus: built.httpStatus ?? 0,
+          retryEligible: built.retryEligible === true,
+          attempt: built.attempt ?? 1,
+          retryExhausted: built.retryExhausted === true,
+        });
+      }
       logEvent("error", "login_scope_build_failed", {
         requestId,
         operation: "build_scope",
