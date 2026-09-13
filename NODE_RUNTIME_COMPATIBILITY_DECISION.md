@@ -46,8 +46,15 @@ SELECTED_SOLUTION=Allow the supported Node 22–24 contract in setup.sh and pack
 NODE24_UPGRADE_SAFE=YES (isolated application evidence; hosted CI/Docker evidence is a separate gate)
 NODE24_UPGRADE_SELECTED=NO (production image remains Node 22)
 
+HOSTED_CI_RUN=34745432106
+HOSTED_CI_COMMIT=0e1b10f7b07ece3eb272bcbb1b168039ce3cd4b9
+HOSTED_NODE22_CI=PASS
+HOSTED_NODE24_24_15_0_CI=PASS
+HOSTED_DOCKER_SMOKE=PASS
+CI_STATUS=PASS
+
 NEXT_GATE=G2C4_NODE_RUNTIME_DELTA_PREFLIGHT
-RISK_LEVEL=MEDIUM until hosted Node 22/24 CI and Docker smoke complete; source guard and both local runtime lanes are passing.
+RISK_LEVEL=LOW for this source-only runtime contract; hosted Node 22/24.15.0 CI and Docker smoke all pass.
 
 DATABASE_CHANGE=NO
 SECRET_CHANGE=NO
