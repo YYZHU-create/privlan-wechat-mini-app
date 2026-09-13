@@ -176,10 +176,10 @@ test("runtime, Docker, CI, and Meoo contracts stay aligned", () => {
   const dockerignore = fs.readFileSync(path.join(ROOT, ".dockerignore"), "utf8");
   assert.equal(fs.readFileSync(path.join(ROOT, ".node-version"), "utf8").trim(), "22");
   assert.equal(packageJson.engines.node, ">=22 <25");
-  assert.equal(packageJson.engines.pnpm, "11.7.0");
-  assert.equal(packageJson.packageManager, "pnpm@11.7.0");
+  assert.equal(packageJson.engines.pnpm, "10.33.3");
+  assert.equal(packageJson.packageManager, "pnpm@10.33.3");
   assert.match(dockerfile, /^FROM node:22-bookworm-slim/m);
-  assert.match(dockerfile, /corepack prepare pnpm@11\.7\.0 --activate/);
+  assert.match(dockerfile, /npm install --global pnpm@10\.33\.3/);
   assert.match(dockerfile, /mkdir -p \/app\/images \/app\/fonts \/app\/admin\/data \/app\/admin\/config-backups \/app\/admin\/media-trash/);
   assert.match(dockerfile, /chown -R node:node \/app\/images \/app\/fonts \/app\/admin \/app\/runtime-build\.json/);
   assert.match(ci, /node-version: \['22', '24\.15\.0'\]/);
@@ -188,7 +188,9 @@ test("runtime, Docker, CI, and Meoo contracts stay aligned", () => {
   assert.match(ci, /Set up Node\.js for smoke assertions/);
   for (const name of ["DATABASE_URL", "ATELIER_LICENSE_PEPPER", "ATELIER_MASTER_KEY", "ATELIER_APPOINTMENT_GATEWAY_TOKEN", "ATELIER_OPENID_HASH_KEY"]) assert.match(ci, new RegExp(`-e ${name}=`));
   assert.match(setup, /SUPPORTED_NODE_MAJORS="22 23 24"/);
-  assert.match(setup, /EXPECTED_PNPM_VERSION=11\.7\.0/);
+  assert.match(setup, /EXPECTED_PNPM_VERSION=10\.33\.3/);
+  assert.match(setup, /ACTUAL_PNPM_VERSION="\$\(pnpm --version\)"/);
+  assert.doesNotMatch(setup, /corepack\s+(enable|prepare)/);
   for (const pattern of [/\.git\//, /runtime-secrets\.json/, /\*\*\/\*\.pem/, /\*\*\/\*\.key/, /verification\//]) assert.match(dockerignore, pattern);
   assert.doesNotMatch(dockerignore, /!\.env/);
   assert.doesNotMatch(fs.readFileSync(path.join(ROOT, "scripts/start.sh"), "utf8"), /release-sha|release-branch/);

@@ -5,11 +5,11 @@
 | Surface | Required value |
 | --- | --- |
 | Repository Node.js | `>=22 <25` from `admin/package.json`; `.node-version=22` remains the development/Docker baseline |
-| pnpm | `11.7.0` from `admin/package.json`, CI, Dockerfile, and `scripts/setup.sh` |
+| pnpm | `10.33.3` from `admin/package.json`, CI, Dockerfile, and `scripts/setup.sh`; Meoo supplies this version on the Linux image builder |
 | Liveness | `GET /health` returns only `{"status":"ok"}` and does not prove database health |
 | Readiness gate | authenticated `GET /ops/v1/health`, controlled Operator login, session probe, and audit confirmation |
 
-The Meoo Builder host may currently provide Node.js 24. The project-owned `scripts/setup.sh` accepts only Node majors 22, 23, and 24, then fails closed for every other major; this keeps the build contract aligned with `admin/package.json` (`>=22 <25`). The Docker image remains pinned to `node:22-bookworm-slim` for reproducible production execution. The platform runtime version is external and must be recorded as `NOT_VERIFIED` until the platform owner provides or permits read-only verification. To upgrade the baseline, update the declaration, guard, CI matrix, and Docker image together and rerun both compatibility lanes before deployment.
+The Meoo image builder supplies Node.js 24.15.0 and pnpm 10.33.3 on Linux `/code`; `scripts/setup.sh` verifies those supplied tools without global Corepack shim mutation. The repository Docker compatibility image remains pinned to `node:22-bookworm-slim`. The platform runtime baseline is Node.js 24.15.0 and is distinct from the local Docker baseline.
 
 ## Required authorization phases
 

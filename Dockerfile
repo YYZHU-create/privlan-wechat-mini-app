@@ -9,7 +9,7 @@ ENV NODE_ENV=production
 ENV ATELIER_RELEASE_METADATA_PATH=/app/runtime-build.json
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
+RUN npm install --global pnpm@10.33.3
 COPY --chown=node:node admin/package.json admin/pnpm-lock.yaml ./admin/
 RUN cd admin && pnpm install --prod --frozen-lockfile
 
