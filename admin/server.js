@@ -17,6 +17,9 @@ const { createMeooAppointmentRepository } = require("./meoo-appointment-reposito
 const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
 const { createMeooCustomerWriteRepository, createMeooAppointmentWriteRepository } = require("./meoo-write-repositories");
 const { createMeooMediaRepository } = require("./meoo-media-repository");
+const { createMeooStorageProvider } = require("./storage-provider");
+const { createAssetRepository } = require("./asset-repository");
+const { createMediaService } = require("./media-service-v1");
 const { createMeooLaunchV1Repository } = require("./meoo-launch-v1-repository");
 const { createMeooOperatorRepository } = require("./meoo-operator-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
@@ -65,6 +68,15 @@ const databasePromise = createDatabaseFromEnv();
 const meooAdapter = DATABASE_BACKEND === "meoo" ? createSupabaseAdapter() : null;
 const meooAuthRepository = DATABASE_BACKEND === "meoo" ? createMeooAuthRepository() : null;
 const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorRepository() : null;
+const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
+const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
+const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
+if (MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && MEDIA_STORAGE_BUCKET !== "feeldao-production-media") {
+  throw new Error("MEDIA_STORAGE_BUCKET must be explicitly configured for the Production V1 bucket");
+}
+const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
+  ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), onEvent: (event, fields) => console.info(event, fields) })
+  : null;
 const saasServicePromise = databasePromise.then(database => database ? createSaasService({
   db: database,
   tagRepository: meooAdapter,
@@ -170,11 +182,11 @@ app.use("/ops/v1", async (req, res, next) => {
   }
   next();
 });
-app.use(["/api/media/upload"], express.json({ limit: "110mb" }));
+app.use(["/api/media/upload", "/api/media/v1/upload"], express.json({ limit: "110mb" }));
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
-registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null });
+registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
 registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 

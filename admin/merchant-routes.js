@@ -283,6 +283,24 @@ function registerMerchantRoutes(app, getService, options = {}) {
   app.delete("/api/media/folders/:id", async (req, res, next) => { if (!req.saasService) return next(); try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await workspaceMedia(req.saasService).deleteFolder(req.merchantScope, req.params.id) }); } catch (error) { return failure(res, error, req.requestId); } });
   app.post("/api/media/move", async (req, res, next) => { if (!req.saasService) return next(); try { req.saasService.assertWritable(req.merchantScope); const media = workspaceMedia(req.saasService); const ids = await media.resolveIds(req.merchantScope, req.body?.ids || req.body?.names || []); return res.json({ ok: true, moved: await media.move(req.merchantScope, ids, req.body?.folderId || "") }); } catch (error) { return failure(res, error, req.requestId); } });
 
+  // Asset Schema V1 is deliberately isolated behind a server-controlled flag.
+  // Legacy /api/media behavior remains unchanged until MEDIA_ASSET_V1_ENABLED is enabled.
+  app.post("/api/media/v1/upload", async (req, res, next) => {
+    if (!req.saasService || !options.mediaService) return next();
+    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}) }); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.get("/api/media/v1/content/:id", async (req, res, next) => {
+    if (!req.saasService || !options.mediaService) return next();
+    try { const result = await options.mediaService.read(req.merchantScope, req.params.id); res.type(result.mimeType); res.set("Cache-Control", "private, no-store"); res.set("Content-Length", String(result.sizeBytes)); return res.status(200).send(Buffer.from(result.bytes)); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.post("/api/media/v1/delete", async (req, res, next) => {
+    if (!req.saasService || !options.mediaService) return next();
+    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.remove(req.merchantScope, String(req.body?.assetId || "")) }); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+
   const merchantAiConnectionsDisabled = (req, res) => failure(res, new ServiceError(410, "AI_MODE_UNSUPPORTED", "当前客服仅支持规则 FAQ"), req.requestId);
   app.get("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
   app.post("/v1/ai/connections", async (req, res, next) => { if (!req.saasService) return next(); return merchantAiConnectionsDisabled(req, res); });
