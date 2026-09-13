@@ -32,10 +32,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
-      - name: Set up pnpm 11.7.0
+      - name: Set up pnpm 10.33.3
         uses: pnpm/action-setup@v4
         with:
-          version: 11.7.0
+          version: 10.33.3
       - name: Set up Deno 2.9.2
         uses: denoland/setup-deno@v2
         with:
@@ -48,7 +48,7 @@ jobs:
           cp -a ./. /home/project/
           cd /home/project
           cat > package.json <<'JSON'
-          {"name":"feeldao-merchant-auth-ci","private":true,"packageManager":"pnpm@11.7.0","devDependencies":{"typescript":"5.9.3"}}
+          {"name":"feeldao-merchant-auth-ci","private":true,"packageManager":"pnpm@10.33.3","devDependencies":{"typescript":"5.9.3"}}
           JSON
           test -f functions/privlan-merchant-api/index.ts
           test -f tests/privlan-merchant-login/build.mjs

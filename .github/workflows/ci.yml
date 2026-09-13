@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PNPM_VERSION: 11.7.0
+  PNPM_VERSION: 10.33.3
 
 jobs:
   test:
@@ -41,10 +41,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Enable Corepack and pin pnpm
+      - name: Use platform-compatible pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          npm install --global pnpm@${PNPM_VERSION}
           pnpm --version
 
       - name: Install dependencies

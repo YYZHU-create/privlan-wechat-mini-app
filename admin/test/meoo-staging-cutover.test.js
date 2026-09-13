@@ -155,7 +155,8 @@ test("Meoo Image Runtime scripts bind the application and exclude local secret c
   const start = fs.readFileSync(path.join(root, "scripts", "start.sh"), "utf8");
   const dockerignore = fs.readFileSync(path.join(root, ".dockerignore"), "utf8");
   assert.match(setup, /SUPPORTED_NODE_MAJORS="22 23 24"/);
-  assert.match(setup, /corepack prepare "pnpm@\$EXPECTED_PNPM_VERSION" --activate/);
+  assert.match(setup, /EXPECTED_PNPM_VERSION=10\.33\.3/);
+  assert.match(setup, /ACTUAL_PNPM_VERSION="\$\(pnpm --version\)"/);
   assert.match(setup, /pnpm install --prod --frozen-lockfile/);
   assert.match(start, /ATELIER_DB_BACKEND=.*meoo/);
   assert.match(start, /ATELIER_RELEASE_METADATA_PATH=.*runtime-build\.json/);

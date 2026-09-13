@@ -29,7 +29,7 @@ The repository contains a compatibility Express/Vue merchant editor and platform
 Repository runtime requirements on `origin/main`:
 
 - Node.js `>=22 <25` (Node 22 remains the development and Docker baseline)
-- pnpm `11.7.0`
+- pnpm `10.33.3` for the Meoo image builder contract
 - public liveness at `/health`
 - authenticated readiness at `/ops/v1/health`
 
