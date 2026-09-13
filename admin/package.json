@@ -21,7 +21,7 @@
     "@playwright/test": "^1.62.1"
   },
   "engines": {
-    "node": "22.x",
+    "node": ">=22 <25",
     "pnpm": "11.7.0"
   },
   "packageManager": "pnpm@11.7.0"

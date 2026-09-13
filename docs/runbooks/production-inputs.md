@@ -10,7 +10,7 @@ All values below are external Production inputs. Store values in the approved pl
 | `PRODUCTION_DATABASE_IDENTITY` | Non-secret immutable database identity label | Platform owner | Pre-deploy read-only check |
 | `PRODUCTION_DATABASE_READ_ONLY_ACCESS_PATH` | Approved read-only access mechanism | Platform owner | Pre-deploy only |
 | `PRODUCTION_SECRET_NAMES` | Names of required secrets, never values | Platform owner | B1 deployment |
-| `PRODUCTION_NODE_VERSION` | Runtime version; expected `22.x` | Platform owner | B1 deployment |
+| `PRODUCTION_NODE_VERSION` | Runtime version; supported contract `>=22 <25` (Node 22 Docker baseline) | Platform owner | B1 deployment |
 | `PRODUCTION_PORT` | Service port; expected `9000` | Platform owner | B1 deployment |
 | `PRODUCTION_HEALTHCHECK_PATH` | Liveness path; expected `/health` | Platform owner | B1 deployment |
 | `CURRENT_PRODUCTION_RELEASE_SHA` | Full 40- or 64-character Git SHA | Platform owner | Rollback planning |
