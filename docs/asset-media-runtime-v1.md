@@ -44,6 +44,16 @@ Original filenames are metadata only. Temporary URLs are never persisted.
 `deletion_requested → exact Storage delete → verification → deleted`.
 Database cascades are not treated as Storage deletion.
 
+## Retry and concurrency model
+
+Each upload request generates a new asset UUID and canonical object key. The
+first slice does not expose an idempotency key, so a client retry can create a
+duplicate logical asset or Product link. This is an explicit known limitation,
+not a cross-scope safety issue: UUID-based object identity, server-derived
+scope, and exact-key compensation prevent overwriting or deleting another
+request's object. A future idempotency contract should be added before relying
+on retries to converge to one logical asset.
+
 ## Product compatibility
 
 Existing `workspace_configs.document.products` and `/images/...` media remain
