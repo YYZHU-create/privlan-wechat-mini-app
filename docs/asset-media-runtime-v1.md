@@ -13,12 +13,15 @@ The provider is activated only when the server environment contains:
 ```text
 MEDIA_ASSET_V1_ENABLED=true
 MEDIA_STORAGE_PROVIDER=meoo
-MEDIA_STORAGE_BUCKET=feeldao-production-media
+MEDIA_STORAGE_BUCKET=<server-side project-local bucket>
+ATELIER_ENVIRONMENT=production|staging
 ```
 
-The bucket is server-controlled and is never accepted from a request. Missing or
-non-production bucket configuration fails closed. Existing `merchant-assets`
-references belong to the legacy Function/probe path and are not selected by V1.
+The bucket and environment are server-controlled and are never accepted from a
+request. Missing or invalid configuration fails closed. Production requires the
+exact `feeldao-production-media` bucket. Non-Production requires an explicit
+project-local private bucket; the current G2C staging target uses `merchant-assets`.
+The Production bucket is rejected by staging to prevent cross-environment writes.
 
 ## Upload and compensation
 

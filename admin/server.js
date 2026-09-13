@@ -25,7 +25,7 @@ const { createMeooOperatorRepository } = require("./meoo-operator-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
 const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
-const { validateProductionEnvironment, validateDatabaseBackend } = require("./runtime-config");
+const { validateProductionEnvironment, validateDatabaseBackend, validateMediaStorageConfig } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
 const { respondUnexpectedError } = require("./error-response");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
@@ -71,9 +71,7 @@ const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorR
 const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
 const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
 const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
-if (MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && MEDIA_STORAGE_BUCKET !== "feeldao-production-media") {
-  throw new Error("MEDIA_STORAGE_BUCKET must be explicitly configured for the Production V1 bucket");
-}
+validateMediaStorageConfig(process.env);
 const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
   ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), onEvent: (event, fields) => console.info(event, fields) })
   : null;
