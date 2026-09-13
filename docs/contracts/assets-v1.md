@@ -2,8 +2,10 @@
 
 ## Authority and scope
 
-PostgreSQL is the metadata and relationship authority. Binary objects live in the
-Meoo Storage provider (`feeldao-production-media`, private). The provider boundary
+PostgreSQL is the metadata and relationship authority. Binary objects live in a
+private, server-selected Meoo Storage bucket. Production uses the exact
+`feeldao-production-media` bucket; non-Production environments use an explicit
+project-local bucket such as staging's `merchant-assets`. The provider boundary
 is represented by `storage_provider`, `bucket`, and `object_key`; provider SDK
 response blobs are not canonical fields.
 

@@ -31,4 +31,24 @@ function validateDatabaseBackend(env = process.env) {
   return backend;
 }
 
-module.exports = { validateProductionEnvironment, validateDatabaseBackend, validBase64Key };
+function validateMediaStorageConfig(env = process.env) {
+  const provider = String(env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
+  const enabled = String(env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
+  if (!enabled || provider !== "meoo") return { ok: true, enabled, provider, environment: null, bucket: null };
+
+  const environment = String(env.ATELIER_ENVIRONMENT || "").trim().toLowerCase();
+  if (!/^(staging|production)$/.test(environment)) {
+    throw new Error("ATELIER_ENVIRONMENT is required for Meoo V1 storage");
+  }
+  const bucket = String(env.MEDIA_STORAGE_BUCKET || "").trim();
+  if (!bucket) throw new Error("MEDIA_STORAGE_BUCKET is required for Meoo V1 storage");
+  if (environment === "production" && bucket !== "feeldao-production-media") {
+    throw new Error("Production Meoo V1 storage requires feeldao-production-media");
+  }
+  if (environment === "staging" && bucket === "feeldao-production-media") {
+    throw new Error("Staging Meoo V1 storage cannot use the Production bucket");
+  }
+  return { ok: true, enabled, provider, environment, bucket };
+}
+
+module.exports = { validateProductionEnvironment, validateDatabaseBackend, validateMediaStorageConfig, validBase64Key };
