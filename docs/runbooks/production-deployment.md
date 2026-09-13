@@ -4,18 +4,18 @@
 
 | Surface | Required value |
 | --- | --- |
-| Repository Node.js | `22.x` from `.node-version` and `admin/package.json` |
+| Repository Node.js | `>=22 <25` from `admin/package.json`; `.node-version=22` remains the development/Docker baseline |
 | pnpm | `11.7.0` from `admin/package.json`, CI, Dockerfile, and `scripts/setup.sh` |
 | Liveness | `GET /health` returns only `{"status":"ok"}` and does not prove database health |
 | Readiness gate | authenticated `GET /ops/v1/health`, controlled Operator login, session probe, and audit confirmation |
 
-The Meoo runtime must be configured to Node.js 22 before deployment. Its current runtime version is an external platform value and must be recorded as `NOT_VERIFIED` until the platform owner provides or permits read-only verification.
+The Meoo Builder host may currently provide Node.js 24. The project-owned `scripts/setup.sh` accepts only Node majors 22, 23, and 24, then fails closed for every other major; this keeps the build contract aligned with `admin/package.json` (`>=22 <25`). The Docker image remains pinned to `node:22-bookworm-slim` for reproducible production execution. The platform runtime version is external and must be recorded as `NOT_VERIFIED` until the platform owner provides or permits read-only verification. To upgrade the baseline, update the declaration, guard, CI matrix, and Docker image together and rerun both compatibility lanes before deployment.
 
 ## Required authorization phases
 
 ### B1 — image deployment
 
-B1 deploys a reviewed image to the dedicated Production project after the platform owner supplies the inputs in [production-inputs.md](production-inputs.md). Before starting B1, verify the selected project, service, image digest, Node.js 22 runtime, port, and healthcheck path. Use the committed migration manifest as a compatibility gate; do not enable automatic migration on steady-state application instances.
+B1 deploys a reviewed image to the dedicated Production project after the platform owner supplies the inputs in [production-inputs.md](production-inputs.md). Before starting B1, verify the selected project, service, image digest, Node runtime contract (`>=22 <25`), port, and healthcheck path. Use the committed migration manifest as a compatibility gate; do not enable automatic migration on steady-state application instances.
 
 After B1, record the deployed release SHA and image digest, then run the liveness and authenticated readiness gates. A successful `/health` response alone is insufficient.
 

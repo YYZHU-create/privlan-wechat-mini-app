@@ -2,7 +2,7 @@
 
 ## Runtime contract
 
-The repository production runbook defines Node.js `22.x`, pnpm `11.7.0`, public `/health` liveness, and authenticated `/ops/v1/health` readiness. A public health response does not prove database health or production readiness.
+The repository production runbook defines a Node.js `>=22 <25` compatibility contract, with Node.js 22 as the `.node-version` and Docker baseline, pnpm `11.7.0`, public `/health` liveness, and authenticated `/ops/v1/health` readiness. The Meoo Builder host may supply Node.js 24; `scripts/setup.sh` accepts only majors 22–24 and fails closed outside the contract. A public health response does not prove database health or production readiness.
 
 ## Current production evidence
 

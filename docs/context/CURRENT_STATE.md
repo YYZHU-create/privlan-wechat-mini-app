@@ -130,7 +130,7 @@ STATUS=NOT_VERIFIED
 EVIDENCE=Latest migration input and production runbook; no DNS or route mutation performed.
 
 ## ENVIRONMENT / RUNTIME
-REPOSITORY_RUNTIME=Node.js 22.x / pnpm 11.7.0 (documented requirement)
+REPOSITORY_RUNTIME=Node.js >=22 <25 / pnpm 11.7.0 (Node 22 development and Docker baseline; setup.sh accepts 22-24)
 CURRENT_RUNTIME_INSTANCE=NOT_VERIFIED
 DATABASE_RUNTIME_IDENTITY=NOT_VERIFIED
 PROCESS_CHECKOUT_BINDING=REQUIRED_FOR_NEW_EVIDENCE
