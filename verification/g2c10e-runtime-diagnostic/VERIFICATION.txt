@@ -1,0 +1,25 @@
+G2C10E RUNTIME IDENTITY AND ACTIVATION DIAGNOSTIC VERIFICATION
+
+BASELINE
+Command: node --test admin/test/media-runtime-config.test.js admin/test/runtime-identity.test.js
+Result: 10 tests, 10 passed, 0 failed, exit 0 (baseline commit 2e5bb73c6c7e668581a6318c6ac3d45413e743e0).
+
+MODIFIED
+Command: node --test admin/test/media-runtime-diagnostic.test.js admin/test/media-runtime-config.test.js admin/test/runtime-identity.test.js
+Result: 19 tests, 19 passed, 0 failed, exit 0.
+Command: node --test admin/test/media-runtime-diagnostic.test.js admin/test/media-runtime-config.test.js admin/test/runtime-identity.test.js admin/test/server-security.test.js
+Result: 25 tests, 25 passed, 0 failed, exit 0.
+Command: pnpm test (admin)
+Result: 257 tests, 256 passed, 1 skipped, 0 failed, exit 0.
+Command: git diff --check
+Result: no output, exit 0.
+
+ROLLBACK
+Command: verification/g2c10e-runtime-diagnostic/ROLLBACK.sh rollback-test/MODIFIED_FILE rollback-test/MODIFIED_FILE.baseline
+Result: ROLLBACK_RESULT=restored; rollback copy matched baseline, ROLLBACK_TEST=PASS, exit 0.
+The primary MODIFIED_FILE remains in the modified state.
+
+SCOPE
+Changed branch: codex/g2c10e-runtime-diagnostic.
+Changed files: admin/media-runtime-diagnostic.js; admin/test/media-runtime-diagnostic.test.js; admin/launch-v1-routes.js; admin/merchant-routes.js; admin/server.js; docs/asset-media-runtime-v1.md.
+No Meoo configuration, database, storage, secret, deployment, DNS, or Production resource was changed.

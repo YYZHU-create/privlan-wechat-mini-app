@@ -50,6 +50,7 @@ function createRateLimiter({ windowMs, limit, key: keyForRequest }) {
 }
 
 function registerMerchantRoutes(app, getService, options = {}) {
+  const registration = { mediaUploadRouteRegistered: false };
   const authLimit = createRateLimiter({ windowMs: 60_000, limit: 12 });
   const redeemLimit = createRateLimiter({ windowMs: 60_000, limit: 10 });
   const changePasswordLimit = createRateLimiter({
@@ -290,6 +291,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
     try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}) }); }
     catch (error) { return failure(res, error, req.requestId); }
   });
+  registration.mediaUploadRouteRegistered = true;
   app.get("/api/media/v1/content/:id", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
     try { const result = await options.mediaService.read(req.merchantScope, req.params.id); res.type(result.mimeType); res.set("Cache-Control", "private, no-store"); res.set("Content-Length", String(result.sizeBytes)); return res.status(200).send(Buffer.from(result.bytes)); }
@@ -315,6 +317,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
     try { req.saasService.assertWritable(req.merchantScope); return next(); }
     catch (error) { return failure(res, error, req.requestId); }
   });
+  return registration;
 }
 
 function registerOpsSaasRoutes(app, getService) {
