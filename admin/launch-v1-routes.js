@@ -26,7 +26,18 @@ function registerLaunchV1Routes(app){
   app.patch("/v1/marketing/campaigns/:id/status",run(req=>m(req).setCampaignStatus(req.merchantScope,req.params.id,req.body?.status,{requestId:req.requestId})));
   app.get("/v1/marketing/campaigns/:id/analytics",run(req=>m(req).analytics(req.merchantScope,req.params.id)));
 }
-function registerLaunchV1OpsRoutes(app,getService){
+function registerLaunchV1OpsRoutes(app,getService,options={}){
+  if (options.runtimeDiagnostic) {
+    app.get("/ops/v1/runtime/media-diagnostic", (req, res) => {
+      if (!req.operator) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "运营会话无效" });
+      try {
+        const diagnostic = options.runtimeDiagnostic();
+        res.set("Cache-Control", "no-store");
+        if (diagnostic.environmentResolved !== "staging") return res.status(404).json({ ok: false, code: "OPS_FEATURE_NOT_AVAILABLE", error: "该诊断仅对 Staging 开放" });
+        return ok(res, diagnostic, "运行时诊断已获取", 200, req.requestId || Date.now().toString());
+      } catch (error) { return fail(res, error, req.requestId); }
+    });
+  }
   const run=(fn)=>(req,res)=>Promise.resolve().then(async()=>{if(!req.operator) throw trustedDomainError(401, "OPS_AUTH_REQUIRED", "运营会话无效"); req.saasService=await getService(); return fn(req)}).then(v=>ok(res,v,"操作成功",200,req.requestId||Date.now().toString())).catch(e=>fail(res,e,req.requestId));
   app.patch("/ops/v1/tenants/:id/status",run(req=>req.saasService.operatorLaunchService.setTenantStatus(req.operator,req.params.id,req.body?.status,{requestId:req.requestId})));
   app.post("/ops/v1/feature-flags",run(req=>req.saasService.operatorLaunchService.upsertFlag(req.operator,req.body||{},{requestId:req.requestId})));

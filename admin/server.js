@@ -27,6 +27,7 @@ const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
 const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
 const { validateProductionEnvironment, validateDatabaseBackend, validateMediaStorageConfig } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
+const { resolveBuildIdentity, buildMediaRuntimeDiagnostic } = require("./media-runtime-diagnostic");
 const { respondUnexpectedError } = require("./error-response");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
 
@@ -35,6 +36,7 @@ const DATABASE_BACKEND = validateDatabaseBackend(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
 const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
+const BUILD_IDENTITY = resolveBuildIdentity({ env: process.env });
 const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
 const CONFIG_BACKUP_DIR = path.resolve(process.env.PRIVLAN_CONFIG_BACKUP_DIR || path.join(__dirname, "config-backups"));
 const IMAGES_DIR = path.resolve(process.env.PRIVLAN_IMAGES_DIR || path.join(ROOT, "images"));
@@ -71,7 +73,7 @@ const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorR
 const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
 const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
 const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
-validateMediaStorageConfig(process.env);
+const MEDIA_STORAGE_VALIDATION = validateMediaStorageConfig(process.env);
 const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
   ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), onEvent: (event, fields) => console.info(event, fields) })
   : null;
@@ -184,7 +186,7 @@ app.use(["/api/media/upload", "/api/media/v1/upload"], express.json({ limit: "11
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
-registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
+const MERCHANT_ROUTE_REGISTRATION = registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
 registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 
@@ -1060,7 +1062,21 @@ app.use("/ops/v1", (req, res, next) => {
   next();
 });
 app.use("/ops/v1", requireOperator);
-registerLaunchV1OpsRoutes(app, getSaasService);
+registerLaunchV1OpsRoutes(app, getSaasService, { runtimeDiagnostic: () => buildMediaRuntimeDiagnostic({
+  buildIdentity: BUILD_IDENTITY,
+  environmentResolved: process.env.ATELIER_ENVIRONMENT,
+  projectIdentity: process.env.MEOO_PROJECT_URL_ID,
+  databaseBackendResolved: DATABASE_BACKEND,
+  mediaProviderResolved: MEDIA_STORAGE_PROVIDER,
+  mediaAssetV1Requested: MEDIA_ASSET_V1_ENABLED,
+  mediaAssetV1Active: Boolean(mediaService),
+  mediaUploadRouteRegistered: MERCHANT_ROUTE_REGISTRATION.mediaUploadRouteRegistered,
+  storageValidation: MEDIA_STORAGE_VALIDATION,
+  supabaseUrlPresent: Boolean(String(process.env.SUPABASE_URL || "").trim()),
+  serviceRolePresent: Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()),
+  databaseUrlPresent: Boolean(String(process.env.DATABASE_URL || "").trim()),
+  bucket: MEDIA_STORAGE_BUCKET
+}) });
 registerOpsSaasRoutes(app, getSaasService);
 
 // In SaaS mode PostgreSQL is the only operator data source. Anything not

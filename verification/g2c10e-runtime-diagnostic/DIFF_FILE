@@ -1,0 +1,137 @@
+diff --git a/admin/launch-v1-routes.js b/admin/launch-v1-routes.js
+index 4bd9f2b..7bc0c7e 100644
+--- a/admin/launch-v1-routes.js
++++ b/admin/launch-v1-routes.js
+@@ -26,7 +26,18 @@ function registerLaunchV1Routes(app){
+   app.patch("/v1/marketing/campaigns/:id/status",run(req=>m(req).setCampaignStatus(req.merchantScope,req.params.id,req.body?.status,{requestId:req.requestId})));
+   app.get("/v1/marketing/campaigns/:id/analytics",run(req=>m(req).analytics(req.merchantScope,req.params.id)));
+ }
+-function registerLaunchV1OpsRoutes(app,getService){
++function registerLaunchV1OpsRoutes(app,getService,options={}){
++  if (options.runtimeDiagnostic) {
++    app.get("/ops/v1/runtime/media-diagnostic", (req, res) => {
++      if (!req.operator) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "运营会话无效" });
++      try {
++        const diagnostic = options.runtimeDiagnostic();
++        res.set("Cache-Control", "no-store");
++        if (diagnostic.environmentResolved !== "staging") return res.status(404).json({ ok: false, code: "OPS_FEATURE_NOT_AVAILABLE", error: "该诊断仅对 Staging 开放" });
++        return ok(res, diagnostic, "运行时诊断已获取", 200, req.requestId || Date.now().toString());
++      } catch (error) { return fail(res, error, req.requestId); }
++    });
++  }
+   const run=(fn)=>(req,res)=>Promise.resolve().then(async()=>{if(!req.operator) throw trustedDomainError(401, "OPS_AUTH_REQUIRED", "运营会话无效"); req.saasService=await getService(); return fn(req)}).then(v=>ok(res,v,"操作成功",200,req.requestId||Date.now().toString())).catch(e=>fail(res,e,req.requestId));
+   app.patch("/ops/v1/tenants/:id/status",run(req=>req.saasService.operatorLaunchService.setTenantStatus(req.operator,req.params.id,req.body?.status,{requestId:req.requestId})));
+   app.post("/ops/v1/feature-flags",run(req=>req.saasService.operatorLaunchService.upsertFlag(req.operator,req.body||{},{requestId:req.requestId})));
+diff --git a/admin/merchant-routes.js b/admin/merchant-routes.js
+index fd8fc37..4ca107d 100644
+--- a/admin/merchant-routes.js
++++ b/admin/merchant-routes.js
+@@ -50,6 +50,7 @@ function createRateLimiter({ windowMs, limit, key: keyForRequest }) {
+ }
+ 
+ function registerMerchantRoutes(app, getService, options = {}) {
++  const registration = { mediaUploadRouteRegistered: false };
+   const authLimit = createRateLimiter({ windowMs: 60_000, limit: 12 });
+   const redeemLimit = createRateLimiter({ windowMs: 60_000, limit: 10 });
+   const changePasswordLimit = createRateLimiter({
+@@ -290,6 +291,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
+     try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}) }); }
+     catch (error) { return failure(res, error, req.requestId); }
+   });
++  registration.mediaUploadRouteRegistered = true;
+   app.get("/api/media/v1/content/:id", async (req, res, next) => {
+     if (!req.saasService || !options.mediaService) return next();
+     try { const result = await options.mediaService.read(req.merchantScope, req.params.id); res.type(result.mimeType); res.set("Cache-Control", "private, no-store"); res.set("Content-Length", String(result.sizeBytes)); return res.status(200).send(Buffer.from(result.bytes)); }
+@@ -315,6 +317,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
+     try { req.saasService.assertWritable(req.merchantScope); return next(); }
+     catch (error) { return failure(res, error, req.requestId); }
+   });
++  return registration;
+ }
+ 
+ function registerOpsSaasRoutes(app, getService) {
+diff --git a/admin/server.js b/admin/server.js
+index b8b48c7..2d37fef 100644
+--- a/admin/server.js
++++ b/admin/server.js
+@@ -27,6 +27,7 @@ const { registerAppointmentGatewayRoutes } = require("./appointment-routes");
+ const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-v1-routes");
+ const { validateProductionEnvironment, validateDatabaseBackend, validateMediaStorageConfig } = require("./runtime-config");
+ const { resolveRuntimeIdentity } = require("./runtime-identity");
++const { resolveBuildIdentity, buildMediaRuntimeDiagnostic } = require("./media-runtime-diagnostic");
+ const { respondUnexpectedError } = require("./error-response");
+ const { buildPreviewPackage, formatBytes } = require("./preview-package");
+ 
+@@ -35,6 +36,7 @@ const DATABASE_BACKEND = validateDatabaseBackend(process.env);
+ 
+ const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
+ const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
++const BUILD_IDENTITY = resolveBuildIdentity({ env: process.env });
+ const CONFIG_PATH = path.resolve(process.env.PRIVLAN_CONFIG_PATH || path.join(__dirname, "config.json"));
+ const CONFIG_BACKUP_DIR = path.resolve(process.env.PRIVLAN_CONFIG_BACKUP_DIR || path.join(__dirname, "config-backups"));
+ const IMAGES_DIR = path.resolve(process.env.PRIVLAN_IMAGES_DIR || path.join(ROOT, "images"));
+@@ -71,7 +73,7 @@ const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorR
+ const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
+ const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
+ const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
+-validateMediaStorageConfig(process.env);
++const MEDIA_STORAGE_VALIDATION = validateMediaStorageConfig(process.env);
+ const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
+   ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), onEvent: (event, fields) => console.info(event, fields) })
+   : null;
+@@ -184,7 +186,7 @@ app.use(["/api/media/upload", "/api/media/v1/upload"], express.json({ limit: "11
+ app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
+ app.use(express.json({ limit: "2mb" }));
+ registerAppointmentGatewayRoutes(app, getSaasService);
+-registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
++const MERCHANT_ROUTE_REGISTRATION = registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
+ registerLaunchV1Routes(app);
+ registerOpsAuthRoutes(app, getSaasService);
+ 
+@@ -1060,7 +1062,21 @@ app.use("/ops/v1", (req, res, next) => {
+   next();
+ });
+ app.use("/ops/v1", requireOperator);
+-registerLaunchV1OpsRoutes(app, getSaasService);
++registerLaunchV1OpsRoutes(app, getSaasService, { runtimeDiagnostic: () => buildMediaRuntimeDiagnostic({
++  buildIdentity: BUILD_IDENTITY,
++  environmentResolved: process.env.ATELIER_ENVIRONMENT,
++  projectIdentity: process.env.MEOO_PROJECT_URL_ID,
++  databaseBackendResolved: DATABASE_BACKEND,
++  mediaProviderResolved: MEDIA_STORAGE_PROVIDER,
++  mediaAssetV1Requested: MEDIA_ASSET_V1_ENABLED,
++  mediaAssetV1Active: Boolean(mediaService),
++  mediaUploadRouteRegistered: MERCHANT_ROUTE_REGISTRATION.mediaUploadRouteRegistered,
++  storageValidation: MEDIA_STORAGE_VALIDATION,
++  supabaseUrlPresent: Boolean(String(process.env.SUPABASE_URL || "").trim()),
++  serviceRolePresent: Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()),
++  databaseUrlPresent: Boolean(String(process.env.DATABASE_URL || "").trim()),
++  bucket: MEDIA_STORAGE_BUCKET
++}) });
+ registerOpsSaasRoutes(app, getSaasService);
+ 
+ // In SaaS mode PostgreSQL is the only operator data source. Anything not
+diff --git a/docs/asset-media-runtime-v1.md b/docs/asset-media-runtime-v1.md
+index 0012793..a7028e8 100644
+--- a/docs/asset-media-runtime-v1.md
++++ b/docs/asset-media-runtime-v1.md
+@@ -67,6 +67,19 @@ link discriminator for the current JSON Product model is
+ 
+ ## Deployment prerequisites
+ 
++The diagnostic surface distinguishes the effective process state from the
++requested configuration: `mediaAssetV1Requested` is the normalized feature
++flag, `mediaAssetV1Active` is true only when the real Media V1 service was
++constructed with the Meoo backend and validated storage configuration, and
++`mediaUploadRouteRegistered` records route-registration bookkeeping. It also
++reports deployment-grounded build identity and an `activationBlockers` list.
++The privileged Staging-only runtime diagnostic never returns raw URLs, bucket
++names, credentials, cookies, or tokens and uses `Cache-Control: no-store`.
++
++`mediaAssetV1Active=true` proves service activation only. It does not prove
++that Storage upload, private read, delete, cleanup, or Product linking works;
++those behaviors require the separate G2C canary gates.
++
+ Run focused provider/repository/service/security tests, then the existing media and
+ asset-schema suites. Validate the configured bucket and runtime secrets in the
+ target environment without printing values. G2A does not deploy, migrate, upload,

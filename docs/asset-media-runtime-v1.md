@@ -67,6 +67,19 @@ link discriminator for the current JSON Product model is
 
 ## Deployment prerequisites
 
+The diagnostic surface distinguishes the effective process state from the
+requested configuration: `mediaAssetV1Requested` is the normalized feature
+flag, `mediaAssetV1Active` is true only when the real Media V1 service was
+constructed with the Meoo backend and validated storage configuration, and
+`mediaUploadRouteRegistered` records route-registration bookkeeping. It also
+reports deployment-grounded build identity and an `activationBlockers` list.
+The privileged Staging-only runtime diagnostic never returns raw URLs, bucket
+names, credentials, cookies, or tokens and uses `Cache-Control: no-store`.
+
+`mediaAssetV1Active=true` proves service activation only. It does not prove
+that Storage upload, private read, delete, cleanup, or Product linking works;
+those behaviors require the separate G2C canary gates.
+
 Run focused provider/repository/service/security tests, then the existing media and
 asset-schema suites. Validate the configured bucket and runtime secrets in the
 target environment without printing values. G2A does not deploy, migrate, upload,
