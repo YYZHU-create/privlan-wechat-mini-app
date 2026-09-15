@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "v1",
+  "targetProjectId": "g8o5cv1om41o",
+  "environment": "production",
+  "media": { "storageProvider": "legacy", "assetV1Enabled": false, "storageBucket": "" }
+}

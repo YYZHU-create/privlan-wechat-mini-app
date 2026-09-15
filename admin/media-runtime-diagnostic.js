@@ -89,10 +89,10 @@ function inspectRuntimeBuildMetadata({ env = process.env, readFile = fs.readFile
     parsed = JSON.parse(readFile(metadataPath, "utf8"));
   } catch (error) {
     const code = error && error.code === "ENOENT" ? "FILE_ABSENT" : error instanceof SyntaxError ? "INVALID_JSON" : "FILE_UNREADABLE";
-    return { runtimeBuildMetadataFilePresent: code !== "FILE_ABSENT", runtimeBuildMetadataReadable: false, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: "unknown", runtimeBuildMetadataErrorClass: code };
+    return { runtimeBuildMetadataFilePresent: code !== "FILE_ABSENT", runtimeBuildMetadataReadable: false, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: "unknown", runtimeBuildMetadataSourceCommit: "unknown", runtimeBuildMetadataDeclaredTargetProjectId: null, runtimeBuildMetadataEnvironment: "unknown", runtimeBuildMetadataRuntimeConfigDigest: "unknown", runtimeBuildMetadataConfigSchemaVersion: "unknown", runtimeBuildMetadataSchemaVersion: "unknown", runtimeBuildMetadataErrorClass: code };
   }
   const commit = safeCommitSha(parsed?.commitSha || parsed?.sha);
-  return { runtimeBuildMetadataFilePresent: true, runtimeBuildMetadataReadable: true, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: commit, runtimeBuildMetadataErrorClass: commit === "unknown" ? "COMMIT_MISSING" : "NONE" };
+  return { runtimeBuildMetadataFilePresent: true, runtimeBuildMetadataReadable: true, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: commit, runtimeBuildMetadataSourceCommit: safeCommitSha(parsed.sourceCommit), runtimeBuildMetadataDeclaredTargetProjectId: /^[a-z0-9]{6,32}$/.test(String(parsed.declaredTargetProjectId || "")) ? parsed.declaredTargetProjectId : null, runtimeBuildMetadataEnvironment: ["development", "staging", "production"].includes(String(parsed.environment || "")) ? parsed.environment : "unknown", runtimeBuildMetadataRuntimeConfigDigest: /^[0-9a-f]{64}$/i.test(String(parsed.runtimeConfigDigest || "")) ? String(parsed.runtimeConfigDigest).toLowerCase() : "unknown", runtimeBuildMetadataConfigSchemaVersion: String(parsed.configSchemaVersion || "unknown"), runtimeBuildMetadataSchemaVersion: String(parsed.schemaVersion || "unknown"), runtimeBuildMetadataErrorClass: commit === "unknown" ? "COMMIT_MISSING" : "NONE" };
 }
 
 function compareEnvResolved(envClass, resolved, expectedClass, { absentDefault = false, fallbackValue = "" } = {}) {
