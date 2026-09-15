@@ -221,6 +221,9 @@ function buildMediaRuntimeDiagnostic({
     environmentEnvVsResolved,
     ...runtimeEnvFile,
     ...buildMetadata,
+    runtimeConfigFilePresent: String(env.ATELIER_RUNTIME_CONFIG_FILE_PRESENT || "false") === "true",
+    runtimeConfigFileReadable: String(env.ATELIER_RUNTIME_CONFIG_FILE_READABLE || "false") === "true",
+    runtimeConfigLoadStatus: String(env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS || "NOT_LOADED"),
     supabaseProjectBindingClass: projectBinding,
     trustedProjectIdResolved: projectBinding === "EXPECTED_STAGING_PROJECT" ? STAGING_PROJECT_ID : null,
     runtimeMediaConfigSourceClass
