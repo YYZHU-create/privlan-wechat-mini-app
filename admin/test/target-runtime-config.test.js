@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const {
   TARGETS, validateRuntimeConfig, canonicalizeRuntimeConfig, runtimeConfigDigest,
   loadRuntimeConfig, createBuildMetadata, createDeploymentArtifact
@@ -81,4 +82,16 @@ test("target-bound loader rejects trusted runtime target mismatch", () => {
   const env = {};
   expectThrow(() => loadRuntimeConfig(path.resolve(__dirname, "../../runtime-config/staging.json"), { env, deploymentProjectId: production.targetProjectId }), /MISMATCH/);
   assert.equal(env.MEDIA_ASSET_V1_ENABLED, undefined);
+});
+
+test("actual start.sh bootstrap propagates staging config into the server process", { skip: process.platform === "win32" ? "POSIX sh is unavailable on the Windows runner" : false }, () => {
+  const source = path.resolve(__dirname, "../..");
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "g2c10n-e2e-"));
+  const { createDeploymentArtifact } = require("../target-runtime-config");
+  createDeploymentArtifact({ sourceDir: source, outputDir: output, targetProjectId: staging.targetProjectId, sourceCommit: SHA, config: staging });
+  fs.writeFileSync(path.join(output, "admin", "server.js"), "console.log(JSON.stringify({provider:process.env.MEDIA_STORAGE_PROVIDER, enabled:process.env.MEDIA_ASSET_V1_ENABLED, bucket:process.env.MEDIA_STORAGE_BUCKET, configStatus:process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS}));");
+  const result = spawnSync("sh", [path.join(output, "scripts", "start.sh")], { encoding: "utf8", env: { ...process.env, ATELIER_ENVIRONMENT: "staging", ATELIER_DB_BACKEND: "meoo", PORT: "19001" }, timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr);
+  const line = result.stdout.trim().split(/\r?\n/).at(-1);
+  assert.deepEqual(JSON.parse(line), { provider: "meoo", enabled: "true", bucket: "merchant-assets", configStatus: "LOADED_VALIDATED" });
 });
