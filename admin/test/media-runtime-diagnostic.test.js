@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { buildMediaRuntimeDiagnostic, resolveBuildIdentity } = require("../media-runtime-diagnostic");
+const { buildMediaRuntimeDiagnostic, resolveBuildIdentity, classifyRuntimeEnv, inspectRuntimeEnvFile, inspectRuntimeBuildMetadata } = require("../media-runtime-diagnostic");
 const { registerLaunchV1OpsRoutes } = require("../launch-v1-routes");
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -97,6 +97,87 @@ test("diagnostic route requires operator auth and marks responses no-store", asy
   assert.equal(authorized.statusCode, 200);
   assert.equal(authorized.headers["Cache-Control"], "no-store");
   assert.equal(authorized.body.data.diagnosticSchemaVersion, "g2c10e-v1");
+});
+
+test("safe process environment classifications cover expected and absent values", () => {
+  assert.deepEqual(classifyRuntimeEnv({ MEDIA_STORAGE_PROVIDER: "meoo", MEDIA_ASSET_V1_ENABLED: "true", MEDIA_STORAGE_BUCKET: "merchant-assets", ATELIER_DB_BACKEND: "meoo", ATELIER_ENVIRONMENT: "staging", ATELIER_RELEASE_METADATA_PATH: "" }), {
+    runtimeEnvMediaStorageProviderClass: "EXPECTED_MEOO",
+    runtimeEnvMediaAssetV1EnabledClass: "EXPECTED_TRUE",
+    runtimeEnvMediaStorageBucketClass: "EXPECTED_MERCHANT_ASSETS",
+    runtimeEnvAtelierDbBackendClass: "EXPECTED_MEOO",
+    runtimeEnvAtelierEnvironmentClass: "EXPECTED_STAGING",
+    runtimeEnvReleaseMetadataPathClass: "ABSENT"
+  });
+  assert.equal(classifyRuntimeEnv({}).runtimeEnvMediaStorageProviderClass, "ABSENT");
+  assert.equal(classifyRuntimeEnv({ MEDIA_STORAGE_PROVIDER: "legacy", MEDIA_ASSET_V1_ENABLED: "0", MEDIA_STORAGE_BUCKET: "other", ATELIER_DB_BACKEND: "native", ATELIER_ENVIRONMENT: "production" }).runtimeEnvMediaStorageProviderClass, "UNEXPECTED");
+});
+
+test("diagnostic adds source classifications without exposing raw values", () => {
+  const result = buildMediaRuntimeDiagnostic({ ...valid, env: { MEOO_PROJECT_URL_ID: "asmhysidbg5g", MEDIA_STORAGE_PROVIDER: "meoo", MEDIA_ASSET_V1_ENABLED: "true", MEDIA_STORAGE_BUCKET: "merchant-assets", ATELIER_DB_BACKEND: "meoo", ATELIER_ENVIRONMENT: "staging" }, runtimeRoot: path.resolve(__dirname, "../..") });
+  assert.equal(result.configSourceDiagnosticVersion, "g2c10k-v1");
+  assert.equal(result.runtimeEnvMediaStorageProviderClass, "EXPECTED_MEOO");
+  assert.equal(result.mediaProviderEnvVsResolved, "MATCH");
+  assert.equal(result.runtimeMediaConfigSourceClass, "PROCESS_ENV_EXPECTED");
+  assert.equal(result.supabaseProjectBindingClass, "EXPECTED_STAGING_PROJECT");
+  assert.equal(result.trustedProjectIdResolved, "asmhysidbg5g");
+  const serialized = JSON.stringify(result);
+  assert.doesNotMatch(serialized, /merchant-assets|https?:\/\/|postgres(?:ql)?:\/\/|service-role|password|token/i);
+});
+
+test("runtime env file classifications are safe and non-secret", () => {
+  const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-env-"));
+  fs.writeFileSync(path.join(temp, ".runtime.env"), "export MEDIA_STORAGE_PROVIDER=meoo\nMEDIA_ASSET_V1_ENABLED=true\nMEDIA_STORAGE_BUCKET=merchant-assets\nATELIER_DB_BACKEND=meoo\nATELIER_ENVIRONMENT=staging\nATELIER_RELEASE_METADATA_PATH=/app/runtime-build.json\nSECRET=value\n");
+  const result = inspectRuntimeEnvFile({ rootPath: temp });
+  assert.equal(result.runtimeEnvFilePresent, true);
+  assert.equal(result.runtimeEnvFileMediaProviderClass, "EXPECTED_MEOO");
+  assert.equal(result.runtimeEnvFileMediaFlagClass, "EXPECTED_TRUE");
+  assert.equal(result.runtimeEnvFileMediaBucketClass, "EXPECTED_MERCHANT_ASSETS");
+  assert.equal(result.runtimeEnvFileReleaseMetadataPathClass, "CUSTOM_PATH_PRESENT");
+  assert.doesNotMatch(JSON.stringify(result), /SECRET|value|merchant-assets/i);
+});
+
+test("missing runtime env file is explicit", () => {
+  const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-env-missing-"));
+  assert.deepEqual(inspectRuntimeEnvFile({ rootPath: temp }), { runtimeEnvFilePresent: false, runtimeEnvFileMediaProviderClass: "ABSENT", runtimeEnvFileMediaFlagClass: "ABSENT", runtimeEnvFileMediaBucketClass: "ABSENT", runtimeEnvFileDbBackendClass: "ABSENT", runtimeEnvFileEnvironmentClass: "ABSENT", runtimeEnvFileReleaseMetadataPathClass: "ABSENT" });
+});
+
+test("absent process media keys are distinguished from file overrides", () => {
+  const result = buildMediaRuntimeDiagnostic({ ...valid, env: { MEOO_PROJECT_URL_ID: "asmhysidbg5g" }, runtimeRoot: fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-source-")) });
+  assert.equal(result.runtimeMediaConfigSourceClass, "PROCESS_ENV_MEDIA_KEYS_ABSENT");
+});
+
+test("runtime build metadata reports valid and missing files", () => {
+  const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-build-"));
+  const metadata = path.join(temp, "runtime-build.json");
+  fs.writeFileSync(metadata, JSON.stringify({ commitSha: SHA, branch: "main", buildTime: "2026-09-14T00:00:00Z" }));
+  const validResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: metadata } });
+  assert.equal(validResult.runtimeBuildMetadataReadable, true);
+  assert.equal(validResult.runtimeBuildMetadataCommit, SHA);
+  const missingResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: path.join(temp, "missing.json") } });
+  assert.equal(missingResult.runtimeBuildMetadataErrorClass, "FILE_ABSENT");
+  fs.writeFileSync(metadata, "not-json");
+  assert.equal(inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: metadata } }).runtimeBuildMetadataErrorClass, "INVALID_JSON");
+});
+
+test("wrong project binding is classified without returning a URL", () => {
+  const result = buildMediaRuntimeDiagnostic({ ...valid, env: { MEOO_PROJECT_URL_ID: "other-project", MEDIA_STORAGE_PROVIDER: "meoo", MEDIA_ASSET_V1_ENABLED: "true", MEDIA_STORAGE_BUCKET: "merchant-assets", ATELIER_DB_BACKEND: "meoo", ATELIER_ENVIRONMENT: "staging" } });
+  assert.equal(result.supabaseProjectBindingClass, "OTHER_PROJECT");
+  assert.equal(result.trustedProjectIdResolved, null);
+  assert.doesNotMatch(JSON.stringify(result), /other-project/);
+});
+
+test("production and unknown environments remain denied by the operator route", async () => {
+  const routes = {};
+  registerLaunchV1OpsRoutes({ get(route, handler) { routes[route] = handler; }, patch() {}, post() {} }, () => Promise.resolve(null), { runtimeDiagnostic: () => ({ environmentResolved: "production" }) });
+  const production = makeResponse();
+  await routes["/ops/v1/runtime/media-diagnostic"]({ operator: { id: "operator" } }, production);
+  assert.equal(production.statusCode, 404);
+  assert.equal(production.body.code, "OPS_FEATURE_NOT_AVAILABLE");
+  const unknownRoutes = {};
+  registerLaunchV1OpsRoutes({ get(route, handler) { unknownRoutes[route] = handler; }, patch() {}, post() {} }, () => Promise.resolve(null), { runtimeDiagnostic: () => ({ environmentResolved: "unknown" }) });
+  const unknown = makeResponse();
+  await unknownRoutes["/ops/v1/runtime/media-diagnostic"]({ operator: { id: "operator" } }, unknown);
+  assert.equal(unknown.statusCode, 404);
 });
 
 function makeResponse() {
