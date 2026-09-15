@@ -56,12 +56,18 @@ function readBuildMetadata(filePath, readFile = fs.readFileSync) {
   try {
     const parsed = JSON.parse(readFile(filePath, "utf8"));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return {
+    const metadata = {
       commitSha: parsed.commitSha || parsed.sha,
       branch: parsed.branch,
       environment: parsed.environment,
       buildTime: parsed.buildTime
     };
+    if (parsed.sourceCommit !== undefined) metadata.sourceCommit = parsed.sourceCommit;
+    if (parsed.declaredTargetProjectId !== undefined) metadata.declaredTargetProjectId = parsed.declaredTargetProjectId;
+    if (parsed.runtimeConfigDigest !== undefined) metadata.runtimeConfigDigest = parsed.runtimeConfigDigest;
+    if (parsed.configSchemaVersion !== undefined) metadata.configSchemaVersion = parsed.configSchemaVersion;
+    if (parsed.schemaVersion !== undefined) metadata.metadataSchemaVersion = parsed.schemaVersion;
+    return metadata;
   } catch {
     return {};
   }

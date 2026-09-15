@@ -13,4 +13,8 @@ if [ -f "$ROOT/.runtime.env" ]; then
   . "$ROOT/.runtime.env"
   set +a
 fi
+CONFIG_PATH="${ATELIER_RUNTIME_CONFIG_PATH:-$ROOT/runtime-config.json}"
+if [ -f "$CONFIG_PATH" ]; then
+  node -e 'const { loadRuntimeConfig } = require("./target-runtime-config"); const result = loadRuntimeConfig(process.argv[1], { env: process.env, deploymentProjectId: process.env.MEOO_PROJECT_URL_ID }); console.log(`runtime-config-loaded schema=${result.config.schemaVersion} digest=${result.runtimeConfigDigest}`);' "$CONFIG_PATH"
+fi
 exec node server.js

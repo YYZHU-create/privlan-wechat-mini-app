@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "v1",
+  "targetProjectId": "asmhysidbg5g",
+  "environment": "staging",
+  "media": { "storageProvider": "meoo", "assetV1Enabled": true, "storageBucket": "merchant-assets" }
+}

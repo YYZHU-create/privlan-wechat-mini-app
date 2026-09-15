@@ -14,7 +14,7 @@ COPY --chown=node:node admin/package.json admin/pnpm-lock.yaml ./admin/
 RUN cd admin && pnpm install --prod --frozen-lockfile
 
 COPY --chown=node:node . .
-RUN node -e 'const fs=require("fs"); fs.writeFileSync("/app/runtime-build.json", JSON.stringify({commitSha:process.env.ATELIER_GIT_SHA,branch:process.env.ATELIER_GIT_BRANCH,buildTime:process.env.ATELIER_BUILD_TIME,environment:process.env.ATELIER_ENVIRONMENT})+"\n")' \
+RUN node -e 'const fs=require("fs"); let current={}; try { current=JSON.parse(fs.readFileSync("/app/runtime-build.json","utf8")); } catch {} const metadata={...current, schemaVersion:current.schemaVersion||"g2c10n-v1", commitSha:current.commitSha||"unknown", sourceCommit:current.sourceCommit||current.commitSha||"unknown", declaredTargetProjectId:current.declaredTargetProjectId||null, environment:current.environment||process.env.ATELIER_ENVIRONMENT||"unknown", runtimeConfigDigest:current.runtimeConfigDigest||"unknown", configSchemaVersion:current.configSchemaVersion||"v1"}; fs.writeFileSync("/app/runtime-build.json", JSON.stringify(metadata)+"\n")' \
  && mkdir -p /app/images /app/fonts /app/admin/data /app/admin/config-backups /app/admin/media-trash \
  && chown -R node:node /app/images /app/fonts /app/admin /app/runtime-build.json
 

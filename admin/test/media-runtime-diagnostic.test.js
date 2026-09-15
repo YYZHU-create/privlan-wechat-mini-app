@@ -149,10 +149,14 @@ test("absent process media keys are distinguished from file overrides", () => {
 test("runtime build metadata reports valid and missing files", () => {
   const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-build-"));
   const metadata = path.join(temp, "runtime-build.json");
-  fs.writeFileSync(metadata, JSON.stringify({ commitSha: SHA, branch: "main", buildTime: "2026-09-14T00:00:00Z" }));
+  fs.writeFileSync(metadata, JSON.stringify({ schemaVersion: "g2c10n-v1", commitSha: SHA, sourceCommit: SHA, declaredTargetProjectId: "asmhysidbg5g", environment: "staging", runtimeConfigDigest: "a".repeat(64), configSchemaVersion: "v1", branch: "main", buildTime: "2026-09-14T00:00:00Z" }));
   const validResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: metadata } });
   assert.equal(validResult.runtimeBuildMetadataReadable, true);
   assert.equal(validResult.runtimeBuildMetadataCommit, SHA);
+  assert.equal(validResult.runtimeBuildMetadataSourceCommit, SHA);
+  assert.equal(validResult.runtimeBuildMetadataDeclaredTargetProjectId, "asmhysidbg5g");
+  assert.equal(validResult.runtimeBuildMetadataRuntimeConfigDigest, "a".repeat(64));
+  assert.equal(validResult.runtimeBuildMetadataConfigSchemaVersion, "v1");
   const missingResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: path.join(temp, "missing.json") } });
   assert.equal(missingResult.runtimeBuildMetadataErrorClass, "FILE_ABSENT");
   fs.writeFileSync(metadata, "not-json");
