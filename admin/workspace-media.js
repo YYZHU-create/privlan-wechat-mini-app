@@ -60,6 +60,18 @@ function decode(name, data) {
 function safeName(name) { return path.basename(String(name || "")).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 160) || "asset"; }
 function metadata(row) { try { return typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {}); } catch (error) { return {}; } }
 
+// The legacy media surface exposes ready assets plus compatibility assets that
+// predate Asset V1 purpose classification. New V1 pending assets remain hidden
+// until their upload lifecycle reaches ready.
+function assetStatus(row) { return String(row?.status || "pending").trim().toLowerCase(); }
+function isLegacyMediaLifecycleVisible(row) {
+  if (row?.deleted_at) return false;
+  const status = assetStatus(row);
+  return status === "ready" || (status === "pending" && row?.purpose == null);
+}
+function isLegacyTrash(row) { return isLegacyMediaLifecycleVisible(row) && Boolean(metadata(row).deletedAt); }
+function isNormalLegacyMedia(row) { return isLegacyMediaLifecycleVisible(row) && !metadata(row).deletedAt; }
+
 function createFilesystemStorageProvider({ dataRoot }) {
   const rootFor = scope => path.resolve(dataRoot, "workspaces", scope.workspaceId, "media");
   const keyPath = (scope, objectKey) => {
@@ -84,15 +96,21 @@ function createFilesystemStorageProvider({ dataRoot }) {
 
 function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null }) {
   const storage = storageProvider || createFilesystemStorageProvider({ dataRoot });
-  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), size: Number(row.bytes) || 0, mtime: row.created_at || row.updated_at || "", usageCount: Number(row.usage_count) || 0, kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || null, expiresAt: meta.expiresAt || null }; };
+  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), size: Number(row.bytes) || 0, mtime: row.created_at || row.updated_at || "", usageCount: Number(row.usage_count) || 0, kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || row.deleted_at || null, expiresAt: meta.expiresAt || null }; };
   const useRepository = Boolean(repository);
   const rows = async (sql, params) => (await db.query(sql, params)).rows;
   const assetRows = scope => useRepository ? repository.listAssets(scope) : rows("select * from assets where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by created_at desc", [scope.tenantId, scope.workspaceId, scope.storeId]);
   const assetRow = async (scope, id) => useRepository ? repository.getAsset(scope, id) : (await rows("select * from assets where id=$1 and tenant_id=$2 and workspace_id=$3 and store_id=$4", [id, scope.tenantId, scope.workspaceId, scope.storeId]))[0] || null;
   const updateAsset = (scope, id, meta) => useRepository ? repository.updateAssetMetadata(scope, id, meta) : db.query("update assets set metadata=$1::jsonb where id=$2 and tenant_id=$3 and workspace_id=$4", [JSON.stringify(meta), id, scope.tenantId, scope.workspaceId]);
-  async function list(scope, deleted = false) { return (await assetRows(scope)).map(publicItem).filter(item => Boolean(item.deletedAt) === deleted); }
+  async function list(scope, deleted = false) {
+    return (await assetRows(scope)).filter(row => deleted ? isLegacyTrash(row) : isNormalLegacyMedia(row)).map(publicItem);
+  }
   async function upload(scope, input) { const decoded = decode(input.name, input.data); const assetId = crypto.randomUUID(); const original = safeName(input.name); const objectKey = `${assetId}${decoded.extension}`; await storage.put(scope, { objectKey, buffer: decoded.buffer }); try { const payload = { id: assetId, objectKey, originalName: original, mimeType: decoded.mime, bytes: decoded.buffer.length, metadata: { kind: decoded.kind, folderId: String(input.folderId || ""), dimensions: decoded.dimensions } }; const stored = useRepository ? await repository.createAsset(scope, payload) : (await db.query("insert into assets(id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)", [assetId, scope.tenantId, scope.workspaceId, scope.storeId, objectKey, original, decoded.mime, decoded.buffer.length, JSON.stringify(payload.metadata)]), await assetRow(scope, assetId)); if (!stored) throw new ServiceError(503, "MEDIA_RECORD_UNAVAILABLE", "素材记录暂时不可用"); return publicItem(stored); } catch (error) { await storage.delete(scope, objectKey); throw error; } }
-  async function get(scope, assetId, includeDeleted = false) { const row = await assetRow(scope, assetId); if (!row || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在"); return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) }; }
+  async function get(scope, assetId, includeDeleted = false) {
+    const row = await assetRow(scope, assetId);
+    if (!row || !isLegacyMediaLifecycleVisible(row) || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在");
+    return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) };
+  }
   async function remove(scope, ids) { const removed=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id); await updateAsset(scope,id,{...metadata(current.row),deletedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+30*86400000).toISOString()}); removed.push(id); } return removed; }
   async function restore(scope, ids) { const restored=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id,true); const meta={...metadata(current.row)}; delete meta.deletedAt; delete meta.expiresAt; await updateAsset(scope,id,meta); restored.push(id); } return restored; }
   async function folders(scope) { const result=useRepository ? await repository.listFolders(scope) : await rows("select id,name,created_at from workspace_media_folders where tenant_id=$1 and workspace_id=$2 order by created_at", [scope.tenantId, scope.workspaceId]); return result.map(row=>({id:row.id,name:row.name,createdAt:row.created_at})); }

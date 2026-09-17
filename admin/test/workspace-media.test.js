@@ -73,6 +73,58 @@ test("workspace media upload records dimensions and cleans provider object on DB
 
 
 
+test("workspace media applies one compatibility visibility contract to list and direct read", async () => {
+  const asset = (id, overrides = {}) => ({
+    id,
+    tenant_id: "tenant-a",
+    workspace_id: "workspace-a",
+    store_id: "store-a",
+    object_key: `${id}.png`,
+    original_name: `${id}.png`,
+    mime_type: "image/png",
+    bytes: 1,
+    metadata: {},
+    status: "pending",
+    purpose: null,
+    deleted_at: null,
+    ...overrides
+  });
+  const rows = [
+    asset("historical-pending"),
+    asset("v1-pending", { purpose: "content_image" }),
+    asset("ready", { status: "ready", purpose: "content_image" }),
+    asset("failed", { status: "failed", purpose: "content_image" }),
+    asset("deletion-requested", { status: "deletion_requested", purpose: "content_image" }),
+    asset("deleted", { status: "deleted", purpose: "content_image", deleted_at: "2026-09-17T00:00:00.000Z" }),
+    asset("deleted-at-only", { status: "ready", purpose: "content_image", deleted_at: "2026-09-17T00:00:00.000Z" }),
+    asset("legacy-trash", { metadata: { deletedAt: "2026-09-17T00:00:00.000Z" } }),
+    asset("v1-tombstone-with-legacy-metadata", { status: "deleted", purpose: "content_image", deleted_at: "2026-09-17T00:00:00.000Z", metadata: { deletedAt: "2026-09-17T00:00:00.000Z" } }),
+    asset("other-tenant", { tenant_id: "tenant-b", status: "ready", purpose: "content_image" }),
+    asset("other-workspace", { workspace_id: "workspace-b", status: "ready", purpose: "content_image" })
+  ];
+  const storageReads = [];
+  const media = createWorkspaceMedia({
+    db: fakeDb(rows),
+    dataRoot: os.tmpdir(),
+    storageProvider: { async get(_scope, key) { storageReads.push(key); return key; } }
+  });
+
+  const visible = await media.list(scope);
+  assert.deepEqual(visible.map(item => item.id), ["historical-pending", "ready"]);
+  assert.equal(visible.length, 2);
+  assert.deepEqual(visible.slice(0, 1).map(item => item.id), ["historical-pending"]);
+  assert.deepEqual((await media.list(scope, true)).map(item => item.id), ["legacy-trash"]);
+
+  for (const id of ["historical-pending", "ready"]) assert.equal((await media.get(scope, id)).row.id, id);
+  for (const id of ["v1-pending", "failed", "deletion-requested", "deleted", "deleted-at-only", "legacy-trash", "v1-tombstone-with-legacy-metadata", "other-tenant", "other-workspace"]) {
+    await assert.rejects(() => media.get(scope, id), error => error.code === "ASSET_NOT_FOUND");
+  }
+  assert.deepEqual(storageReads, ["historical-pending.png", "ready.png"]);
+
+  assert.equal((await media.get(scope, "legacy-trash", true)).row.id, "legacy-trash");
+  await assert.rejects(() => media.get(scope, "v1-tombstone-with-legacy-metadata", true), error => error.code === "ASSET_NOT_FOUND");
+});
+
 test("workspace media uses the explicit Meoo repository without database SQL", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-media-meoo-"));
   const state = [];

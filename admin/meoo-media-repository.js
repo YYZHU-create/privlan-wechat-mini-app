@@ -42,11 +42,11 @@ function createMeooMediaRepository({ url = process.env.SUPABASE_URL, serviceRole
   }
 
   async function listAssets(scope) {
-    const rows = await request("assets", `?select=id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata,created_at&${queryScope(scope)}&order=created_at.desc`);
+    const rows = await request("assets", `?select=id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata,status,purpose,deleted_at,created_at,updated_at&${queryScope(scope)}&order=created_at.desc`);
     return Array.isArray(rows) ? rows : [];
   }
   async function getAsset(scope, assetId) {
-    const rows = await request("assets", `?select=id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata,created_at&${queryScope(scope)}&id=eq.${encode(assetId)}&limit=1`);
+    const rows = await request("assets", `?select=id,tenant_id,workspace_id,store_id,object_key,original_name,mime_type,bytes,metadata,status,purpose,deleted_at,created_at,updated_at&${queryScope(scope)}&id=eq.${encode(assetId)}&limit=1`);
     return Array.isArray(rows) ? rows[0] || null : null;
   }
   async function createAsset(scope, input) {
