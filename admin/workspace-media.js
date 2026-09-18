@@ -89,6 +89,13 @@ function resolveLegacyImagePath(imagesRoot, objectKey) {
   return resolved;
 }
 
+function historicalMimeTypeForFilePath(filePath) {
+  const extension = path.extname(String(filePath || "")).toLowerCase();
+  const format = FORMATS.find(item => item.extensions.includes(extension));
+  if (!format) throw new ServiceError(415, "UNSUPPORTED_MEDIA_TYPE", "不支持的历史媒体格式");
+  return format.mimes[0];
+}
+
 function createFilesystemStorageProvider({ dataRoot }) {
   const rootFor = scope => path.resolve(dataRoot, "workspaces", scope.workspaceId, "media");
   const keyPath = (scope, objectKey) => {
@@ -140,7 +147,7 @@ function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null
       throw new ServiceError(503, "ASSET_CONTENT_UNAVAILABLE", "素材内容暂时不可用");
     }
     if (!stat.isFile()) throw new ServiceError(404, "ASSET_CONTENT_NOT_FOUND", "素材内容不存在");
-    return { row, filePath, item: publicItem(row) };
+    return { row, filePath, mimeType: historicalMimeTypeForFilePath(filePath), item: publicItem(row) };
   }
   async function remove(scope, ids) { const removed=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id); await updateAsset(scope,id,{...metadata(current.row),deletedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+30*86400000).toISOString()}); removed.push(id); } return removed; }
   async function restore(scope, ids) { const restored=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id,true); const meta={...metadata(current.row)}; delete meta.deletedAt; delete meta.expiresAt; await updateAsset(scope,id,meta); restored.push(id); } return restored; }

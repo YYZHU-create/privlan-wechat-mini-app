@@ -265,7 +265,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
     if (!req.saasService) return next();
     try {
       const asset = await workspaceMedia(req.saasService).readHistoricalContent(req.merchantScope, req.params.id);
-      res.type(asset.row.mime_type);
+      res.type(asset.mimeType);
       return res.sendFile(asset.filePath, error => {
         if (!error) return;
         if (res.headersSent) return res.destroy(error);
