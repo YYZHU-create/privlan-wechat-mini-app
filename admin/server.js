@@ -186,7 +186,7 @@ app.use(["/api/media/upload", "/api/media/v1/upload"], express.json({ limit: "11
 app.use(["/api/fonts/upload"], express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 registerAppointmentGatewayRoutes(app, getSaasService);
-const MERCHANT_ROUTE_REGISTRATION = registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
+const MERCHANT_ROUTE_REGISTRATION = registerMerchantRoutes(app, getSaasService, { dataRoot: ATELIER_DATA_ROOT, imagesDir: IMAGES_DIR, runtimeIdentity: RUNTIME_IDENTITY, mediaRepository: meooAdapter ? createMeooMediaRepository() : null, mediaService });
 registerLaunchV1Routes(app);
 registerOpsAuthRoutes(app, getSaasService);
 

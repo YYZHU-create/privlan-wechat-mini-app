@@ -69,8 +69,25 @@ function isLegacyMediaLifecycleVisible(row) {
   const status = assetStatus(row);
   return status === "ready" || (status === "pending" && row?.purpose == null);
 }
+function isHistoricalCompatibilityAsset(row) {
+  return !row?.deleted_at && assetStatus(row) === "pending" && row?.purpose == null;
+}
+function isReadyV1Asset(row) {
+  return !row?.deleted_at && assetStatus(row) === "ready" && row?.purpose != null;
+}
 function isLegacyTrash(row) { return isLegacyMediaLifecycleVisible(row) && Boolean(metadata(row).deletedAt); }
 function isNormalLegacyMedia(row) { return isLegacyMediaLifecycleVisible(row) && !metadata(row).deletedAt; }
+
+function resolveLegacyImagePath(imagesRoot, objectKey) {
+  const value = String(objectKey || "");
+  const root = path.resolve(String(imagesRoot || ""));
+  if (!imagesRoot || !value || path.isAbsolute(value) || path.win32.isAbsolute(value) || path.posix.isAbsolute(value) || /[\\/]/.test(value)) {
+    throw new ServiceError(400, "INVALID_OBJECT_KEY", "素材对象路径无效");
+  }
+  const resolved = path.resolve(root, value);
+  if (resolved === root || !resolved.startsWith(`${root}${path.sep}`)) throw new ServiceError(400, "INVALID_OBJECT_KEY", "素材对象路径无效");
+  return resolved;
+}
 
 function createFilesystemStorageProvider({ dataRoot }) {
   const rootFor = scope => path.resolve(dataRoot, "workspaces", scope.workspaceId, "media");
@@ -94,9 +111,9 @@ function createFilesystemStorageProvider({ dataRoot }) {
   };
 }
 
-function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null }) {
+function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null, legacyImagesDir = null }) {
   const storage = storageProvider || createFilesystemStorageProvider({ dataRoot });
-  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), size: Number(row.bytes) || 0, mtime: row.created_at || row.updated_at || "", usageCount: Number(row.usage_count) || 0, kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || row.deleted_at || null, expiresAt: meta.expiresAt || null }; };
+  const publicItem = row => { const meta = metadata(row); return { id: row.id, name: row.original_name, path: isReadyV1Asset(row) ? `/api/media/v1/content/${row.id}` : `/api/media/content/${row.id}`, mpPath: `/images/${row.object_key}`, sizeKB: Math.round(Number(row.bytes) / 1024), size: Number(row.bytes) || 0, mtime: row.created_at || row.updated_at || "", usageCount: Number(row.usage_count) || 0, kind: meta.kind || (String(row.mime_type).startsWith("video/") ? "video" : "image"), dimensions: meta.dimensions || null, folderId: meta.folderId || "", large: Number(row.bytes) > 5 * 1024 * 1024, deletedAt: meta.deletedAt || row.deleted_at || null, expiresAt: meta.expiresAt || null }; };
   const useRepository = Boolean(repository);
   const rows = async (sql, params) => (await db.query(sql, params)).rows;
   const assetRows = scope => useRepository ? repository.listAssets(scope) : rows("select * from assets where tenant_id=$1 and workspace_id=$2 and store_id=$3 order by created_at desc", [scope.tenantId, scope.workspaceId, scope.storeId]);
@@ -111,6 +128,20 @@ function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null
     if (!row || !isLegacyMediaLifecycleVisible(row) || (!includeDeleted && metadata(row).deletedAt)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在");
     return { row, filePath: await storage.get(scope, row.object_key), item: publicItem(row) };
   }
+  async function readHistoricalContent(scope, assetId) {
+    const row = await assetRow(scope, assetId);
+    if (!row || !isHistoricalCompatibilityAsset(row) || isLegacyTrash(row)) throw new ServiceError(404, "ASSET_NOT_FOUND", "素材不存在");
+    if (!legacyImagesDir) throw new ServiceError(503, "ASSET_CONTENT_UNAVAILABLE", "素材内容暂时不可用");
+    const filePath = resolveLegacyImagePath(legacyImagesDir, row.object_key);
+    let stat;
+    try { stat = await fs.promises.stat(filePath); }
+    catch (error) {
+      if (["ENOENT", "ENOTDIR"].includes(error?.code)) throw new ServiceError(404, "ASSET_CONTENT_NOT_FOUND", "素材内容不存在");
+      throw new ServiceError(503, "ASSET_CONTENT_UNAVAILABLE", "素材内容暂时不可用");
+    }
+    if (!stat.isFile()) throw new ServiceError(404, "ASSET_CONTENT_NOT_FOUND", "素材内容不存在");
+    return { row, filePath, item: publicItem(row) };
+  }
   async function remove(scope, ids) { const removed=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id); await updateAsset(scope,id,{...metadata(current.row),deletedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+30*86400000).toISOString()}); removed.push(id); } return removed; }
   async function restore(scope, ids) { const restored=[]; for (const id of [...new Set(ids)].slice(0,500)) { const current=await get(scope,id,true); const meta={...metadata(current.row)}; delete meta.deletedAt; delete meta.expiresAt; await updateAsset(scope,id,meta); restored.push(id); } return restored; }
   async function folders(scope) { const result=useRepository ? await repository.listFolders(scope) : await rows("select id,name,created_at from workspace_media_folders where tenant_id=$1 and workspace_id=$2 order by created_at", [scope.tenantId, scope.workspaceId]); return result.map(row=>({id:row.id,name:row.name,createdAt:row.created_at})); }
@@ -119,6 +150,6 @@ function createWorkspaceMedia({ db, dataRoot, storageProvider, repository = null
   async function deleteFolder(scope,id) { const exists=useRepository ? await repository.deleteFolder(scope,id) : (await rows("delete from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3 returning id",[id,scope.tenantId,scope.workspaceId]))[0]; if(!exists) throw new ServiceError(404,"FOLDER_NOT_FOUND","文件夹不存在"); for(const row of await assetRows(scope)){ const meta=metadata(row); if(meta.folderId===id) await updateAsset(scope,row.id,{...meta,folderId:""}); } return {id}; }
   async function move(scope,ids,folderId) { if(folderId && !(useRepository ? await repository.hasFolder(scope,folderId) : (await rows("select 1 from workspace_media_folders where id=$1 and tenant_id=$2 and workspace_id=$3",[folderId,scope.tenantId,scope.workspaceId])).length)) throw new ServiceError(404,"FOLDER_NOT_FOUND","文件夹不存在"); for(const id of ids){const current=await get(scope,id,true); await updateAsset(scope,id,{...metadata(current.row),folderId:folderId||""});} return ids; }
   async function resolveIds(scope,values){const all=await list(scope,false); return [...new Set(values.map(value=>all.find(item=>item.id===value||item.name===value)?.id).filter(Boolean))];}
-  return { list, upload, get, remove, restore, folders, addFolder, renameFolder, deleteFolder, move, resolveIds, publicItem, storageProvider: storage };
+  return { list, upload, get, readHistoricalContent, remove, restore, folders, addFolder, renameFolder, deleteFolder, move, resolveIds, publicItem, storageProvider: storage };
 }
 module.exports = { createWorkspaceMedia, createFilesystemStorageProvider, decode, safeName, readImageDimensions };

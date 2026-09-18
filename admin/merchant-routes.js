@@ -62,7 +62,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
   const workspaceMedia = service => {
     if (!mediaByService.has(service)) {
       const repository = service.db?.kind === "meoo" ? (options.mediaRepository || createMeooMediaRepository()) : null;
-      mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot, repository }));
+      mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot, legacyImagesDir: options.imagesDir, repository }));
     }
     return mediaByService.get(service);
   };
@@ -263,7 +263,16 @@ function registerMerchantRoutes(app, getService, options = {}) {
   });
   app.get("/api/media/content/:id", async (req, res, next) => {
     if (!req.saasService) return next();
-    try { const asset = await workspaceMedia(req.saasService).get(req.merchantScope, req.params.id); res.type(asset.row.mime_type); return res.sendFile(asset.filePath); }
+    try {
+      const asset = await workspaceMedia(req.saasService).readHistoricalContent(req.merchantScope, req.params.id);
+      res.type(asset.row.mime_type);
+      return res.sendFile(asset.filePath, error => {
+        if (!error) return;
+        if (res.headersSent) return res.destroy(error);
+        const missing = ["ENOENT", "ENOTDIR"].includes(error?.code);
+        return failure(res, new ServiceError(missing ? 404 : 503, missing ? "ASSET_CONTENT_NOT_FOUND" : "ASSET_CONTENT_UNAVAILABLE", missing ? "素材内容不存在" : "素材内容暂时不可用"), req.requestId);
+      });
+    }
     catch (error) { return failure(res, error, req.requestId); }
   });
   app.post("/api/media/upload", async (req, res, next) => {

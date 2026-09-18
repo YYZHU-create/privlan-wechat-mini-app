@@ -25,7 +25,7 @@ function provider(overrides = {}) {
   return { name: "meoo", bucket: "feeldao-production-media", calls,
     async uploadObject(scope, key, bytes) { calls.push(["upload", key]); return { checksum: require("../storage-provider").sha256Hex(bytes) }; },
     async verifyObject(scope, key, expected) { calls.push(["verify", key]); return { sizeBytes: expected.sizeBytes, checksum: expected.checksum, mimeType: expected.mimeType, bytes: new Uint8Array(expected.sizeBytes) }; },
-    async readObject() { return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
+    async readObject(_scope, key) { calls.push(["read", key]); return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
     async deleteObject(scope, key) { calls.push(["delete", key]); return { deleted: true }; }, ...overrides };
 }
 
@@ -77,8 +77,8 @@ test("product link requires same workspace scope", async () => {
 });
 
 test("read requires ready non-deleted asset and downloads through provider", async () => {
-  const repo = repository(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { assetId: "asset", objectKey: "tenant/a" , object_key: "tenant/a", mimeType: "image/png", mime_type: "image/png" });
-  const result = await createMediaService({ provider: provider(), repository: repo }).read(SCOPE, "asset"); assert.equal(result.mimeType, "image/png");
+  const repo = repository(); const p = provider(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { assetId: "asset", objectKey: "tenant/a" , object_key: "tenant/a", mimeType: "image/png", mime_type: "image/png" });
+  const result = await createMediaService({ provider: p, repository: repo }).read(SCOPE, "asset"); assert.equal(result.mimeType, "image/png"); assert.deepEqual(p.calls, [["read", "tenant/a"]]);
   repo.assets.get("asset").status = "pending"; await assert.rejects(() => createMediaService({ provider: provider(), repository: repo }).read(SCOPE, "asset"), error => error.code === "ASSET_NOT_FOUND");
 });
 

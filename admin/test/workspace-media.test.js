@@ -125,6 +125,46 @@ test("workspace media applies one compatibility visibility contract to list and 
   await assert.rejects(() => media.get(scope, "v1-tombstone-with-legacy-metadata", true), error => error.code === "ASSET_NOT_FOUND");
 });
 
+test("historical content resolves only packaged files and preserves the V1 provider route", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "historical-media-content-"));
+  const images = path.join(root, "images"); const outside = path.join(root, "outside.jpg"); fs.mkdirSync(images); fs.writeFileSync(outside, "sentinel");
+  const asset = (id, objectKey, mime, overrides = {}) => ({
+    id, tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", object_key: objectKey, original_name: objectKey,
+    mime_type: mime, bytes: 3, metadata: {}, status: "pending", purpose: null, deleted_at: null, ...overrides
+  });
+  const rows = [
+    asset("legacy-jpg", "legacy.jpg", "image/jpeg"),
+    asset("legacy-png", "legacy.png", "image/png"),
+    asset("legacy-gif", "legacy.gif", "image/gif"),
+    asset("missing", "missing.jpg", "image/jpeg"),
+    asset("deleted", "deleted.jpg", "image/jpeg", { deleted_at: "2026-09-18T00:00:00.000Z" }),
+    asset("v1-pending", "v1-pending.png", "image/png", { purpose: "content_image" }),
+    asset("v1-ready", "v1-ready.png", "image/png", { status: "ready", purpose: "content_image" }),
+    asset("other-workspace", "other.jpg", "image/jpeg", { workspace_id: "workspace-b" }),
+    asset("traversal", "../outside.jpg", "image/jpeg"),
+    asset("absolute", outside, "image/jpeg")
+  ];
+  const fixtures = [
+    ["legacy-jpg", "legacy.jpg", Buffer.from([0xff, 0xd8, 0xff])],
+    ["legacy-png", "legacy.png", Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+    ["legacy-gif", "legacy.gif", Buffer.from("GIF89a", "ascii")]
+  ];
+  for (const [, name, bytes] of fixtures) fs.writeFileSync(path.join(images, name), bytes);
+  const media = createWorkspaceMedia({ db: fakeDb(rows), dataRoot: path.join(root, "data"), legacyImagesDir: images });
+
+  assert.deepEqual((await media.list(scope)).map(item => item.id), ["legacy-jpg", "legacy-png", "legacy-gif", "missing", "v1-ready", "traversal", "absolute"]);
+  assert.equal(media.publicItem(rows.find(row => row.id === "v1-ready")).path, "/api/media/v1/content/v1-ready");
+  for (const [id, name, bytes] of fixtures) {
+    const result = await media.readHistoricalContent(scope, id);
+    assert.equal(result.filePath, path.join(images, name)); assert.deepEqual(fs.readFileSync(result.filePath), bytes);
+  }
+  for (const id of ["deleted", "v1-pending", "other-workspace"]) await assert.rejects(() => media.readHistoricalContent(scope, id), error => error.code === "ASSET_NOT_FOUND");
+  await assert.rejects(() => media.readHistoricalContent(scope, "missing"), error => error.code === "ASSET_CONTENT_NOT_FOUND");
+  for (const id of ["traversal", "absolute"]) await assert.rejects(() => media.readHistoricalContent(scope, id), error => error.code === "INVALID_OBJECT_KEY");
+  assert.equal(fs.readFileSync(outside, "utf8"), "sentinel");
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test("workspace media uses the explicit Meoo repository without database SQL", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-media-meoo-"));
   const state = [];
@@ -148,4 +188,3 @@ test("merchant upload UI exposes progress, failed state, retry and duplicate gua
   assert.match(source, /retryMediaUpload/);
   assert.match(source, /已跳过重复素材/);
 });
-

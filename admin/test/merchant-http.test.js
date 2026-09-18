@@ -87,9 +87,20 @@ test("HTTP authentication sets secure server sessions and isolates workspace hin
     assert.equal(redeemed.status, 200);
   }
   await activate(aCookie, aCsrf); await activate(bCookie, bCsrf);
-  const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]);
-  const uploadA = await api("/api/media/upload", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name: "a.png", data: `data:image/png;base64,${png.toString("base64")}` }) });
+  const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]); const jpg = Buffer.from([0xff,0xd8,0xff]); const gif = Buffer.from("GIF89a", "ascii");
+  const upload = (name, mime, bytes) => api("/api/media/upload", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name, data: `data:${mime};base64,${bytes.toString("base64")}` }) });
+  const uploadA = await upload("a.png", "image/png", png);
   assert.equal(uploadA.status, 200);
+  const uploadJpg = await upload("a.jpg", "image/jpeg", jpg); const uploadGif = await upload("a.gif", "image/gif", gif);
+  assert.equal(uploadJpg.status, 200); assert.equal(uploadGif.status, 200);
+  const historicalItems = (await api("/api/media", { headers: { Cookie: aCookie } })).data;
+  const historical = [[uploadA.data.id, png, "image/png"], [uploadJpg.data.id, jpg, "image/jpeg"], [uploadGif.data.id, gif, "image/gif"]].map(([id, bytes, mime]) => ({ item: historicalItems.find(value => value.id === id), bytes, mime }));
+  const missingHistorical = await api(historical[0].item.path, { headers: { Cookie: aCookie } }); assert.equal(missingHistorical.status, 404); assert.equal(missingHistorical.data.code, "ASSET_CONTENT_NOT_FOUND");
+  for (const { item, bytes, mime } of historical) {
+    fs.writeFileSync(path.join(temp, "images", item.mpPath.slice("/images/".length)), bytes);
+    const historicalRead = await fetch(`${baseUrl}${item.path}`, { headers: { Cookie: aCookie } });
+    assert.equal(historicalRead.status, 200); assert.match(historicalRead.headers.get("content-type"), new RegExp(`^${mime}`)); assert.deepEqual(Buffer.from(await historicalRead.arrayBuffer()), bytes);
+  }
   assert.equal((await api(`/api/media/content/${uploadA.data.id}`, { headers: { Cookie: bCookie } })).status, 404);
   assert.equal((await api("/api/media", { headers: { Cookie: bCookie } })).data.length, 0);
   const aiA = await api("/v1/ai/connections", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ providerName: "A Provider", baseUrl: "https://example.com/v1", model: "a-model", apiKey: "secret-a" }) });
