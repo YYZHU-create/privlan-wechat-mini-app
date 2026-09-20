@@ -97,23 +97,7 @@ jobs:
 
       - name: Validate image configuration and sensitive files
         run: |
-          set -eu
-          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE_TAG")" = "node"
-          docker image inspect "$IMAGE_TAG" --format '{{json .Config.ExposedPorts}}' | grep -q '9000/tcp'
-          docker image inspect "$IMAGE_TAG" --format '{{json .Config.Healthcheck}}' | grep -q '/health'
-          scan_container="feeldao-image-scan-${GITHUB_RUN_ID}"
-          trap 'docker rm -f "$scan_container" >/dev/null 2>&1 || true' EXIT
-          docker create --name "$scan_container" "$IMAGE_TAG" >/dev/null
-          if docker export "$scan_container" | tar -tf - | grep -E '(^|/)(\.env($|\.)|runtime-secrets\.json|[^/]+\.pem|[^/]+\.key|[^/]+\.(bak|backup|dump)|\.git)(/|$)'; then
-            echo "IMAGE_SENSITIVE_FILE_SCAN=FAIL"
-            exit 1
-          fi
-          if docker history --no-trunc "$IMAGE_TAG" | grep -Eqi '(password|secret|token|database_url)'; then
-            echo "DOCKER_HISTORY_SECRET_SCAN=FAIL"
-            exit 1
-          fi
-          echo "IMAGE_SENSITIVE_FILE_SCAN=PASS"
-          echo "DOCKER_HISTORY_SECRET_SCAN=PASS"
+          bash .github/scripts/sensitive-file-scan.sh "$IMAGE_TAG"
 
       - name: Run isolated container smoke test
         run: |
