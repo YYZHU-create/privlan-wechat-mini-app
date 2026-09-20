@@ -54,8 +54,52 @@ after provider deletion and post-delete verification.
 
 `size_bytes` is non-negative. Each stored variant records a SHA-256 checksum of
 its actual bytes. Storage deletion and metadata deletion are separate operations:
-the service requests exact-key deletion, verifies provider absence, then marks the
-metadata row deleted. Foreign keys never cascade into Storage.
+the service requests exact-key deletion for every registered variant and verifies
+provider absence before metadata finalization. Content deletion is irreversible;
+the metadata tombstone is not a restore source. Foreign keys never cascade into
+Storage.
+
+`015_asset_lifecycle_v1` finalizes a deletion transactionally after the provider
+verification. It requires a recent verification timestamp and the exact count of
+registered objects, removes only links belonging to the scoped asset, marks the
+asset `deleted`, and writes `asset.deleted` to `audit_events`. The audit metadata
+contains IDs, scope, actor/request identity, timestamps, object count, and
+non-sensitive object identity evidence; it never stores object bytes or names.
+
+## Retention, reconciliation, and purge
+
+Deleted `assets` and their `asset_objects` metadata are retained for 30 days.
+`asset_links` are removed at logical-deletion finalization. Existing links on
+previously deleted assets are reconciled only through the separately invoked,
+audited maintenance operation.
+
+The server-side lifecycle maintenance command requires an explicit tenant and
+workspace scope, actor ID, bounded batch size, and a stable run ID for writes.
+It is dry-run by default. Purge candidates are derived from `status='deleted'`
+and `deleted_at` at or before the 30-day cutoff; eligibility is not persisted as
+another status. Every registered object must be reverified absent, links must be
+absent, and an `asset.deleted` audit event must exist before `asset.purged` is
+written and the object rows then tombstone are removed transactionally.
+
+`failed` assets and deleted assets whose objects remain present are reconciliation
+cases. They are not ordinary purge candidates. There is no scheduler in V1.
+
+## Operator dry-run report
+
+The candidate includes `GET /ops/v1/asset-lifecycle/dry-run` as a fixed,
+server-side report surface. It requires an authenticated `super_admin` Operator
+session plus explicit `tenantId` and `workspaceId`; it is not available to
+Merchant, Customer, or ordinary Operator roles. The server validates that the
+workspace belongs to the tenant before running a bounded report.
+
+The route accepts no command, mode, apply flag, RPC name, SQL, or credential.
+Its report module performs only scoped Asset and Asset Link reads and returns
+aggregate candidate counts, a request ID, and generation time. It has no
+Storage provider dependency and no mutation path. `purgeCandidateCount` is a
+bounded metadata candidate count; any later purge still requires per-object
+Storage absence verification under the separately authorized apply operation.
+The route emits a sanitized process event and applies a per-Operator read rate
+limit. It remains candidate source until separately reviewed and deployed.
 
 ## Legacy compatibility
 
@@ -82,7 +126,12 @@ sequential 013-only Production rollout is not approved.
 ## Migration and rollback
 
 `platform/migrations/013_asset_contract_v1.sql` adds lifecycle columns, the
-`asset_objects` and `asset_links` tables, constraints, and indexes. It does not
-delete rows, move Storage objects, or modify product JSON. Rollback is a feature-flag
-or read-path rollback while preserving additive rows; any future destructive cleanup
-requires reconciliation after new rows are accounted for.
+`asset_objects` and `asset_links` tables, constraints, and indexes. `015_asset_lifecycle_v1.sql`
+adds lifecycle indexes and server-side RPCs without changing existing identifiers.
+These migrations do not move Storage objects or modify product JSON. Rollback is a
+feature-flag or read-path rollback while preserving additive rows; lifecycle purges
+remain intentional forward operations and require current audit reconciliation.
+
+Before the next deployment-bearing lifecycle stage, upgrade the Meoo CLI to the
+platform-required version and record the resulting CLI version in deployment
+evidence.

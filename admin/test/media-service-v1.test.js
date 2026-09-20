@@ -15,8 +15,10 @@ function repository(overrides = {}) {
     async transitionAssetStatus(scope, id, status) { calls.push(["status", id, status]); const row = assets.get(id); if (row) row.status = status; return row; },
     async getAssetByIdScoped(scope, id) { const row = assets.get(id); return row && row.tenant_id === scope.tenantId && row.workspace_id === scope.workspaceId ? row : null; },
     async getAssetObject(scope, id) { return objects.get(id) || null; },
-    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return this.transitionAssetStatus(scope, id, "deletion_requested"); },
+    async listAssetObjects(scope, id) { const row = objects.get(id); return row ? (Array.isArray(row) ? row : [row]) : []; },
+    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return { outcome: "CAS_ACQUIRED", asset: await this.transitionAssetStatus(scope, id, "deletion_requested") }; },
     async markAssetDeleted(scope, id) { calls.push(["deleted", id]); return this.transitionAssetStatus(scope, id, "deleted"); },
+    async finalizeAssetDeletion(scope, id, input) { calls.push(["finalize", id, input]); const row = assets.get(id); if (row) { row.status = "deleted"; row.deleted_at = input.storageVerifiedAt; } return { id, deleted: true, duplicate: false }; },
     async productInScope() { return true; }, ...overrides };
 }
 
@@ -26,7 +28,8 @@ function provider(overrides = {}) {
     async uploadObject(scope, key, bytes) { calls.push(["upload", key]); return { checksum: require("../storage-provider").sha256Hex(bytes) }; },
     async verifyObject(scope, key, expected) { calls.push(["verify", key]); return { sizeBytes: expected.sizeBytes, checksum: expected.checksum, mimeType: expected.mimeType, bytes: new Uint8Array(expected.sizeBytes) }; },
     async readObject(_scope, key) { calls.push(["read", key]); return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
-    async deleteObject(scope, key) { calls.push(["delete", key]); return { deleted: true }; }, ...overrides };
+    async deleteObject(scope, key) { calls.push(["delete", key]); return { deleted: true }; },
+    async verifyDeleted(scope, key) { calls.push(["verify-deleted", key]); return true; }, ...overrides };
 }
 
 test("canonical key is scoped, UUID-based and traversal-resistant", () => {
@@ -82,10 +85,95 @@ test("read requires ready non-deleted asset and downloads through provider", asy
   repo.assets.get("asset").status = "pending"; await assert.rejects(() => createMediaService({ provider: provider(), repository: repo }).read(SCOPE, "asset"), error => error.code === "ASSET_NOT_FOUND");
 });
 
-test("delete follows deletion_requested, exact provider delete and deleted", async () => {
+test("delete verifies every registered object before finalizing the audited tombstone", async () => {
   const repo = repository(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { object_key: "tenant/x" }); const p = provider();
-  const result = await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"); assert.equal(result.deleted, true); assert.deepEqual(repo.calls.map(c => c[0]), ["deletion_requested", "status", "deleted", "status"]);
-  assert.deepEqual(p.calls.at(-1), ["delete", "tenant/x"]);
+  repo.objects.set("asset", [{ object_key: "tenant/x" }, { object_key: "tenant/x-web" }]);
+  const result = await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"); assert.equal(result.deleted, true);
+  assert.deepEqual(repo.calls.map(c => c[0]), ["deletion_requested", "status", "finalize"]);
+  assert.deepEqual(p.calls, [["delete", "tenant/x"], ["verify-deleted", "tenant/x"], ["delete", "tenant/x-web"], ["verify-deleted", "tenant/x-web"]]);
+  assert.equal(repo.calls.at(-1)[2].objectCount, 2);
+});
+
+test("deletion_requested assets never resume Storage deletion without a persisted owner", async () => {
+  const repo = repository(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "deletion_requested" }); repo.objects.set("asset", { object_key: "tenant/x" });
+  const p = provider();
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_DELETION_IN_PROGRESS");
+  assert.equal(repo.calls.some(call => call[0] === "deletion_requested"), false);
+  assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
+  assert.equal(p.calls.length, 0);
+  assert.equal(repo.assets.get("asset").status, "deletion_requested");
+});
+
+test("already deleted assets return the idempotent result without Storage access", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "deleted", deleted_at: "2026-09-20T00:00:00.000Z" });
+  const p = provider();
+  const result = await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
+  assert.deepEqual(result, { id: "asset", deleted: true, duplicate: true });
+  assert.equal(p.calls.length, 0);
+  assert.equal(repo.calls.length, 0);
+});
+
+test("delete leaves an asset pending reconciliation when no registered object exists", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
+  await assert.rejects(() => createMediaService({ provider: provider(), repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_OBJECT_NOT_FOUND");
+  assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
+  assert.equal(repo.assets.get("asset").status, "deletion_requested");
+});
+
+test("concurrent ready deletes yield one CAS owner and one Storage delete", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
+  repo.objects.set("asset", { object_key: "tenant/x" });
+  let arrivals = 0; let release;
+  const contenderBarrier = new Promise(resolve => { release = resolve; });
+  repo.requestAssetDeletion = async function claim(_scope, id) {
+    this.calls.push(["deletion_requested", id]);
+    arrivals += 1;
+    if (arrivals === 2) release();
+    await contenderBarrier;
+    const asset = this.assets.get(id);
+    if (asset.status === "ready") {
+      asset.status = "deletion_requested";
+      return { outcome: "CAS_ACQUIRED", asset };
+    }
+    return { outcome: "CAS_NOT_ACQUIRED", asset };
+  };
+  const p = provider(); const service = createMediaService({ provider: p, repository: repo });
+  const results = await Promise.allSettled([service.remove(SCOPE, "asset"), service.remove(SCOPE, "asset")]);
+  assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+  assert.equal(results.filter(result => result.status === "rejected" && result.reason.code === "ASSET_DELETION_IN_PROGRESS").length, 1);
+  assert.equal(p.calls.filter(call => call[0] === "delete").length, 1);
+  assert.equal(repo.calls.filter(call => call[0] === "finalize").length, 1);
+});
+
+test("partial multi-object Storage failure retains deletion_requested and never finalizes", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
+  repo.objects.set("asset", [{ object_key: "tenant/a" }, { object_key: "tenant/b" }]);
+  const p = provider({ async deleteObject(_scope, key) { this.calls.push(["delete", key]); if (key === "tenant/b") { const error = new Error("network"); error.code = "STORAGE_UNAVAILABLE"; throw error; } return { deleted: true }; }, async verifyDeleted(_scope, key) { this.calls.push(["verify-deleted", key]); return key !== "tenant/b"; } });
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "STORAGE_DELETE_VERIFY_FAILED");
+  assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
+  assert.equal(repo.assets.get("asset").status, "deletion_requested");
+});
+
+test("delete rejects assets outside the authenticated scope before Storage access", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: "other-tenant", workspace_id: SCOPE.workspaceId, status: "ready" });
+  const p = provider();
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_NOT_FOUND");
+  assert.equal(p.calls.length, 0);
+});
+
+test("lifecycle reconciliation events retain only scoped, sanitized operational fields", async () => {
+  const repo = repository({ async finalizeAssetDeletion(scope, id, input) { this.calls.push(["finalize", id, input]); return { id, deleted: true, reconciliation: { outcome: "CONFIRMED_SUCCEEDED" } }; } });
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
+  repo.objects.set("asset", { object_key: "tenant/x" });
+  const events = [];
+  await createMediaService({ provider: provider(), repository: repo, onEvent: (event, fields) => events.push({ event, fields }) }).remove({ ...SCOPE, requestId: "request-a" }, "asset");
+  const reconciliation = events.find(item => item.event === "lifecycle_reconciliation" && item.fields.operation === "finalize");
+  assert.deepEqual(reconciliation.fields, { operation: "finalize", assetId: "asset", tenantId: SCOPE.tenantId, workspaceId: SCOPE.workspaceId, requestId: "request-a", attempt: 1, errorClass: null, reconciliationResult: "CONFIRMED_SUCCEEDED" });
 });
 
 test("unsupported MIME and malformed data are rejected by server validation", async () => {

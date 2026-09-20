@@ -28,8 +28,9 @@ function makeRepository(overrides = {}) {
     async transitionAssetStatus(scope, id, status) { calls.push(["status", id, status]); const row = assets.get(id); if (row) row.status = status; return row; },
     async getAssetByIdScoped(scope, id) { const row = assets.get(id); return row && row.tenant_id === scope.tenantId && row.workspace_id === scope.workspaceId ? row : null; },
     async getAssetObject(scope, id) { return objects.get(id) || null; },
-    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return this.transitionAssetStatus(scope, id, "deletion_requested"); },
+    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return { outcome: "CAS_ACQUIRED", asset: await this.transitionAssetStatus(scope, id, "deletion_requested") }; },
     async markAssetDeleted(scope, id) { calls.push(["deleted", id]); return this.transitionAssetStatus(scope, id, "deleted"); },
+    async finalizeAssetDeletion(_scope, id, input) { calls.push(["finalize", id, input]); const row = assets.get(id); if (row) { row.status = "deleted"; row.deleted_at = input.storageVerifiedAt; } return { id, deleted: true, duplicate: false }; },
     async productInScope() { return true; },
     ...overrides,
   };
@@ -115,7 +116,7 @@ test("delete verifies exact object removal before marking deleted", async () => 
   await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
   assert.deepEqual(p.calls.filter(call => ["delete", "verifyDeleted"].includes(call[0])).map(call => call[1]), ["tenant/exact", "tenant/exact"]);
   assert.equal(repo.assets.get("asset").status, "deleted");
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_STATUS_TRANSITION_INVALID");
+  assert.deepEqual(await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), { id: "asset", deleted: true, duplicate: true });
 });
 
 test("V1 response and source do not expose credentials or provider URLs", () => {

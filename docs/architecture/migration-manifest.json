@@ -70,7 +70,12 @@
       "version": "014_asset_access_hardening",
       "file": "014_asset_access_hardening.sql",
       "sha256": "82657b870c2b8568a854dbc069475603326b55dd9c118ddda9a1ec281dd7f2ab"
+    },
+    {
+      "version": "015_asset_lifecycle_v1",
+      "file": "015_asset_lifecycle_v1.sql",
+      "sha256": "afb66ccd6a5c41658f151bc617ab13e6a9415688ed6b615e2b2efaef6886a316"
     }
   ],
-  "digest": "6000acde7821e8a3b938a46fc2f3c8c30423b757322d09c12a945720c621ce4f"
+  "digest": "523df9cd8e12abed63011253c506c6b05340d72cf7aff43dc14a1d53b3ecf208"
 }

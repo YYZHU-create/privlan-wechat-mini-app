@@ -25,6 +25,50 @@ function createMediaService({ provider, repository, onEvent = () => {} }) {
   if (!provider || !repository) throw new Error("MediaService provider and repository are required");
   const emit = (event, fields) => { try { onEvent(event, fields); } catch {} };
 
+  function lifecycleFields(scope, assetId, operation, input = {}) {
+    return {
+      operation,
+      assetId,
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      requestId: scope.requestId || null,
+      attempt: input.attempt || 1,
+      errorClass: input.errorClass || null,
+      reconciliationResult: input.reconciliationResult || null
+    };
+  }
+
+  function storageErrorIsAmbiguous(error) {
+    const status = Number(error?.status || 0);
+    return error?.name === "AbortError" || /TIMEOUT|NETWORK|UNAVAILABLE/i.test(String(error?.code || "")) || [429, 502, 503].includes(status);
+  }
+
+  async function verifyStorageAbsent(scope, assetId, object, operation, attempt) {
+    if (typeof provider.verifyDeleted !== "function") throw new MediaServiceError(503, "STORAGE_DELETE_VERIFY_UNAVAILABLE", "storage delete verification is unavailable");
+    try {
+      const absent = await provider.verifyDeleted(scope, object.object_key);
+      if (absent) return true;
+      const error = new MediaServiceError(502, "STORAGE_DELETE_VERIFY_FAILED", "storage object remains present");
+      error.storagePresent = true;
+      throw error;
+    } catch (error) {
+      emit("lifecycle_reconciliation", lifecycleFields(scope, assetId, operation, { attempt, errorClass: error.code || "STORAGE_VERIFY_FAILED", reconciliationResult: error.storagePresent ? "PRESENT" : "INDETERMINATE" }));
+      if (error instanceof MediaServiceError) throw error;
+      throw new MediaServiceError(503, "STORAGE_DELETE_INDETERMINATE", "storage deletion could not be verified");
+    }
+  }
+
+  async function reconcileStorageDelete(scope, assetId, object, attempt) {
+    const absent = await verifyStorageAbsent(scope, assetId, object, "storage-delete", attempt);
+    emit("lifecycle_reconciliation", lifecycleFields(scope, assetId, "storage-delete", { attempt, reconciliationResult: "CONFIRMED_SUCCEEDED" }));
+    return absent;
+  }
+
+  function emitRepositoryReconciliation(scope, assetId, operation, result, attempt = 1) {
+    const reconciliationResult = result?.reconciliation?.outcome;
+    if (reconciliationResult) emit("lifecycle_reconciliation", lifecycleFields(scope, assetId, operation, { attempt, reconciliationResult }));
+  }
+
   async function upload(scope, input = {}) {
     const purpose = String(input.purpose || "content_image"); const variant = String(input.variant || "original");
     if (!PURPOSES.has(purpose) || (purpose === "content_video" && variant !== "original") || !VARIANT_SET.has(variant)) throw new MediaServiceError(400, "MEDIA_PURPOSE_INVALID", "media purpose or variant is invalid");
@@ -63,25 +107,64 @@ function createMediaService({ provider, repository, onEvent = () => {} }) {
 
   async function remove(scope, assetId) {
     const asset = await repository.getAssetByIdScoped(scope, assetId); if (!asset) throw new MediaServiceError(404, "ASSET_NOT_FOUND", "asset is not available");
-    const object = await repository.getAssetObject(scope, asset.id, "original"); assertAssetTransition(asset.status || "ready", "deletion_requested"); await repository.requestAssetDeletion(scope, asset.id);
-    if (object) {
+    if (asset.status === "deleted" && asset.deleted_at) return { id: asset.id, deleted: true, duplicate: true };
+    if (asset.status === "ready") {
+      assertAssetTransition("ready", "deletion_requested");
+      try {
+        const claim = await repository.requestAssetDeletion(scope, asset.id);
+        emitRepositoryReconciliation(scope, asset.id, "deletion-transition", claim);
+        if (claim?.outcome === "CAS_ACQUIRED") {
+          // This request alone may continue to the irreversible Storage operation.
+        } else if (claim?.asset?.status === "deleted" && claim.asset.deleted_at) {
+          return { id: asset.id, deleted: true, duplicate: true };
+        } else if (claim?.outcome === "CAS_NOT_ACQUIRED") {
+          throw new MediaServiceError(409, "ASSET_DELETION_IN_PROGRESS", "asset deletion is already in progress");
+        } else {
+          throw new MediaServiceError(503, "ASSET_DELETE_CLAIM_INDETERMINATE", "asset deletion ownership could not be confirmed");
+        }
+      } catch (error) {
+        emit("lifecycle_reconciliation", lifecycleFields(scope, asset.id, "deletion-transition", { errorClass: error.code || "DATABASE_UNAVAILABLE", reconciliationResult: error.reconciliation?.outcome || "INDETERMINATE" }));
+        throw error;
+      }
+    } else if (asset.status === "deletion_requested") {
+      throw new MediaServiceError(409, "ASSET_DELETION_IN_PROGRESS", "asset deletion ownership could not be confirmed");
+    } else {
+      throw new MediaServiceError(409, "ASSET_STATUS_TRANSITION_INVALID", "asset status transition is invalid");
+    }
+    const objects = typeof repository.listAssetObjects === "function"
+      ? await repository.listAssetObjects(scope, asset.id)
+      : [await repository.getAssetObject(scope, asset.id, "original")].filter(Boolean);
+    if (!objects.length) throw new MediaServiceError(409, "ASSET_OBJECT_NOT_FOUND", "asset object is not available");
+    for (const object of objects) {
       emit("storage_delete_requested", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "delete" });
       try { await provider.deleteObject(scope, object.object_key); }
       catch (error) {
         emit("storage_delete_failed", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "delete" });
+        if (storageErrorIsAmbiguous(error)) {
+          await reconcileStorageDelete(scope, asset.id, object, 1);
+          continue;
+        }
         throw error;
       }
-      if (typeof provider.verifyDeleted === "function") {
-        try {
-          const inaccessible = await provider.verifyDeleted(scope, object.object_key);
-          if (!inaccessible) throw new MediaServiceError(502, "STORAGE_DELETE_VERIFY_FAILED", "deleted object remains accessible");
-        } catch (error) {
-          emit("storage_delete_failed", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "verify-delete" });
-          throw error;
-        }
+      try { await reconcileStorageDelete(scope, asset.id, object, 1); }
+      catch (error) {
+        emit("storage_delete_failed", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "verify-delete" });
+        throw error;
       }
     }
-    assertAssetTransition("deletion_requested", "deleted"); await repository.markAssetDeleted(scope, asset.id); emit("asset_deleted", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "delete" }); return { id: asset.id, deleted: true };
+    const storageVerifiedAt = new Date().toISOString();
+    let finalized;
+    try {
+      finalized = typeof repository.finalizeAssetDeletion === "function"
+        ? await repository.finalizeAssetDeletion(scope, asset.id, { storageVerifiedAt, objectCount: objects.length })
+        : (assertAssetTransition("deletion_requested", "deleted"), await repository.markAssetDeleted(scope, asset.id));
+      emitRepositoryReconciliation(scope, asset.id, "finalize", finalized);
+    } catch (error) {
+      emit("lifecycle_reconciliation", lifecycleFields(scope, asset.id, "finalize", { errorClass: error.code || "DATABASE_UNAVAILABLE", reconciliationResult: error.reconciliation?.outcome || "INDETERMINATE" }));
+      throw error;
+    }
+    emit("asset_deleted", { requestId: scope.requestId || null, assetId, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "delete" });
+    return { id: asset.id, deleted: true, duplicate: Boolean(finalized?.duplicate) };
   }
   return { upload, read, remove, canonicalObjectKey };
 }

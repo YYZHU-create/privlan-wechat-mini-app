@@ -8,6 +8,8 @@ const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
 const { respondUnexpectedError } = require("./error-response");
+const { createAssetRepository } = require("./asset-repository");
+const { generateLifecycleMaintenanceReport } = require("./asset-lifecycle-report");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -329,7 +331,25 @@ function registerMerchantRoutes(app, getService, options = {}) {
   return registration;
 }
 
-function registerOpsSaasRoutes(app, getService) {
+function requirePlatformOperator(req) {
+  if (!req.operator) throw new ServiceError(401, "OPS_AUTH_REQUIRED", "请登录 Feeldao OS 运营后台");
+  if (req.operator.role !== "super_admin") throw new ServiceError(403, "OPS_PLATFORM_ROLE_REQUIRED", "需要平台运营权限");
+}
+
+function createOperatorReadLimiter({ windowMs = 60_000, limit = 12, now = () => Date.now() } = {}) {
+  const buckets = new Map();
+  return operatorId => {
+    const key = String(operatorId || ""); const timestamp = now();
+    const requests = (buckets.get(key) || []).filter(value => timestamp - value < windowMs);
+    if (requests.length >= limit) throw new ServiceError(429, "OPS_RATE_LIMITED", "操作过于频繁，请稍后重试");
+    requests.push(timestamp); buckets.set(key, requests);
+  };
+}
+
+function registerOpsSaasRoutes(app, getService, options = {}) {
+  const buildLifecycleReport = options.buildLifecycleReport || (input => generateLifecycleMaintenanceReport({ repository: createAssetRepository(), ...input }));
+  const lifecycleLogger = options.lifecycleLogger || console;
+  const limitLifecycleRead = options.limitLifecycleRead || createOperatorReadLimiter();
   app.get("/ops/v1/health", async (req, res) => {
     const id = requestId("ops_health");
     try { return success(res, await (await getService()).operatorHealth(), "运营服务状态已获取", 200, id); }
@@ -362,6 +382,24 @@ function registerOpsSaasRoutes(app, getService) {
     try { return success(res, await (await getService()).extendSubscription(req.params.workspaceId, req.body?.days, { id: req.operator.userId, requestId: id }), "订阅已延长", 200, id); }
     catch (error) { return failure(res, error, id); }
   });
+  app.get("/ops/v1/asset-lifecycle/dry-run", async (req, res) => {
+    const id = requestId("ops_lifecycle");
+    try {
+      requirePlatformOperator(req);
+      limitLifecycleRead(req.operator.userId);
+      const service = await getService();
+      const scope = await service.validateOperatorScope(req.query?.tenantId, req.query?.workspaceId);
+      const report = await buildLifecycleReport({
+        scope,
+        requestId: id,
+        operatorUserId: req.operator.userId,
+        onEvent: (event, fields) => lifecycleLogger.info(JSON.stringify({ event, ...fields }))
+      });
+      return success(res, report, "Asset V1 生命周期只读报告已生成", 200, id);
+    } catch (error) {
+      return respondUnexpectedError(res, error, { requestId: id, fallbackStatus: 503, fallbackCode: "DATABASE_UNAVAILABLE", fallbackMessage: "生命周期报告暂时不可用" });
+    }
+  });
 }
 
 function registerOpsAuthRoutes(app, getService) {
@@ -385,4 +423,4 @@ function registerOpsAuthRoutes(app, getService) {
   });
 }
 
-module.exports = { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes, SESSION_COOKIE, CSRF_COOKIE, success, failure };
+module.exports = { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes, requirePlatformOperator, createOperatorReadLimiter, SESSION_COOKIE, CSRF_COOKIE, success, failure };
