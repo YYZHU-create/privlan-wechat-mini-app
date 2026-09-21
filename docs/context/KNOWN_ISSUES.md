@@ -40,9 +40,9 @@ BLOCKS=Confident media closure and archive of mixed media history.
 MODULE=Product Media / Asset V1
 SEVERITY=MEDIUM
 STATUS=OPEN
-DESCRIPTION=Asset V1 lifecycle candidate source includes exact Storage deletion, 30-day tombstone retention, audit-backed link cleanup, bounded maintenance purge, and a super-admin-only aggregate dry-run report. The additive migration, report surface, and maintenance operation have not been deployed or run in Staging.
+DESCRIPTION=Asset V1 lifecycle source includes exact Storage deletion, 30-day tombstone retention, audit-backed link cleanup, bounded maintenance purge, a super-admin-only aggregate dry-run report, and a fail-closed lifecycle mutation capability. Staging remains on migration 014, so lifecycle writes must stay disabled until migration 015 is separately applied and verified.
 EVIDENCE=015_asset_lifecycle_v1.sql, asset-lifecycle-report.js, and portable PostgreSQL/operator route tests; no runtime or persistent-data mutation performed by source validation.
-NEXT_SAFE_ACTION=Complete independent review of the uncommitted candidate, then authorize a deployment-bearing stage before using the scoped report in Staging. Any later purge still requires a separately authorized Storage-verified apply operation.
+NEXT_SAFE_ACTION=Complete independent review of the uncommitted mutation-gated candidate, then authorize a deployment-bearing stage with lifecycle mutations disabled before using the scoped report in Staging. Any later purge still requires a separately authorized Storage-verified apply operation after migration 015 verification and explicit capability enablement.
 BLOCKS=Staging runtime validation, migration execution, and one-time historical deleted-link reconciliation.
 
 ## ISSUE-CONFIG-001

@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const SCHEMA_VERSION = "v1";
-const MEDIA_KEYS = ["MEDIA_STORAGE_PROVIDER", "MEDIA_ASSET_V1_ENABLED", "MEDIA_STORAGE_BUCKET"];
+const MEDIA_KEYS = ["MEDIA_STORAGE_PROVIDER", "MEDIA_ASSET_V1_ENABLED", "MEDIA_STORAGE_BUCKET", "ASSET_LIFECYCLE_MUTATIONS_ENABLED"];
 const ROOT_KEYS = ["schemaVersion", "targetProjectId", "environment", "media"];
-const MEDIA_FIELDS = ["storageProvider", "assetV1Enabled", "storageBucket"];
+const MEDIA_FIELDS = ["storageProvider", "assetV1Enabled", "storageBucket", "assetLifecycleMutationsEnabled"];
 const SECRET_NAME_RE = /(secret|token|password|cookie|private.?key|credential|database.?url|service.?role|supabase.?url)/i;
 const TARGETS = {
-  staging: { schemaVersion: SCHEMA_VERSION, targetProjectId: "asmhysidbg5g", environment: "staging", media: { storageProvider: "meoo", assetV1Enabled: true, storageBucket: "merchant-assets" } },
-  production: { schemaVersion: SCHEMA_VERSION, targetProjectId: "g8o5cv1om41o", environment: "production", media: { storageProvider: "legacy", assetV1Enabled: false, storageBucket: "" } }
+  staging: { schemaVersion: SCHEMA_VERSION, targetProjectId: "asmhysidbg5g", environment: "staging", media: { storageProvider: "meoo", assetV1Enabled: true, storageBucket: "merchant-assets", assetLifecycleMutationsEnabled: false } },
+  production: { schemaVersion: SCHEMA_VERSION, targetProjectId: "g8o5cv1om41o", environment: "production", media: { storageProvider: "legacy", assetV1Enabled: false, storageBucket: "", assetLifecycleMutationsEnabled: false } }
 };
 
 function assertPlainObject(value, label) {
@@ -31,10 +31,11 @@ function validateRuntimeConfig(input, { deploymentProjectId } = {}) {
   if (typeof input.media.storageProvider !== "string" || !['legacy', 'meoo'].includes(input.media.storageProvider)) throw new Error("MEDIA_PROVIDER_INVALID");
   if (typeof input.media.assetV1Enabled !== "boolean") throw new Error("MEDIA_FLAG_INVALID");
   if (typeof input.media.storageBucket !== "string") throw new Error("MEDIA_BUCKET_INVALID");
+  if (typeof input.media.assetLifecycleMutationsEnabled !== "boolean") throw new Error("MEDIA_LIFECYCLE_MUTATION_FLAG_INVALID");
   if (input.media.assetV1Enabled && (input.media.storageProvider !== "meoo" || !input.media.storageBucket.trim())) throw new Error("MEDIA_INVARIANT_INVALID");
   if (input.environment === "production" && input.media.assetV1Enabled) throw new Error("PRODUCTION_MEDIA_MUST_REMAIN_DISABLED");
   if (deploymentProjectId !== undefined && String(deploymentProjectId) !== input.targetProjectId) throw new Error("DEPLOYMENT_TARGET_CONFIG_MISMATCH");
-  return { schemaVersion: SCHEMA_VERSION, targetProjectId: input.targetProjectId, environment: input.environment, media: { storageProvider: input.media.storageProvider, assetV1Enabled: input.media.assetV1Enabled, storageBucket: input.media.storageBucket } };
+  return { schemaVersion: SCHEMA_VERSION, targetProjectId: input.targetProjectId, environment: input.environment, media: { storageProvider: input.media.storageProvider, assetV1Enabled: input.media.assetV1Enabled, storageBucket: input.media.storageBucket, assetLifecycleMutationsEnabled: input.media.assetLifecycleMutationsEnabled } };
 }
 function canonicalizeRuntimeConfig(input) { return JSON.stringify(validateRuntimeConfig(input)); }
 function runtimeConfigDigest(input) { return crypto.createHash("sha256").update(canonicalizeRuntimeConfig(input), "utf8").digest("hex"); }
@@ -42,7 +43,7 @@ function loadRuntimeConfig(filePath, { env = process.env, deploymentProjectId } 
   const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
   const config = validateRuntimeConfig(parsed, { deploymentProjectId });
   const digest = runtimeConfigDigest(config);
-  const expected = { MEDIA_STORAGE_PROVIDER: config.media.storageProvider, MEDIA_ASSET_V1_ENABLED: String(config.media.assetV1Enabled), MEDIA_STORAGE_BUCKET: config.media.storageBucket };
+  const expected = { MEDIA_STORAGE_PROVIDER: config.media.storageProvider, MEDIA_ASSET_V1_ENABLED: String(config.media.assetV1Enabled), MEDIA_STORAGE_BUCKET: config.media.storageBucket, ASSET_LIFECYCLE_MUTATIONS_ENABLED: String(config.media.assetLifecycleMutationsEnabled) };
   if (env.ATELIER_ENVIRONMENT !== undefined && String(env.ATELIER_ENVIRONMENT).trim().toLowerCase() !== config.environment) throw new Error("RUNTIME_ENVIRONMENT_CONFLICT");
   if (env.MEOO_PROJECT_URL_ID !== undefined && String(env.MEOO_PROJECT_URL_ID).trim() !== config.targetProjectId) throw new Error("RUNTIME_PROJECT_TARGET_CONFLICT");
   for (const key of MEDIA_KEYS) {

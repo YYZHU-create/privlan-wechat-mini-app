@@ -73,9 +73,11 @@ const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorR
 const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
 const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
 const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
+const ASSET_LIFECYCLE_MUTATIONS_ENABLED = process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS === "LOADED_VALIDATED"
+  && String(process.env.ASSET_LIFECYCLE_MUTATIONS_ENABLED || "false").trim().toLowerCase() === "true";
 const MEDIA_STORAGE_VALIDATION = validateMediaStorageConfig(process.env);
 const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
-  ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), onEvent: (event, fields) => console.info(event, fields) })
+  ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), lifecycleMutationsEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED, onEvent: (event, fields) => console.info(event, fields) })
   : null;
 const saasServicePromise = databasePromise.then(database => database ? createSaasService({
   db: database,

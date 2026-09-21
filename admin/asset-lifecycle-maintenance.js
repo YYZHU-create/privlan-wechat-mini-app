@@ -1,7 +1,10 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { createAssetRepository } = require("./asset-repository");
 const { createMeooStorageProvider } = require("./storage-provider");
 const { RETENTION_DAYS, retentionCutoff } = require("./asset-lifecycle-report");
+const { loadRuntimeConfig } = require("./target-runtime-config");
 
 const MAX_BATCH_SIZE = 100;
 
@@ -26,6 +29,25 @@ function parseArgs(argv = process.argv.slice(2)) {
   return { mode, apply, batchSize, runId: runId || `dry_${crypto.randomUUID()}`, actorId, scope: { tenantId, workspaceId, storeId: storeId || null, actorType: "system" } };
 }
 
+function lifecycleMutationCapabilityFromRuntimeConfig({ env = process.env, root = path.resolve(__dirname, "..") } = {}) {
+  const configPath = env.ATELIER_RUNTIME_CONFIG_PATH || path.join(root, "runtime-config.json");
+  if (!fs.existsSync(configPath)) return false;
+  try {
+    const { config } = loadRuntimeConfig(configPath, { env: { ...env }, deploymentProjectId: env.MEOO_PROJECT_URL_ID });
+    return config.media.assetLifecycleMutationsEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
+function assertLifecycleMutationCapability(options, lifecycleMutationsEnabled) {
+  if (options.apply && lifecycleMutationsEnabled !== true) {
+    const error = new Error("ASSET_LIFECYCLE_MUTATION_DISABLED");
+    error.code = "ASSET_LIFECYCLE_MUTATION_DISABLED";
+    throw error;
+  }
+}
+
 async function verifyStorageAbsent(provider, scope, objects) {
   for (const object of objects) {
     if (typeof provider.verifyDeleted !== "function") throw new Error("ASSET_STORAGE_DELETE_VERIFICATION_UNAVAILABLE");
@@ -34,7 +56,8 @@ async function verifyStorageAbsent(provider, scope, objects) {
   return true;
 }
 
-async function runMaintenance({ repository, provider, options, now = new Date(), onEvent = () => {} }) {
+async function runMaintenance({ repository, provider, options, lifecycleMutationsEnabled = false, now = new Date(), onEvent = () => {} }) {
+  assertLifecycleMutationCapability(options, lifecycleMutationsEnabled);
   const emit = (event, fields) => { try { onEvent(event, fields); } catch {} };
   const lifecycleEvent = (operation, assetId, input = {}) => emit("lifecycle_reconciliation", {
     operation,
@@ -100,7 +123,7 @@ async function runMaintenance({ repository, provider, options, now = new Date(),
 
 async function main() {
   const options = parseArgs();
-  const summary = await runMaintenance({ repository: createAssetRepository(), provider: createMeooStorageProvider(), options });
+  const summary = await runMaintenance({ repository: createAssetRepository(), provider: createMeooStorageProvider(), options, lifecycleMutationsEnabled: lifecycleMutationCapabilityFromRuntimeConfig() });
   process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
@@ -111,4 +134,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { MAX_BATCH_SIZE, RETENTION_DAYS, parseArgs, retentionCutoff, runMaintenance, verifyStorageAbsent };
+module.exports = { MAX_BATCH_SIZE, RETENTION_DAYS, parseArgs, retentionCutoff, runMaintenance, verifyStorageAbsent, lifecycleMutationCapabilityFromRuntimeConfig, assertLifecycleMutationCapability };

@@ -30,7 +30,10 @@ test("schema, JSON shape, secret-like and media invariants fail closed", () => {
   expectThrow(() => validateRuntimeConfig({ ...staging, media: { ...staging.media, storageProvider: "legacy" } }), /MEDIA_INVARIANT_INVALID/);
   expectThrow(() => validateRuntimeConfig({ ...staging, media: { ...staging.media, storageBucket: "" } }), /MEDIA_INVARIANT_INVALID/);
   expectThrow(() => validateRuntimeConfig({ ...staging, media: { ...staging.media, assetV1Enabled: "true" } }), /MEDIA_FLAG_INVALID/);
+  expectThrow(() => validateRuntimeConfig({ ...staging, media: { ...staging.media, assetLifecycleMutationsEnabled: "true" } }), /MEDIA_LIFECYCLE_MUTATION_FLAG_INVALID/);
+  expectThrow(() => validateRuntimeConfig({ ...staging, media: { storageProvider: "meoo", assetV1Enabled: true, storageBucket: "merchant-assets" } }), /MEDIA_LIFECYCLE_MUTATION_FLAG_INVALID/);
   assert.equal(validateRuntimeConfig(production).media.assetV1Enabled, false);
+  assert.equal(validateRuntimeConfig(staging).media.assetLifecycleMutationsEnabled, false);
 });
 
 test("malformed or absent runtime config never enables media", () => {
@@ -40,6 +43,7 @@ test("malformed or absent runtime config never enables media", () => {
   expectThrow(() => loadRuntimeConfig(malformed, { env: {} }), /Unexpected token/);
   expectThrow(() => loadRuntimeConfig(path.join(temp, "absent.json"), { env: {} }), /ENOENT/);
   assert.equal(process.env.MEDIA_ASSET_V1_ENABLED, undefined);
+  assert.equal(process.env.ASSET_LIFECYCLE_MUTATIONS_ENABLED, undefined);
 });
 
 test("config is authoritative but conflicting process media values fail closed and unrelated secrets stay intact", () => {
@@ -50,12 +54,13 @@ test("config is authoritative but conflicting process media values fail closed a
   assert.equal(cleanEnv.SUPABASE_URL, "https://example.invalid");
   assert.equal(cleanEnv.SUPABASE_SERVICE_ROLE_KEY, "secret-value");
   assert.equal(cleanEnv.MEDIA_STORAGE_PROVIDER, "meoo");
+  assert.equal(cleanEnv.ASSET_LIFECYCLE_MUTATIONS_ENABLED, "false");
   assert.equal(result.config.targetProjectId, staging.targetProjectId);
 });
 
 test("canonical serialization and digest are deterministic and metadata carries exact source", () => {
   const a = canonicalizeRuntimeConfig(staging);
-  const b = canonicalizeRuntimeConfig({ media: { storageBucket: "merchant-assets", assetV1Enabled: true, storageProvider: "meoo" }, environment: "staging", targetProjectId: "asmhysidbg5g", schemaVersion: "v1" });
+  const b = canonicalizeRuntimeConfig({ media: { storageBucket: "merchant-assets", assetLifecycleMutationsEnabled: false, assetV1Enabled: true, storageProvider: "meoo" }, environment: "staging", targetProjectId: "asmhysidbg5g", schemaVersion: "v1" });
   assert.equal(a, b);
   assert.equal(runtimeConfigDigest(staging), runtimeConfigDigest(JSON.parse(b)));
   const metadata = createBuildMetadata({ sourceCommit: SHA, targetProjectId: staging.targetProjectId, environment: "staging", runtimeConfigDigest: runtimeConfigDigest(staging) });
@@ -89,9 +94,9 @@ test("actual start.sh bootstrap propagates staging config into the server proces
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "g2c10n-e2e-"));
   const { createDeploymentArtifact } = require("../target-runtime-config");
   createDeploymentArtifact({ sourceDir: source, outputDir: output, targetProjectId: staging.targetProjectId, sourceCommit: SHA, config: staging });
-  fs.writeFileSync(path.join(output, "admin", "server.js"), "console.log(JSON.stringify({provider:process.env.MEDIA_STORAGE_PROVIDER, enabled:process.env.MEDIA_ASSET_V1_ENABLED, bucket:process.env.MEDIA_STORAGE_BUCKET, configStatus:process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS}));");
+  fs.writeFileSync(path.join(output, "admin", "server.js"), "console.log(JSON.stringify({provider:process.env.MEDIA_STORAGE_PROVIDER, enabled:process.env.MEDIA_ASSET_V1_ENABLED, lifecycleMutationsEnabled:process.env.ASSET_LIFECYCLE_MUTATIONS_ENABLED, bucket:process.env.MEDIA_STORAGE_BUCKET, configStatus:process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS}));");
   const result = spawnSync("sh", [path.join(output, "scripts", "start.sh")], { encoding: "utf8", env: { ...process.env, ATELIER_ENVIRONMENT: "staging", ATELIER_DB_BACKEND: "meoo", PORT: "19001" }, timeout: 10000 });
   assert.equal(result.status, 0, result.stderr);
   const line = result.stdout.trim().split(/\r?\n/).at(-1);
-  assert.deepEqual(JSON.parse(line), { provider: "meoo", enabled: "true", bucket: "merchant-assets", configStatus: "LOADED_VALIDATED" });
+  assert.deepEqual(JSON.parse(line), { provider: "meoo", enabled: "true", lifecycleMutationsEnabled: "false", bucket: "merchant-assets", configStatus: "LOADED_VALIDATED" });
 });

@@ -113,10 +113,10 @@ test("private reads require ready state and scoped identity", async () => {
 
 test("delete verifies exact object removal before marking deleted", async () => {
   const repo = makeRepository(); const p = makeProvider(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { object_key: "tenant/exact" });
-  await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
+  await createMediaService({ provider: p, repository: repo, lifecycleMutationsEnabled: true }).remove(SCOPE, "asset");
   assert.deepEqual(p.calls.filter(call => ["delete", "verifyDeleted"].includes(call[0])).map(call => call[1]), ["tenant/exact", "tenant/exact"]);
   assert.equal(repo.assets.get("asset").status, "deleted");
-  assert.deepEqual(await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), { id: "asset", deleted: true, duplicate: true });
+  assert.deepEqual(await createMediaService({ provider: p, repository: repo, lifecycleMutationsEnabled: true }).remove(SCOPE, "asset"), { id: "asset", deleted: true, duplicate: true });
 });
 
 test("V1 response and source do not expose credentials or provider URLs", () => {

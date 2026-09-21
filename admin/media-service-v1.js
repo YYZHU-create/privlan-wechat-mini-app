@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { decode } = require("./workspace-media");
+const { markTrustedPublicMessage } = require("./public-error");
 
 const PURPOSES = new Set(["product_main", "product_gallery", "product_detail", "brand_logo", "workspace_branding", "mini_program_banner", "content_image", "content_video"]);
 const VARIANT_SET = new Set(["original", "thumbnail", "web"]);
@@ -21,7 +22,7 @@ function assertAssetTransition(from, to) {
   if (!ALLOWED_TRANSITIONS.get(String(from))?.has(String(to))) throw new MediaServiceError(409, "ASSET_STATUS_TRANSITION_INVALID", "asset status transition is invalid");
 }
 
-function createMediaService({ provider, repository, onEvent = () => {} }) {
+function createMediaService({ provider, repository, lifecycleMutationsEnabled = false, onEvent = () => {} }) {
   if (!provider || !repository) throw new Error("MediaService provider and repository are required");
   const emit = (event, fields) => { try { onEvent(event, fields); } catch {} };
 
@@ -106,6 +107,9 @@ function createMediaService({ provider, repository, onEvent = () => {} }) {
   }
 
   async function remove(scope, assetId) {
+    if (lifecycleMutationsEnabled !== true) {
+      throw markTrustedPublicMessage(new MediaServiceError(409, "ASSET_LIFECYCLE_MUTATION_DISABLED", "资产生命周期删除当前不可用"), "资产生命周期删除当前不可用");
+    }
     const asset = await repository.getAssetByIdScoped(scope, assetId); if (!asset) throw new MediaServiceError(404, "ASSET_NOT_FOUND", "asset is not available");
     if (asset.status === "deleted" && asset.deleted_at) return { id: asset.id, deleted: true, duplicate: true };
     if (asset.status === "ready") {

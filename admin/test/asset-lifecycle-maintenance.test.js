@@ -1,6 +1,10 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
-const { parseArgs, runMaintenance } = require("../asset-lifecycle-maintenance");
+const { parseArgs, runMaintenance, lifecycleMutationCapabilityFromRuntimeConfig } = require("../asset-lifecycle-maintenance");
+const { TARGETS } = require("../target-runtime-config");
 
 const SCOPE = { tenantId: "tenant-a", workspaceId: "workspace-a", storeId: "store-a", actorType: "system" };
 
@@ -35,7 +39,7 @@ test("maintenance requires an explicit apply flag and stable run ID before purgi
   assert.throws(() => parseArgs(["--tenant-id=tenant-a", "--workspace-id=workspace-a", "--actor-id=ops-a", "--apply"]), /RUN_ID_REQUIRED/);
   const options = parseArgs(["--tenant-id=tenant-a", "--workspace-id=workspace-a", "--actor-id=ops-a", "--mode=purge", "--apply", "--run-id=asset-maintenance-1"]);
   const { repository, provider, calls } = fixture();
-  const summary = await runMaintenance({ repository, provider, options, now: new Date("2026-02-01T00:00:00.000Z") });
+  const summary = await runMaintenance({ repository, provider, options, lifecycleMutationsEnabled: true, now: new Date("2026-02-01T00:00:00.000Z") });
   assert.equal(summary.applied, 1);
   const purge = calls.find(call => call[0] === "purge");
   assert.equal(purge[2], "purgeable"); assert.equal(purge[3].requestId, "asset-maintenance-1:purgeable");
@@ -44,8 +48,28 @@ test("maintenance requires an explicit apply flag and stable run ID before purgi
 test("historical link reconciliation only selects deleted assets and writes through its dedicated RPC", async () => {
   const options = parseArgs(["--tenant-id=tenant-a", "--workspace-id=workspace-a", "--actor-id=ops-a", "--mode=reconcile-links", "--apply", "--run-id=asset-links-1"]);
   const { repository, provider, calls } = fixture();
-  const summary = await runMaintenance({ repository, provider, options });
+  const summary = await runMaintenance({ repository, provider, options, lifecycleMutationsEnabled: true });
   assert.equal(summary.applied, 1);
   assert.equal(calls.some(call => call[0] === "purge"), false);
   assert.equal(calls.find(call => call[0] === "cleanup")[2], "linked");
+});
+
+test("maintenance apply defaults closed before candidate reads or lifecycle RPCs", async () => {
+  const options = parseArgs(["--tenant-id=tenant-a", "--workspace-id=workspace-a", "--actor-id=ops-a", "--mode=purge", "--apply", "--run-id=asset-maintenance-disabled"]);
+  const { repository, provider, calls } = fixture();
+  await assert.rejects(() => runMaintenance({ repository, provider, options }), error => error.code === "ASSET_LIFECYCLE_MUTATION_DISABLED");
+  assert.deepEqual(calls, []);
+});
+
+test("maintenance capability is false for absent or malformed runtime configuration", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "asset-lifecycle-config-"));
+  try {
+    assert.equal(lifecycleMutationCapabilityFromRuntimeConfig({ root, env: {} }), false);
+    fs.writeFileSync(path.join(root, "runtime-config.json"), "not-json");
+    assert.equal(lifecycleMutationCapabilityFromRuntimeConfig({ root, env: {} }), false);
+    fs.writeFileSync(path.join(root, "runtime-config.json"), JSON.stringify({ ...TARGETS.staging, media: { ...TARGETS.staging.media, assetLifecycleMutationsEnabled: true } }));
+    assert.equal(lifecycleMutationCapabilityFromRuntimeConfig({ root, env: { MEOO_PROJECT_URL_ID: TARGETS.staging.targetProjectId } }), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

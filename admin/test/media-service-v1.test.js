@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { canonicalObjectKey, createMediaService, MediaServiceError } = require("../media-service-v1");
 const { createMeooStorageProvider, StorageProviderError } = require("../storage-provider");
+const { hasTrustedPublicMessage } = require("../public-error");
 
 const SCOPE = { userId: "00000000-0000-0000-0000-000000000001", tenantId: "00000000-0000-0000-0000-000000000002", workspaceId: "00000000-0000-0000-0000-000000000003", storeId: "00000000-0000-0000-0000-000000000004", requestId: "req-test" };
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -30,6 +31,10 @@ function provider(overrides = {}) {
     async readObject(_scope, key) { calls.push(["read", key]); return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
     async deleteObject(scope, key) { calls.push(["delete", key]); return { deleted: true }; },
     async verifyDeleted(scope, key) { calls.push(["verify-deleted", key]); return true; }, ...overrides };
+}
+
+function mutableMediaService(input) {
+  return createMediaService({ ...input, lifecycleMutationsEnabled: true });
 }
 
 test("canonical key is scoped, UUID-based and traversal-resistant", () => {
@@ -88,7 +93,7 @@ test("read requires ready non-deleted asset and downloads through provider", asy
 test("delete verifies every registered object before finalizing the audited tombstone", async () => {
   const repo = repository(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { object_key: "tenant/x" }); const p = provider();
   repo.objects.set("asset", [{ object_key: "tenant/x" }, { object_key: "tenant/x-web" }]);
-  const result = await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"); assert.equal(result.deleted, true);
+  const result = await mutableMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"); assert.equal(result.deleted, true);
   assert.deepEqual(repo.calls.map(c => c[0]), ["deletion_requested", "status", "finalize"]);
   assert.deepEqual(p.calls, [["delete", "tenant/x"], ["verify-deleted", "tenant/x"], ["delete", "tenant/x-web"], ["verify-deleted", "tenant/x-web"]]);
   assert.equal(repo.calls.at(-1)[2].objectCount, 2);
@@ -97,7 +102,7 @@ test("delete verifies every registered object before finalizing the audited tomb
 test("deletion_requested assets never resume Storage deletion without a persisted owner", async () => {
   const repo = repository(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "deletion_requested" }); repo.objects.set("asset", { object_key: "tenant/x" });
   const p = provider();
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_DELETION_IN_PROGRESS");
+  await assert.rejects(() => mutableMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_DELETION_IN_PROGRESS");
   assert.equal(repo.calls.some(call => call[0] === "deletion_requested"), false);
   assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
   assert.equal(p.calls.length, 0);
@@ -108,7 +113,7 @@ test("already deleted assets return the idempotent result without Storage access
   const repo = repository();
   repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "deleted", deleted_at: "2026-09-20T00:00:00.000Z" });
   const p = provider();
-  const result = await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
+  const result = await mutableMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
   assert.deepEqual(result, { id: "asset", deleted: true, duplicate: true });
   assert.equal(p.calls.length, 0);
   assert.equal(repo.calls.length, 0);
@@ -117,7 +122,7 @@ test("already deleted assets return the idempotent result without Storage access
 test("delete leaves an asset pending reconciliation when no registered object exists", async () => {
   const repo = repository();
   repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
-  await assert.rejects(() => createMediaService({ provider: provider(), repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_OBJECT_NOT_FOUND");
+  await assert.rejects(() => mutableMediaService({ provider: provider(), repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_OBJECT_NOT_FOUND");
   assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
   assert.equal(repo.assets.get("asset").status, "deletion_requested");
 });
@@ -140,7 +145,7 @@ test("concurrent ready deletes yield one CAS owner and one Storage delete", asyn
     }
     return { outcome: "CAS_NOT_ACQUIRED", asset };
   };
-  const p = provider(); const service = createMediaService({ provider: p, repository: repo });
+  const p = provider(); const service = mutableMediaService({ provider: p, repository: repo });
   const results = await Promise.allSettled([service.remove(SCOPE, "asset"), service.remove(SCOPE, "asset")]);
   assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
   assert.equal(results.filter(result => result.status === "rejected" && result.reason.code === "ASSET_DELETION_IN_PROGRESS").length, 1);
@@ -153,7 +158,7 @@ test("partial multi-object Storage failure retains deletion_requested and never 
   repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
   repo.objects.set("asset", [{ object_key: "tenant/a" }, { object_key: "tenant/b" }]);
   const p = provider({ async deleteObject(_scope, key) { this.calls.push(["delete", key]); if (key === "tenant/b") { const error = new Error("network"); error.code = "STORAGE_UNAVAILABLE"; throw error; } return { deleted: true }; }, async verifyDeleted(_scope, key) { this.calls.push(["verify-deleted", key]); return key !== "tenant/b"; } });
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "STORAGE_DELETE_VERIFY_FAILED");
+  await assert.rejects(() => mutableMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "STORAGE_DELETE_VERIFY_FAILED");
   assert.equal(repo.calls.some(call => call[0] === "finalize"), false);
   assert.equal(repo.assets.get("asset").status, "deletion_requested");
 });
@@ -162,7 +167,7 @@ test("delete rejects assets outside the authenticated scope before Storage acces
   const repo = repository();
   repo.assets.set("asset", { id: "asset", tenant_id: "other-tenant", workspace_id: SCOPE.workspaceId, status: "ready" });
   const p = provider();
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_NOT_FOUND");
+  await assert.rejects(() => mutableMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_NOT_FOUND");
   assert.equal(p.calls.length, 0);
 });
 
@@ -171,9 +176,23 @@ test("lifecycle reconciliation events retain only scoped, sanitized operational 
   repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
   repo.objects.set("asset", { object_key: "tenant/x" });
   const events = [];
-  await createMediaService({ provider: provider(), repository: repo, onEvent: (event, fields) => events.push({ event, fields }) }).remove({ ...SCOPE, requestId: "request-a" }, "asset");
+  await mutableMediaService({ provider: provider(), repository: repo, onEvent: (event, fields) => events.push({ event, fields }) }).remove({ ...SCOPE, requestId: "request-a" }, "asset");
   const reconciliation = events.find(item => item.event === "lifecycle_reconciliation" && item.fields.operation === "finalize");
   assert.deepEqual(reconciliation.fields, { operation: "finalize", assetId: "asset", tenantId: SCOPE.tenantId, workspaceId: SCOPE.workspaceId, requestId: "request-a", attempt: 1, errorClass: null, reconciliationResult: "CONFIRMED_SUCCEEDED" });
+});
+
+test("lifecycle deletion defaults closed before asset, Storage, or finalization access", async () => {
+  const repo = repository();
+  repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
+  repo.objects.set("asset", { object_key: "tenant/x" });
+  const p = provider();
+  const service = createMediaService({ provider: p, repository: repo, lifecycleMutationsEnabled: "true" });
+  await assert.rejects(
+    () => service.remove({ ...SCOPE, lifecycleMutationsEnabled: true, query: { assetLifecycleMutationsEnabled: true }, headers: { "x-asset-lifecycle-mutations-enabled": "true" }, cookies: { assetLifecycleMutationsEnabled: "true" } }, "asset"),
+    error => error.code === "ASSET_LIFECYCLE_MUTATION_DISABLED" && error.status === 409 && hasTrustedPublicMessage(error)
+  );
+  assert.deepEqual(repo.calls, []);
+  assert.deepEqual(p.calls, []);
 });
 
 test("unsupported MIME and malformed data are rejected by server validation", async () => {

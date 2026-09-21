@@ -84,6 +84,25 @@ written and the object rows then tombstone are removed transactionally.
 `failed` assets and deleted assets whose objects remain present are reconciliation
 cases. They are not ordinary purge candidates. There is no scheduler in V1.
 
+## Lifecycle mutation capability
+
+`MEDIA_ASSET_V1_ENABLED` controls the Asset V1 service surface. It does not
+authorize lifecycle writes. `ASSET_LIFECYCLE_MUTATIONS_ENABLED` is a separate,
+target-bound server configuration field and defaults to `false`. The Merchant
+delete operation and maintenance `--apply` reject before metadata or Storage
+access unless this capability is explicitly enabled by the deployed runtime
+configuration.
+
+On migration 014, lifecycle mutations remain disabled while the 015 lifecycle
+RPCs are unavailable. After migration 015 is applied and independently
+verified, a separately authorized runtime configuration change may enable the
+capability. Operator dry-run remains read-only and independent of this setting.
+
+The rollout sequence is: 014 with lifecycle mutations disabled, deployment and
+read-only dry-run verification, real dry-run acceptance and recovery evidence,
+015 application and verification, explicit lifecycle capability enablement,
+then lifecycle acceptance.
+
 ## Operator dry-run report
 
 The candidate includes `GET /ops/v1/asset-lifecycle/dry-run` as a fixed,
