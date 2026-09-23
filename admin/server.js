@@ -1762,6 +1762,7 @@ app.use((error, req, res, next) => {
 });
 
 const server = app.listen(PORT, HOST, () => {
+  if (mediaService) mediaService.startRecoveryWorker();
   console.log(`\n  PRIVLAN Admin Panel (WordPress-style)`);
   console.log(`  ──────────────────────────────────────`);
   console.log(`  Running at  http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);

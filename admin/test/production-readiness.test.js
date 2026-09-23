@@ -127,7 +127,7 @@ test("migration manifest is deterministic across line endings and matches the co
     assert.equal(normalizeMigrationSql("a\r\nb\rc\n"), "a\nb\nc\n");
     const result = checkManifest(path.join(ROOT, "docs/architecture/migration-manifest.json"));
     assert.equal(result.ok, true);
-    assert.equal(result.expected.migrations.at(-1).file, "015_asset_lifecycle_v1.sql");
+    assert.equal(result.expected.migrations.at(-1).file, "016_media_upload_attempt_journal.sql");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 

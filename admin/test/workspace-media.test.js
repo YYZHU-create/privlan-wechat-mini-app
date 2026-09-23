@@ -92,7 +92,7 @@ test("workspace media applies one compatibility visibility contract to list and 
   const rows = [
     asset("historical-pending"),
     asset("v1-pending", { purpose: "content_image" }),
-    asset("ready", { status: "ready", purpose: "content_image" }),
+    asset("ready", { status: "ready", purpose: "content_image", metadata: { kind: "image", folderId: "folder-v1" } }),
     asset("failed", { status: "failed", purpose: "content_image" }),
     asset("deletion-requested", { status: "deletion_requested", purpose: "content_image" }),
     asset("deleted", { status: "deleted", purpose: "content_image", deleted_at: "2026-09-17T00:00:00.000Z" }),
@@ -111,6 +111,10 @@ test("workspace media applies one compatibility visibility contract to list and 
 
   const visible = await media.list(scope);
   assert.deepEqual(visible.map(item => item.id), ["historical-pending", "ready"]);
+  const readyV1 = visible.find(item => item.id === "ready");
+  assert.equal(readyV1.path, "/api/media/v1/content/ready");
+  assert.equal(readyV1.mpPath, "/api/media/v1/content/ready");
+  assert.equal(readyV1.folderId, "folder-v1");
   assert.equal(visible.length, 2);
   assert.deepEqual(visible.slice(0, 1).map(item => item.id), ["historical-pending"]);
   assert.deepEqual((await media.list(scope, true)).map(item => item.id), ["legacy-trash"]);
@@ -183,8 +187,14 @@ test("workspace media uses the explicit Meoo repository without database SQL", a
 
 test("merchant upload UI exposes progress, failed state, retry and duplicate guard", () => {
   const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
-  assert.match(source, /xhr\.upload\.onprogress/);
+  const client = fs.readFileSync(path.join(__dirname, "../public/media-upload-client.js"), "utf8");
+  assert.match(source, /MediaUploadClient\.sendUploadRequest/);
+  assert.match(source, /attemptState = error\.retryable \? "uncertain" : "terminal"/);
   assert.match(source, /upload\.status = "failed"/);
   assert.match(source, /retryMediaUpload/);
   assert.match(source, /已跳过重复素材/);
+  assert.match(client, /xhr\.upload\.onprogress/);
+  assert.match(client, /Idempotency-Key/);
+  assert.match(client, /\/api\/media\/v1\/upload/);
+  assert.doesNotMatch(source, /\/api\/media\/upload/);
 });

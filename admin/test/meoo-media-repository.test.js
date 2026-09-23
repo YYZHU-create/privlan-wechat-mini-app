@@ -77,6 +77,90 @@ test("asset repository does not retry definite read failures and reports retry e
   assert.equal(exhaustedAttempts, 3);
 });
 
+test("upload compensation binds every deletion to scoped asset, attempt marker, object key, variant and partial status", async () => {
+  const calls = []; let assetPresent = true;
+  const asset = { id: "asset-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", object_key: "tenant/tenant-a/workspace/workspace-a/asset/asset-a/original.png", status: "pending", metadata: { uploadAttemptId: "attempt-a" } };
+  const repo = createAssetRepository({ url: "https://probe.example", serviceRoleKey: "key", fetchImpl: async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.includes("/rest/v1/assets?") && options.method === "DELETE") { assetPresent = false; return response(200, [asset]); }
+    if (url.includes("/rest/v1/assets?")) return response(200, assetPresent ? [asset] : []);
+    if (url.includes("/rest/v1/asset_objects?")) return response(200, []);
+    if (url.includes("/rest/v1/asset_links?")) return response(200, []);
+    throw new Error(`unexpected URL ${url}`);
+  } });
+  const result = await repo.deleteUploadAttempt(SCOPE, "asset-a", { objectKey: asset.object_key, uploadAttemptId: "attempt-a", variant: "original" });
+  assert.equal(result.deleted, true);
+  const deletion = calls.find(call => call.options.method === "DELETE" && call.url.includes("/rest/v1/assets?"));
+  assert.match(deletion.url, /tenant_id=eq\.tenant-a/);
+  assert.match(deletion.url, /workspace_id=eq\.workspace-a/);
+  assert.match(deletion.url, /store_id=eq\.store-a/);
+  assert.match(deletion.url, /status=in\.\(pending,failed\)/);
+  assert.match(deletion.url, /metadata->>uploadAttemptId=eq\.attempt-a/);
+  assert.equal(calls.some(call => call.options.method === "DELETE" && call.url.includes("asset_objects")), false);
+});
+
+test("upload compensation fails closed before deleting when its stored attempt identity differs", async () => {
+  let deletes = 0;
+  const asset = { id: "asset-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", object_key: "tenant/tenant-a/workspace/workspace-a/asset/asset-a/original.png", status: "pending", metadata: { uploadAttemptId: "another-attempt" } };
+  const repo = createAssetRepository({ url: "https://probe.example", serviceRoleKey: "key", fetchImpl: async (url, options = {}) => {
+    if (options.method === "DELETE") { deletes += 1; return response(200, []); }
+    if (url.includes("/rest/v1/assets?")) return response(200, [asset]);
+    throw new Error(`unexpected URL ${url}`);
+  } });
+  await assert.rejects(() => repo.deleteUploadAttempt(SCOPE, "asset-a", { objectKey: asset.object_key, uploadAttemptId: "attempt-a" }), error => error.code === "UPLOAD_CLEANUP_TARGET_MISMATCH");
+  assert.equal(deletes, 0);
+});
+
+test("upload-attempt journal writes only the idempotency hash and scopes every lease transition", async () => {
+  const calls = []; const attempt = { attempt_id: "attempt-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", owner_user_id: "merchant-a", operation: "POST /api/media/v1/upload", idempotency_key_hash: "a".repeat(64), request_fingerprint: "b".repeat(64), phase: "ATTEMPT_CREATED", lease_token: "lease-a", lease_expires_at: "2026-01-01T00:00:00.000Z" };
+  const repo = createAssetRepository({ url: "https://probe.example", serviceRoleKey: "key", fetchImpl: async (url, options = {}) => { calls.push({ url, options }); if (options.method === "POST") return response(201, [attempt]); if (options.method === "PATCH") return response(200, [{ ...attempt, phase: "DB_ASSET_CREATED" }]); return response(200, [attempt]); } });
+  const scope = { ...SCOPE, userId: "merchant-a" };
+  const reserved = await repo.reserveUploadAttempt(scope, { attemptId: "attempt-a", assetId: "asset-a", expectedObjectKey: "tenant/t/workspace/w/asset/a/original.png", idempotencyKeyHash: "a".repeat(64), requestFingerprint: "b".repeat(64), contentSha256: "c".repeat(64), contentLength: 68, contentType: "image/png", originalName: "hero.png", purpose: "content_image", variant: "original", leaseToken: "lease-a", leaseExpiresAt: "2026-01-01T00:00:00.000Z" });
+  assert.equal(reserved.created, true);
+  const posted = calls[0]; const body = JSON.parse(posted.options.body);
+  assert.equal(body.idempotency_key_hash, "a".repeat(64)); assert.equal(body.operation, "POST /api/media/v1/upload"); assert.equal("idempotency_key" in body, false);
+  assert.equal(body.tenant_id, "tenant-a"); assert.equal(body.workspace_id, "workspace-a"); assert.equal(body.owner_user_id, "merchant-a");
+  const claimed = await repo.claimUploadAttempt(scope, "attempt-a", "lease-b", "2026-01-01T00:00:01.000Z", "2026-01-01T00:02:01.000Z");
+  const claimCall = calls[1]; assert.equal(claimed.phase, "DB_ASSET_CREATED");
+  for (const field of ["attempt_id=eq.attempt-a", "tenant_id=eq.tenant-a", "workspace_id=eq.workspace-a", "store_id=eq.store-a", "owner_user_id=eq.merchant-a", "lease_expires_at=lte.", "phase=in."]) assert.ok(decodeURIComponent(claimCall.url).includes(field), field);
+  assert.match(claimCall.options.method, /PATCH/);
+});
+
+test("upload-attempt reservation reconciles a unique conflict by scoped key and fingerprint", async () => {
+  const calls = []; const existing = { attempt_id: "prior-attempt", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", owner_user_id: "merchant-a", operation: "POST /api/media/v1/upload", idempotency_key_hash: "a".repeat(64), request_fingerprint: "b".repeat(64), lease_token: "other-lease", phase: "DB_ASSET_CREATED" };
+  const repo = createAssetRepository({ url: "https://probe.example", serviceRoleKey: "key", fetchImpl: async (url, options = {}) => { calls.push({ url, options }); if (options.method === "POST") return response(409, { code: "23505" }); return response(200, [existing]); } });
+  const input = { attemptId: "new-attempt", assetId: "new-asset", expectedObjectKey: "tenant/t/workspace/w/asset/a/original.png", idempotencyKeyHash: "a".repeat(64), requestFingerprint: "b".repeat(64), contentSha256: "c".repeat(64), contentLength: 68, contentType: "image/png", originalName: "hero.png", purpose: "content_image", variant: "original", leaseToken: "lease-new", leaseExpiresAt: "2026-01-01T00:00:00.000Z" };
+  const scope = { ...SCOPE, userId: "merchant-a" }; const replay = await repo.reserveUploadAttempt(scope, input);
+  assert.equal(replay.created, false); assert.equal(replay.attempt.attempt_id, "prior-attempt"); assert.equal(replay.fingerprintMismatch, undefined);
+  assert.match(decodeURIComponent(calls[1].url), /tenant_id=eq.tenant-a.*workspace_id=eq.workspace-a.*store_id=eq.store-a.*owner_user_id=eq.merchant-a/);
+  const changed = await repo.reserveUploadAttempt(scope, { ...input, requestFingerprint: "d".repeat(64) });
+  assert.equal(changed.created, false); assert.equal(changed.fingerprintMismatch, true);
+});
+
+test("upload compensation removes only the attempt's scoped link and object before its parent row", async () => {
+  const calls = []; let assetPresent = true;
+  let objects = [{ id: "object-a", asset_id: "asset-a", object_key: "tenant/tenant-a/workspace/workspace-a/asset/asset-a/original.png", variant: "original" }];
+  let links = [{ id: "link-a", asset_id: "asset-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a" }];
+  const asset = { id: "asset-a", tenant_id: "tenant-a", workspace_id: "workspace-a", store_id: "store-a", object_key: "tenant/tenant-a/workspace/workspace-a/asset/asset-a/original.png", status: "failed", metadata: { uploadAttemptId: "attempt-a" } };
+  const repo = createAssetRepository({ url: "https://probe.example", serviceRoleKey: "key", fetchImpl: async (url, options = {}) => {
+    calls.push({ url, options });
+    if (options.method === "DELETE" && url.includes("/rest/v1/asset_links?")) { links = []; return response(204, null); }
+    if (options.method === "DELETE" && url.includes("/rest/v1/asset_objects?")) { objects = []; return response(204, null); }
+    if (options.method === "DELETE" && url.includes("/rest/v1/assets?")) { assetPresent = false; return response(204, null); }
+    if (url.includes("/rest/v1/assets?")) return response(200, assetPresent ? [asset] : []);
+    if (url.includes("/rest/v1/asset_objects?")) return response(200, objects);
+    if (url.includes("/rest/v1/asset_links?")) return response(200, links);
+    throw new Error(`unexpected URL ${url}`);
+  } });
+  const result = await repo.deleteUploadAttempt(SCOPE, "asset-a", { objectKey: asset.object_key, uploadAttemptId: "attempt-a", variant: "original" });
+  assert.equal(result.deleted, true);
+  const deletes = calls.filter(call => call.options.method === "DELETE");
+  assert.deepEqual(deletes.map(call => call.url.split("/rest/v1/")[1].split("?")[0]), ["asset_links", "asset_objects", "assets"]);
+  assert.match(deletes[0].url, /tenant_id=eq\.tenant-a.*workspace_id=eq\.workspace-a.*store_id=eq\.store-a.*asset_id=eq\.asset-a/);
+  assert.match(deletes[1].url, /asset_id=eq\.asset-a.*object_key=eq\.tenant%2Ftenant-a%2Fworkspace%2Fworkspace-a%2Fasset%2Fasset-a%2Foriginal.png.*variant=eq\.original/);
+  assert.match(deletes[2].url, /metadata->>uploadAttemptId=eq\.attempt-a/);
+});
+
 function lifecycleFetch({ action, initialRpc, asset, audit = [], replayRpc = response(200, { ok: true, data: { id: "asset-a", done: true } }) }) {
   let rpcAttempts = 0; const requestIds = [];
   return {

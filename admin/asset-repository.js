@@ -189,6 +189,141 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return Array.isArray(rows) ? rows[0] : rows;
   }
 
+  async function deleteUploadAttempt(scope, assetId, { objectKey, uploadAttemptId, variant = "original" } = {}) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    const asset = await getAssetByIdScoped(scope, assetId);
+    if (!asset) return { deleted: true, duplicate: true };
+    const metadata = asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {};
+    if (String(metadata.uploadAttemptId || "") !== String(uploadAttemptId || "") || String(asset.object_key || "") !== String(objectKey || "") || !["pending", "failed"].includes(String(asset.status || "")) || asset.deleted_at) {
+      throw new AssetRepositoryError("UPLOAD_CLEANUP_TARGET_MISMATCH", "upload cleanup target does not match", 409);
+    }
+    const objects = await listAssetObjects(scope, assetId);
+    if (objects.some(row => String(row.object_key || "") !== String(objectKey) || String(row.variant || "") !== String(variant))) {
+      throw new AssetRepositoryError("UPLOAD_CLEANUP_OBJECT_MISMATCH", "upload cleanup objects do not match", 409);
+    }
+    const links = await listAssetLinks(scope, assetId);
+    for (const link of links) {
+      if (String(link.asset_id || "") !== String(assetId) || String(link.tenant_id || "") !== tenantId || String(link.workspace_id || "") !== workspaceId || String(link.store_id || "") !== String(storeId || "")) {
+        throw new AssetRepositoryError("UPLOAD_CLEANUP_LINK_MISMATCH", "upload cleanup links do not match", 409);
+      }
+    }
+    // Delete only child rows belonging to this scoped, unpublished asset; confirm every potentially ambiguous result by exact readback.
+    if (links.length) {
+      const linkStore = storeId ? `&store_id=eq.${encode(storeId)}` : "&store_id=is.null";
+      const query = `?tenant_id=eq.${encode(tenantId)}&workspace_id=eq.${encode(workspaceId)}${linkStore}&asset_id=eq.${encode(assetId)}`;
+      try { await request("asset_links", query, { method: "DELETE", headers: { Prefer: "return=minimal" } }); } catch (error) { if ((await listAssetLinks(scope, assetId)).length) throw error; }
+      if ((await listAssetLinks(scope, assetId)).length) throw new AssetRepositoryError("UPLOAD_CLEANUP_LINKS_REMAIN", "upload cleanup links remain", 503);
+    }
+    if (objects.length) {
+      const query = `?asset_id=eq.${encode(assetId)}&object_key=eq.${encode(objectKey)}&variant=eq.${encode(variant)}`;
+      try { await request("asset_objects", query, { method: "DELETE", headers: { Prefer: "return=minimal" } }); } catch (error) { if ((await listAssetObjects(scope, assetId)).length) throw error; }
+      if ((await listAssetObjects(scope, assetId)).length) throw new AssetRepositoryError("UPLOAD_CLEANUP_OBJECTS_REMAIN", "upload cleanup objects remain", 503);
+    }
+    const store = storeId ? `&store_id=eq.${encode(storeId)}` : "&store_id=is.null";
+    try { await request("assets", `?id=eq.${encode(assetId)}&tenant_id=eq.${encode(tenantId)}&workspace_id=eq.${encode(workspaceId)}${store}&status=in.(pending,failed)&metadata->>uploadAttemptId=eq.${encode(uploadAttemptId)}`, { method: "DELETE", headers: { Prefer: "return=representation" } }); }
+    catch (error) { const observed = await getAssetByIdScoped(scope, assetId); if (observed) throw error; return { deleted: true, duplicate: false, reconciled: true }; }
+    const remaining = await getAssetByIdScoped(scope, assetId);
+    if (!remaining) return { deleted: true, duplicate: true };
+    throw new AssetRepositoryError("UPLOAD_CLEANUP_INDETERMINATE", "upload cleanup could not be confirmed", 503);
+  }
+
+  function uploadAttemptScopeQuery(scope) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    if (!scope?.userId) throw new AssetRepositoryError("UPLOAD_ATTEMPT_ACTOR_REQUIRED", "upload attempt actor is required", 400);
+    return `tenant_id=eq.${encode(tenantId)}&workspace_id=eq.${encode(workspaceId)}&store_id=${storeId ? `eq.${encode(storeId)}` : "is.null"}&owner_user_id=eq.${encode(scope.userId)}&operation=eq.${encode("POST /api/media/v1/upload")}`;
+  }
+
+  async function getUploadAttempt(scope, attemptId) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const rows = await request("media_upload_attempts", `?select=*&attempt_id=eq.${encode(attemptId)}&${baseQuery}&limit=1`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+
+  async function getUploadAttemptByKey(scope, idempotencyKeyHash) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const rows = await request("media_upload_attempts", `?select=*&idempotency_key_hash=eq.${encode(idempotencyKeyHash)}&${baseQuery}&limit=1`);
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }
+
+  async function reserveUploadAttempt(scope, input = {}) {
+    const [tenantId, workspaceId, storeId] = scopeValues(scope);
+    if (!scope?.userId) throw new AssetRepositoryError("UPLOAD_ATTEMPT_ACTOR_REQUIRED", "upload attempt actor is required", 400);
+    const row = {
+      attempt_id: input.attemptId,
+      tenant_id: tenantId,
+      workspace_id: workspaceId,
+      store_id: storeId || null,
+      owner_user_id: String(scope.userId),
+      operation: "POST /api/media/v1/upload",
+      idempotency_key_hash: input.idempotencyKeyHash,
+      request_fingerprint: input.requestFingerprint,
+      asset_id: input.assetId,
+      expected_object_key: input.expectedObjectKey,
+      content_sha256: input.contentSha256,
+      content_length: input.contentLength,
+      content_type: input.contentType,
+      original_name: input.originalName,
+      purpose: input.purpose,
+      variant: input.variant,
+      entity_id: input.entityId == null ? null : String(input.entityId),
+      position: input.position == null ? null : Number(input.position),
+      synthetic_canary: input.syntheticCanary === true,
+      asset_metadata: input.assetMetadata && typeof input.assetMetadata === "object" ? input.assetMetadata : {},
+      phase: "ATTEMPT_CREATED",
+      terminal_state: null,
+      lease_token: input.leaseToken,
+      lease_expires_at: input.leaseExpiresAt,
+      last_error_class: null,
+      result: null
+    };
+    try {
+      const rows = await request("media_upload_attempts", "", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+      return { created: true, attempt: Array.isArray(rows) ? rows[0] || row : row };
+    } catch (error) {
+      let existing = null;
+      try { existing = await getUploadAttemptByKey(scope, input.idempotencyKeyHash); } catch { /* preserve the mutation error below */ }
+      if (existing) {
+        if (String(existing.request_fingerprint) !== String(input.requestFingerprint)) return { created: false, attempt: existing, fingerprintMismatch: true };
+        return { created: String(existing.lease_token || "") === String(input.leaseToken), attempt: existing };
+      }
+      throw error;
+    }
+  }
+
+  async function claimUploadAttempt(scope, attemptId, leaseToken, now, leaseExpiresAt) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const expired = `?attempt_id=eq.${encode(attemptId)}&${baseQuery}&lease_expires_at=lte.${encode(now)}&phase=in.(ATTEMPT_CREATED,DB_ASSET_CREATED,STORAGE_OBJECT_PRESENT,ASSET_OBJECT_RECORDED,LINKS_RECORDED,CLEANUP_REQUIRED)`;
+    const rows = await request("media_upload_attempts", expired, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ lease_token: leaseToken, lease_expires_at: leaseExpiresAt, updated_at: new Date().toISOString() }) });
+    return Array.isArray(rows) ? rows[0] || null : rows || null;
+  }
+
+  async function renewUploadAttemptLease(scope, attemptId, leaseToken, leaseExpiresAt) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const rows = await request("media_upload_attempts", `?attempt_id=eq.${encode(attemptId)}&${baseQuery}&lease_token=eq.${encode(leaseToken)}&phase=not.in.(READY_COMMITTED,CLEANED)`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ lease_expires_at: leaseExpiresAt, updated_at: new Date().toISOString() }) });
+    return Array.isArray(rows) ? rows[0] || null : rows || null;
+  }
+
+  async function transitionUploadAttempt(scope, attemptId, leaseToken, fromPhase, patch = {}) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const rows = await request("media_upload_attempts", `?attempt_id=eq.${encode(attemptId)}&${baseQuery}&lease_token=eq.${encode(leaseToken)}&phase=eq.${encode(fromPhase)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
+    if (Array.isArray(rows) && rows[0]) return rows[0];
+    const observed = await getUploadAttempt(scope, attemptId);
+    if (observed && String(observed.phase) === String(patch.phase) && String(observed.lease_token || "") === String(leaseToken)) return observed;
+    return null;
+  }
+
+  async function releaseUploadAttemptLease(scope, attemptId, leaseToken) {
+    const baseQuery = uploadAttemptScopeQuery(scope);
+    const rows = await request("media_upload_attempts", `?attempt_id=eq.${encode(attemptId)}&${baseQuery}&lease_token=eq.${encode(leaseToken)}&phase=not.in.(READY_COMMITTED,CLEANED)`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ lease_token: null, lease_expires_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+    return Array.isArray(rows) ? rows.length > 0 : true;
+  }
+
+  async function listRecoverableUploadAttempts(now = new Date().toISOString(), limit = 20) {
+    const bounded = Math.max(1, Math.min(50, Number(limit) || 20));
+    const rows = await request("media_upload_attempts", `?select=*&operation=eq.${encode("POST /api/media/v1/upload")}&phase=in.(ATTEMPT_CREATED,DB_ASSET_CREATED,STORAGE_OBJECT_PRESENT,ASSET_OBJECT_RECORDED,LINKS_RECORDED,CLEANUP_REQUIRED)&lease_expires_at=lte.${encode(now)}&order=lease_expires_at.asc&limit=${bounded}`);
+    return Array.isArray(rows) ? rows : [];
+  }
+
   async function getAssetByIdScoped(scope, assetId) {
     const [tenantId, workspaceId, storeId] = scopeValues(scope);
     const store = storeId ? `&store_id=eq.${encode(storeId)}` : "";
@@ -323,7 +458,7 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return Array.isArray(products) && products.some(product => String(product?.id) === String(productId));
   }
 
-  return { createPendingAsset, getAssetByIdScoped, createAssetObject, getAssetObject, listAssetObjects, createAssetLink, listAssetLinks, countDeletedAssets, listLifecycleAuditEvents, reconcileLifecycleOperation, transitionAssetStatus, requestAssetDeletion, markAssetDeleted, finalizeAssetDeletion, cleanupDeletedAssetLinks, purgeDeletedAsset, listDeletedAssets, productInScope };
+  return { createPendingAsset, deleteUploadAttempt, reserveUploadAttempt, getUploadAttempt, getUploadAttemptByKey, claimUploadAttempt, renewUploadAttemptLease, transitionUploadAttempt, releaseUploadAttemptLease, listRecoverableUploadAttempts, getAssetByIdScoped, createAssetObject, getAssetObject, listAssetObjects, createAssetLink, listAssetLinks, countDeletedAssets, listLifecycleAuditEvents, reconcileLifecycleOperation, transitionAssetStatus, requestAssetDeletion, markAssetDeleted, finalizeAssetDeletion, cleanupDeletedAssetLinks, purgeDeletedAsset, listDeletedAssets, productInScope };
 }
 
 module.exports = { createAssetRepository, AssetRepositoryError, scopeValues, RECONCILIATION, DELETE_CLAIM };

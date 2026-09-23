@@ -299,7 +299,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
   // Legacy /api/media behavior remains unchanged until MEDIA_ASSET_V1_ENABLED is enabled.
   app.post("/api/media/v1/upload", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
-    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}) }); }
+    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null }) }); }
     catch (error) { return failure(res, error, req.requestId); }
   });
   registration.mediaUploadRouteRegistered = true;
