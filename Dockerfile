@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 ARG ATELIER_GIT_SHA=unknown
 ARG ATELIER_GIT_BRANCH=unknown
