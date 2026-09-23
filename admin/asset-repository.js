@@ -157,13 +157,17 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
     }
   }
 
-  async function invokeLifecycleRpc(name, action, scope, assetId, body) {
+  async function invokeLifecycleRpc(name, action, scope, assetId, body, { retryNotApplied = true } = {}) {
     try { return await invokeRpc(name, body); }
     catch (error) {
       if (!isAmbiguousLifecycleError(error)) throw error;
       const reconciliation = await reconcileLifecycleOperation(scope, assetId, { action, requestId: body.p_request_id });
       if (reconciliation.outcome === RECONCILIATION.SUCCEEDED) return { id: assetId, duplicate: true, reconciliation };
       if (reconciliation.outcome === RECONCILIATION.NOT_APPLIED) {
+        if (!retryNotApplied) {
+          error.reconciliation = reconciliation;
+          throw error;
+        }
         try { return { ...(await invokeRpc(name, body)), reconciliation }; }
         catch (retryError) {
           if (!isAmbiguousLifecycleError(retryError)) throw retryError;
@@ -241,13 +245,18 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
     const [tenantId, workspaceId, storeId] = scopeValues(scope);
     const store = storeId ? `&store_id=eq.${encode(storeId)}` : "&store_id=is.null";
     const expectedStatus = input.expectedStatus ? `&status=eq.${encode(input.expectedStatus)}` : "";
-    const rows = await request("assets", `?id=eq.${encode(assetId)}&tenant_id=eq.${encode(tenantId)}&workspace_id=eq.${encode(workspaceId)}${store}${expectedStatus}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status, updated_at: new Date().toISOString(), ...(status === "deleted" ? { deleted_at: new Date().toISOString() } : {}) }) });
+    const rows = await request("assets", `?id=eq.${encode(assetId)}&tenant_id=eq.${encode(tenantId)}&workspace_id=eq.${encode(workspaceId)}${store}${expectedStatus}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status, updated_at: new Date().toISOString(), ...(input.metadata ? { metadata: input.metadata } : {}), ...(status === "deleted" ? { deleted_at: new Date().toISOString() } : {}) }) });
     return Array.isArray(rows) ? rows[0] || null : rows;
   }
 
-  async function requestAssetDeletion(scope, assetId) {
+  async function requestAssetDeletion(scope, assetId, input = {}) {
     try {
-      const asset = await transitionAssetStatus(scope, assetId, "deletion_requested", { expectedStatus: "ready" });
+      const canaryIdentity = input.canaryIdentity;
+      const metadata = canaryIdentity ? {
+        ...(input.asset?.metadata && typeof input.asset.metadata === "object" && !Array.isArray(input.asset.metadata) ? input.asset.metadata : {}),
+        lifecycleCanaryAuthorization: { policyId: String(canaryIdentity.policyId || ""), attemptId: String(canaryIdentity.attemptId || "") }
+      } : undefined;
+      const asset = await transitionAssetStatus(scope, assetId, "deletion_requested", { expectedStatus: "ready", metadata });
       if (asset) return { outcome: DELETE_CLAIM.ACQUIRED, asset };
       return reconcileDeleteClaim(scope, assetId);
     }
@@ -272,12 +281,13 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
   }
 
   async function finalizeAssetDeletion(scope, assetId, input = {}) {
+    const { retryNotApplied = true, ...rpcInput } = input;
     const body = {
-      ...lifecycleContext(scope, assetId, input),
-      p_storage_verified_at: input.storageVerifiedAt,
-      p_object_count: Number(input.objectCount || 0)
+      ...lifecycleContext(scope, assetId, rpcInput),
+      p_storage_verified_at: rpcInput.storageVerifiedAt,
+      p_object_count: Number(rpcInput.objectCount || 0)
     };
-    return invokeLifecycleRpc("atelier_asset_finalize_delete_v1", "asset.deleted", scope, assetId, body);
+    return invokeLifecycleRpc("atelier_asset_finalize_delete_v1", "asset.deleted", scope, assetId, body, { retryNotApplied });
   }
 
   async function cleanupDeletedAssetLinks(scope, assetId, input = {}) {

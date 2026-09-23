@@ -51,6 +51,17 @@ function safeBuildTime(value) {
   return Number.isNaN(supplied.getTime()) ? "unknown" : supplied.toISOString();
 }
 
+function safeArtifactDigest(value) {
+  const candidate = cleanValue(value);
+  return /^sha256:[0-9a-f]{64}$/i.test(candidate) ? candidate.toLowerCase() : "unknown";
+}
+
+function safeSha256Digest(value) {
+  const candidate = cleanValue(value);
+  const match = candidate.match(/^(?:sha256:)?([0-9a-f]{64})$/i);
+  return match ? `sha256:${match[1].toLowerCase()}` : "unknown";
+}
+
 function readBuildMetadata(filePath, readFile = fs.readFileSync) {
   if (!filePath) return {};
   try {
@@ -62,6 +73,7 @@ function readBuildMetadata(filePath, readFile = fs.readFileSync) {
       environment: parsed.environment,
       buildTime: parsed.buildTime
     };
+    if (parsed.artifactDigest !== undefined) metadata.artifactDigest = parsed.artifactDigest;
     if (parsed.sourceCommit !== undefined) metadata.sourceCommit = parsed.sourceCommit;
     if (parsed.declaredTargetProjectId !== undefined) metadata.declaredTargetProjectId = parsed.declaredTargetProjectId;
     if (parsed.runtimeConfigDigest !== undefined) metadata.runtimeConfigDigest = parsed.runtimeConfigDigest;
@@ -121,4 +133,4 @@ function resolveRuntimeIdentity({ env = process.env, repoRoot = path.resolve(__d
   };
 }
 
-module.exports = { ALLOWED_ENVIRONMENTS, normalizeEnvironment, readBuildMetadata, resolveRuntimeIdentity, safeBranch, safeBuildTime, safeCommitSha, safeServerPort, safeDatabaseLabel };
+module.exports = { ALLOWED_ENVIRONMENTS, normalizeEnvironment, readBuildMetadata, resolveRuntimeIdentity, safeArtifactDigest, safeSha256Digest, safeBranch, safeBuildTime, safeCommitSha, safeServerPort, safeDatabaseLabel };

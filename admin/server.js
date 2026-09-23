@@ -20,6 +20,7 @@ const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { createMeooStorageProvider } = require("./storage-provider");
 const { createAssetRepository } = require("./asset-repository");
 const { createMediaService } = require("./media-service-v1");
+const { normalGlobalMutationGateEnabled, isCanaryConfigValid, canaryRuntimeStatus, STAGING_PROJECT_ID } = require("./asset-lifecycle-permit");
 const { createMeooLaunchV1Repository } = require("./meoo-launch-v1-repository");
 const { createMeooOperatorRepository } = require("./meoo-operator-repository");
 const { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes } = require("./merchant-routes");
@@ -28,6 +29,7 @@ const { registerLaunchV1Routes, registerLaunchV1OpsRoutes } = require("./launch-
 const { validateProductionEnvironment, validateDatabaseBackend, validateMediaStorageConfig } = require("./runtime-config");
 const { resolveRuntimeIdentity } = require("./runtime-identity");
 const { resolveBuildIdentity, buildMediaRuntimeDiagnostic } = require("./media-runtime-diagnostic");
+const { RUNTIME_INSTANCE_IDENTITY } = require("./runtime-instance-identity");
 const { respondUnexpectedError } = require("./error-response");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
 
@@ -73,11 +75,40 @@ const meooOperatorRepository = DATABASE_BACKEND === "meoo" ? createMeooOperatorR
 const MEDIA_STORAGE_PROVIDER = String(process.env.MEDIA_STORAGE_PROVIDER || "legacy").trim().toLowerCase();
 const MEDIA_ASSET_V1_ENABLED = String(process.env.MEDIA_ASSET_V1_ENABLED || "false").trim().toLowerCase() === "true";
 const MEDIA_STORAGE_BUCKET = String(process.env.MEDIA_STORAGE_BUCKET || "").trim();
-const ASSET_LIFECYCLE_MUTATIONS_ENABLED = process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS === "LOADED_VALIDATED"
-  && String(process.env.ASSET_LIFECYCLE_MUTATIONS_ENABLED || "false").trim().toLowerCase() === "true";
+const ASSET_LIFECYCLE_MUTATIONS_ENABLED = normalGlobalMutationGateEnabled({
+  runtimeConfigLoadStatus: process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS,
+  configuredValue: process.env.ASSET_LIFECYCLE_MUTATIONS_ENABLED
+});
+const ASSET_LIFECYCLE_CANARY_CONFIG = {
+  enabled: process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS === "LOADED_VALIDATED"
+    && String(process.env.ASSET_LIFECYCLE_CANARY_ENABLED || "false").trim().toLowerCase() === "true",
+  tenantId: String(process.env.ASSET_LIFECYCLE_CANARY_TENANT_ID || ""),
+  workspaceId: String(process.env.ASSET_LIFECYCLE_CANARY_WORKSPACE_ID || ""),
+  storeId: process.env.ASSET_LIFECYCLE_CANARY_STORE_ID === "" ? null : String(process.env.ASSET_LIFECYCLE_CANARY_STORE_ID || ""),
+  assetId: String(process.env.ASSET_LIFECYCLE_CANARY_ASSET_ID || ""),
+  operation: String(process.env.ASSET_LIFECYCLE_CANARY_OPERATION || ""),
+  expectedStatus: String(process.env.ASSET_LIFECYCLE_CANARY_EXPECTED_STATUS || ""),
+  expectedObjectKey: String(process.env.ASSET_LIFECYCLE_CANARY_OBJECT_KEY || ""),
+  marker: String(process.env.ASSET_LIFECYCLE_CANARY_MARKER || ""),
+  expiresAt: String(process.env.ASSET_LIFECYCLE_CANARY_EXPIRES_AT || ""),
+  policyId: String(process.env.ASSET_LIFECYCLE_CANARY_POLICY_ID || ""),
+  attemptId: String(process.env.ASSET_LIFECYCLE_CANARY_ATTEMPT_ID || "")
+};
+const ASSET_LIFECYCLE_CANARY_AUTHORIZATION_AVAILABLE = ASSET_LIFECYCLE_MUTATIONS_ENABLED === false
+  && process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS === "LOADED_VALIDATED"
+  && process.env.ATELIER_ENVIRONMENT === "staging"
+  && process.env.MEOO_PROJECT_URL_ID === STAGING_PROJECT_ID
+  && isCanaryConfigValid(ASSET_LIFECYCLE_CANARY_CONFIG);
+const ASSET_LIFECYCLE_CANARY_RUNTIME_STATUS = canaryRuntimeStatus({
+  config: ASSET_LIFECYCLE_CANARY_CONFIG,
+  runtimeConfigLoadStatus: process.env.ATELIER_RUNTIME_CONFIG_LOAD_STATUS,
+  environment: process.env.ATELIER_ENVIRONMENT,
+  projectId: process.env.MEOO_PROJECT_URL_ID,
+  normalGlobalGateEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED
+});
 const MEDIA_STORAGE_VALIDATION = validateMediaStorageConfig(process.env);
 const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
-  ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), lifecycleMutationsEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED, onEvent: (event, fields) => console.info(event, fields) })
+  ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), lifecycleMutationsEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED, lifecycleCanaryConfig: ASSET_LIFECYCLE_CANARY_CONFIG, runtimeEnvironment: process.env.ATELIER_ENVIRONMENT, runtimeProjectId: process.env.MEOO_PROJECT_URL_ID, onEvent: (event, fields) => console.info(event, fields) })
   : null;
 const saasServicePromise = databasePromise.then(database => database ? createSaasService({
   db: database,
@@ -1064,7 +1095,25 @@ app.use("/ops/v1", (req, res, next) => {
   next();
 });
 app.use("/ops/v1", requireOperator);
-registerLaunchV1OpsRoutes(app, getSaasService, { runtimeDiagnostic: () => buildMediaRuntimeDiagnostic({
+registerLaunchV1OpsRoutes(app, getSaasService, {
+  buildIdentity: () => ({
+    environment: process.env.ATELIER_ENVIRONMENT || "unknown",
+    commit: BUILD_IDENTITY.buildCommit,
+    branch: BUILD_IDENTITY.branch,
+    builtAt: BUILD_IDENTITY.buildTime,
+    artifactDigest: BUILD_IDENTITY.artifactDigest,
+    buildId: BUILD_IDENTITY.buildId,
+    sourceId: BUILD_IDENTITY.sourceId,
+    artifactId: BUILD_IDENTITY.artifactId,
+    configDigest: BUILD_IDENTITY.configDigest,
+    effectiveConfigDigest: BUILD_IDENTITY.effectiveConfigDigest,
+    identitySource: BUILD_IDENTITY.buildIdentitySource,
+    identityStatus: BUILD_IDENTITY.buildIdentityStatus,
+    instanceIdAvailable: RUNTIME_INSTANCE_IDENTITY.instanceIdAvailable,
+    instanceFingerprint: RUNTIME_INSTANCE_IDENTITY.instanceFingerprint,
+    canary: ASSET_LIFECYCLE_CANARY_RUNTIME_STATUS
+  }),
+  runtimeDiagnostic: () => buildMediaRuntimeDiagnostic({
   buildIdentity: BUILD_IDENTITY,
   environmentResolved: process.env.ATELIER_ENVIRONMENT,
   projectIdentity: process.env.MEOO_PROJECT_URL_ID,
@@ -1074,11 +1123,16 @@ registerLaunchV1OpsRoutes(app, getSaasService, { runtimeDiagnostic: () => buildM
   mediaAssetV1Active: Boolean(mediaService),
   mediaUploadRouteRegistered: MERCHANT_ROUTE_REGISTRATION.mediaUploadRouteRegistered,
   storageValidation: MEDIA_STORAGE_VALIDATION,
+  lifecycleMutationGlobalEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED,
+  lifecycleCanaryConfigured: ASSET_LIFECYCLE_CANARY_CONFIG.enabled,
+  lifecycleCanaryAuthorizationAvailable: ASSET_LIFECYCLE_CANARY_AUTHORIZATION_AVAILABLE,
+  lifecycleCanaryRuntimeStatus: ASSET_LIFECYCLE_CANARY_RUNTIME_STATUS,
   supabaseUrlPresent: Boolean(String(process.env.SUPABASE_URL || "").trim()),
   serviceRolePresent: Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()),
   databaseUrlPresent: Boolean(String(process.env.DATABASE_URL || "").trim()),
   bucket: MEDIA_STORAGE_BUCKET
-}) });
+  })
+});
 registerOpsSaasRoutes(app, getSaasService);
 
 // In SaaS mode PostgreSQL is the only operator data source. Anything not

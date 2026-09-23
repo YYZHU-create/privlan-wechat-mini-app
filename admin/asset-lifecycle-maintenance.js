@@ -5,6 +5,7 @@ const { createAssetRepository } = require("./asset-repository");
 const { createMeooStorageProvider } = require("./storage-provider");
 const { RETENTION_DAYS, retentionCutoff } = require("./asset-lifecycle-report");
 const { loadRuntimeConfig } = require("./target-runtime-config");
+const { normalGlobalMutationGateEnabled } = require("./asset-lifecycle-permit");
 
 const MAX_BATCH_SIZE = 100;
 
@@ -34,7 +35,7 @@ function lifecycleMutationCapabilityFromRuntimeConfig({ env = process.env, root 
   if (!fs.existsSync(configPath)) return false;
   try {
     const { config } = loadRuntimeConfig(configPath, { env: { ...env }, deploymentProjectId: env.MEOO_PROJECT_URL_ID });
-    return config.media.assetLifecycleMutationsEnabled === true;
+    return normalGlobalMutationGateEnabled({ runtimeConfigLoadStatus: "LOADED_VALIDATED", configuredValue: config.media.assetLifecycleMutationsEnabled });
   } catch {
     return false;
   }

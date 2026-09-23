@@ -72,6 +72,16 @@ test("V1 upload creates pending asset, object, link and ready state", async () =
   assert.equal(repo.calls.at(-1)[2], "ready");
 });
 
+test("synthetic canary upload marker is explicit, purpose-neutral, and unlinked", async () => {
+  const repo = repository(); const p = provider(); const service = createMediaService({ provider: p, repository: repo });
+  const result = await service.upload(SCOPE, { name: "feeldao-canary.png", data: PNG, purpose: "content_image", variant: "original", syntheticCanary: true });
+  assert.equal(result.status, "ready");
+  const pending = repo.calls.find(call => call[0] === "pending")[1];
+  assert.equal(pending.metadata.lifecycleCanary, require("../asset-lifecycle-permit").CANARY_MARKER);
+  assert.equal(repo.calls.some(call => call[0] === "link"), false);
+  await assert.rejects(() => service.upload(SCOPE, { name: "invalid-canary.png", data: PNG, purpose: "product_main", syntheticCanary: true, entityId: "product" }), error => error.code === "SYNTHETIC_CANARY_ASSET_INVALID");
+});
+
 test("upload failure marks asset failed and deletes only the exact key", async () => {
   const repo = repository(); const p = provider({ async verifyObject() { throw new Error("verify"); } }); const svc = createMediaService({ provider: p, repository: repo });
   await assert.rejects(() => svc.upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_FAILED");

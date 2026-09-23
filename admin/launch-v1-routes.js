@@ -27,6 +27,17 @@ function registerLaunchV1Routes(app){
   app.get("/v1/marketing/campaigns/:id/analytics",run(req=>m(req).analytics(req.merchantScope,req.params.id)));
 }
 function registerLaunchV1OpsRoutes(app,getService,options={}){
+  if (options.buildIdentity) {
+    app.get("/ops/v1/runtime/build-identity", (req, res) => {
+      if (!req.operator) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "运营会话无效" });
+      try {
+        const identity = options.buildIdentity();
+        res.set("Cache-Control", "no-store");
+        if (identity.environment !== "staging") return res.status(404).json({ ok: false, code: "OPS_FEATURE_NOT_AVAILABLE", error: "该诊断仅对 Staging 开放" });
+        return ok(res, identity, "运行版本身份已获取", 200, req.requestId || Date.now().toString());
+      } catch (error) { return fail(res, error, req.requestId); }
+    });
+  }
   if (options.runtimeDiagnostic) {
     app.get("/ops/v1/runtime/media-diagnostic", (req, res) => {
       if (!req.operator) return res.status(401).json({ ok: false, code: "OPS_AUTH_REQUIRED", error: "运营会话无效" });

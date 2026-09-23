@@ -310,7 +310,12 @@ function registerMerchantRoutes(app, getService, options = {}) {
   });
   app.post("/api/media/v1/delete", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
-    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.remove(req.merchantScope, String(req.body?.assetId || "")) }); }
+    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.remove(req.merchantScope, String(req.body?.assetId || ""), { operation: String(req.body?.operation || ""), policyId: String(req.body?.policyId || ""), attemptId: String(req.body?.attemptId || "") }) }); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.post("/api/media/v1/delete/recover", async (req, res, next) => {
+    if (!req.saasService || !options.mediaService) return next();
+    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.recoverDeletion(req.merchantScope, String(req.body?.assetId || ""), { operation: String(req.body?.operation || ""), policyId: String(req.body?.policyId || ""), attemptId: String(req.body?.attemptId || "") }) }); }
     catch (error) { return failure(res, error, req.requestId); }
   });
 
