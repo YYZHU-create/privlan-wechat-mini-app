@@ -7,7 +7,7 @@ const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
-const { respondUnexpectedError } = require("./error-response");
+const { respondUnexpectedError, isStagingMediaDiagnosticRequest, createStagingMediaDiagnostic } = require("./error-response");
 const { createAssetRepository } = require("./asset-repository");
 const { generateLifecycleMaintenanceReport } = require("./asset-lifecycle-report");
 
@@ -23,8 +23,8 @@ function cookies(req) {
   }, {});
 }
 function success(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
-function failure(res, error, id = requestId()) {
-  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
+function failure(res, error, id = requestId(), stagingDiagnostic = null) {
+  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用", stagingDiagnostic });
 }
 function setSessionCookies(res, session) {
   const secure = process.env.NODE_ENV === "production";
@@ -299,8 +299,16 @@ function registerMerchantRoutes(app, getService, options = {}) {
   // Legacy /api/media behavior remains unchanged until MEDIA_ASSET_V1_ENABLED is enabled.
   app.post("/api/media/v1/upload", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
-    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null }) }); }
-    catch (error) { return failure(res, error, req.requestId); }
+    const diagnosticEnabled = isStagingMediaDiagnosticRequest({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, req });
+    const diagnosticState = diagnosticEnabled ? { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null } : null;
+    try {
+      req.saasService.assertWritable(req.merchantScope);
+      const data = await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null, diagnosticState });
+      return res.status(201).json({ ok: true, data });
+    } catch (error) {
+      const diagnostic = diagnosticEnabled ? createStagingMediaDiagnostic({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, authenticated: Boolean(req.saasService && req.merchantScope), headerValue: req.get("X-FEELDAO-Media-Diagnostic"), requestId: req.requestId, progress: diagnosticState, error: diagnosticState.failureError || error }) : null;
+      return failure(res, error, req.requestId, diagnostic);
+    }
   });
   registration.mediaUploadRouteRegistered = true;
   app.get("/api/media/v1/content/:id", async (req, res, next) => {

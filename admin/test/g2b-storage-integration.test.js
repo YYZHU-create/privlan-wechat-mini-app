@@ -112,10 +112,12 @@ test("asset link failure follows frozen failed-plus-compensation policy", async 
   assert.equal(repo.assets.get(attempt.asset_id).status, "ready"); assert.equal(p.calls.filter(call => call[0] === "delete").length, 0);
 });
 
-test("cleanup failure retains the original failure and emits orphan evidence", async () => {
-  const repo = makeRepository(); const p = makeProvider({ async verifyObject() { throw new Error("verify mismatch"); }, async deleteObject() { throw new Error("cleanup unavailable"); } }); const events = [];
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo, onEvent: event => events.push(event) }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
-  assert.equal(events.includes("orphan_object_detected"), true);
+test("cleanup failure retains the original failure and durable reconciliation state", async () => {
+  const repo = makeRepository(); const p = makeProvider({ async verifyObject() { throw new Error("verify mismatch"); }, async deleteObject() { throw new Error("cleanup unavailable"); } });
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+  const attempt = repo.attempts.values().next().value;
+  assert.equal(attempt.phase, "CLEANUP_REQUIRED");
+  assert.equal(repo.assets.has(attempt.asset_id), true);
 });
 
 test("private reads require ready state and scoped identity", async () => {

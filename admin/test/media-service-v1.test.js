@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { canonicalObjectKey, createMediaService, MediaServiceError } = require("../media-service-v1");
 const { createMeooStorageProvider, StorageProviderError } = require("../storage-provider");
 const { hasTrustedPublicMessage } = require("../public-error");
+const { respondUnexpectedError, createStagingMediaDiagnostic, isStagingMediaDiagnosticRequest } = require("../error-response");
 
 const SCOPE = { userId: "00000000-0000-0000-0000-000000000001", tenantId: "00000000-0000-0000-0000-000000000002", workspaceId: "00000000-0000-0000-0000-000000000003", storeId: "00000000-0000-0000-0000-000000000004", requestId: "req-test" };
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -95,6 +96,124 @@ test("V1 upload creates pending asset, object, link and ready state with an atte
   assert.equal(repo.assets.get(result.id).metadata.uploadState, "ready");
 });
 
+function diagnosticProgress() { return { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null }; }
+
+async function runDiagnosticFailure({ repo = repository(), p = provider(), inputName = "fixture.png" } = {}) {
+  const progress = diagnosticProgress();
+  let thrown;
+  try {
+    await createMediaService({ provider: p, repository: repo }).upload({ ...SCOPE, requestId: "media-diagnostic-request" }, { name: inputName, data: PNG }, { idempotencyKey: "fixture-idempotency-key", diagnosticState: progress });
+  } catch (error) { thrown = error; }
+  assert.ok(thrown, "fixture must fail");
+  return { progress, error: thrown };
+}
+
+test("asset confirmation failure localizes to ASSET_CONFIRM", async () => {
+  const repo = repository();
+  const read = repo.getAssetByIdScoped.bind(repo);
+  let reads = 0;
+  repo.getAssetByIdScoped = async (...args) => {
+    reads += 1;
+    if (reads === 2) throw new Error("fixture asset confirmation failure");
+    return read(...args);
+  };
+  const { progress } = await runDiagnosticFailure({ repo });
+  assert.equal(progress.failedOperation, "ASSET_CONFIRM");
+  assert.equal(progress.lastFailedCompletedPhase, "ASSET_CREATED");
+});
+
+test("journal advancement write failure localizes independently of journal readback", async () => {
+  const repo = repository();
+  const transition = repo.transitionUploadAttempt.bind(repo);
+  repo.transitionUploadAttempt = async (...args) => {
+    if (args[4]?.phase === "DB_ASSET_CREATED") throw new Error("fixture journal write failure");
+    return transition(...args);
+  };
+  const { progress } = await runDiagnosticFailure({ repo });
+  assert.equal(progress.failedOperation, "JOURNAL_DB_ASSET_CREATED_WRITE");
+  assert.equal(progress.lastFailedCompletedPhase, "ASSET_CREATED");
+});
+
+test("journal advancement readback failure has its own operation label", async () => {
+  const repo = repository();
+  const transition = repo.transitionUploadAttempt.bind(repo);
+  repo.transitionUploadAttempt = async (...args) => {
+    if (args[4]?.phase === "DB_ASSET_CREATED") {
+      args[5]?.("JOURNAL_DB_ASSET_CREATED_VERIFY");
+      throw new Error("fixture journal readback failure");
+    }
+    return transition(...args);
+  };
+  const { progress } = await runDiagnosticFailure({ repo });
+  assert.equal(progress.failedOperation, "JOURNAL_DB_ASSET_CREATED_VERIFY");
+  assert.equal(progress.lastFailedCompletedPhase, "ASSET_CREATED");
+});
+
+test("Storage expected-object existence failure localizes to STORAGE_EXISTS_CHECK", async () => {
+  const p = provider({
+    async verifyObject() { throw new Error("fixture storage verify failure"); },
+    async readObject() { throw Object.assign(new Error("fixture storage read failure"), { status: 503 }); }
+  });
+  const { progress } = await runDiagnosticFailure({ p });
+  assert.equal(progress.failedOperation, "STORAGE_EXISTS_CHECK");
+  assert.equal(progress.lastFailedCompletedPhase, "DB_ASSET_CREATED");
+});
+
+test("synthetic Storage PUT failure localizes to STORAGE_PUT", async () => {
+  const absent = () => Object.assign(new Error("fixture object absent"), { status: 404, code: "STORAGE_OBJECT_NOT_FOUND" });
+  const p = provider({
+    async verifyObject() { throw absent(); },
+    async readObject() { throw absent(); },
+    async uploadObject() { throw Object.assign(new Error("fixture Storage PUT failure"), { status: 400 }); }
+  });
+  const { progress } = await runDiagnosticFailure({ p });
+  assert.equal(progress.failedOperation, "STORAGE_PUT");
+  assert.equal(progress.lastFailedCompletedPhase, "DB_ASSET_CREATED");
+});
+
+test("Staging diagnostic envelope is bounded and excludes request, scope, and error contents", () => {
+  const forbiddenValues = [
+    "data:image/png;base64,SECRET_PAYLOAD",
+    "private-original-name.png",
+    "Bearer secret-authorization",
+    "session=secret-cookie",
+    "csrf-secret-token",
+    "postgres://secret-db-credential",
+    "service-role-secret",
+    SCOPE.tenantId,
+    SCOPE.workspaceId,
+    SCOPE.userId,
+    "private/canonical/object-key",
+    "https://storage.invalid/signed-secret",
+    "raw provider response body",
+    "fixture-secret-raw-error-message",
+    "fixture-secret-stack"
+  ];
+  const error = Object.assign(new StorageProviderError("STORAGE_UPLOAD_FAILED", forbiddenValues.join(" "), 503), { stack: forbiddenValues.join(" ") });
+  const diagnostic = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "media-diagnostic-request", progress: { lastFailedCompletedPhase: "DB_ASSET_CREATED", failedOperation: "STORAGE_PUT", ...Object.fromEntries(forbiddenValues.map((value, index) => [`untrusted${index}`, value])) }, error });
+  assert.deepEqual(diagnostic, { requestId: "media-diagnostic-request", lastCompletedPhase: "DB_ASSET_CREATED", failedOperation: "STORAGE_PUT", errorClass: "StorageProviderError", providerStatus: 503, providerCode: "STORAGE_UPLOAD_FAILED" });
+  const response = { status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  respondUnexpectedError(response, error, { requestId: "media-diagnostic-request", fallbackCode: "INTERNAL_ERROR", fallbackMessage: "safe public message", stagingDiagnostic: diagnostic, logger: { error() {} } });
+  const serialized = JSON.stringify(response.body);
+  for (const forbidden of forbiddenValues) assert.equal(serialized.includes(forbidden), false, `diagnostic disclosed ${forbidden}`);
+  assert.equal(response.body.diagnostic.failedOperation, "STORAGE_PUT");
+});
+
+test("diagnostic activation requires Staging, authenticated scope, and the explicit header", () => {
+  const req = { saasService: {}, merchantScope: { tenantId: "scope" }, get(name) { return name === "X-FEELDAO-Media-Diagnostic" ? "1" : undefined; } };
+  assert.equal(isStagingMediaDiagnosticRequest({ environment: "staging", req }), true);
+  assert.equal(isStagingMediaDiagnosticRequest({ environment: "production", req }), false);
+  assert.equal(isStagingMediaDiagnosticRequest({ environment: "staging", req: { ...req, merchantScope: null } }), false);
+  assert.equal(createStagingMediaDiagnostic({ environment: "production", authenticated: true, headerValue: "1", requestId: "media-diagnostic-request", progress: diagnosticProgress(), error: Object.assign(new Error("secret"), { status: 500 }) }), null);
+});
+
+test("diagnostic-disabled public error contract remains unchanged", () => {
+  const response = { status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  respondUnexpectedError(response, Object.assign(new Error("fixture internal error"), { status: 500 }), { requestId: "media-public-request", fallbackCode: "INTERNAL_ERROR", fallbackMessage: "safe public message", logger: { error() {} } });
+  assert.deepEqual(response.body, { ok: false, code: "INTERNAL_ERROR", message: "safe public message", error: "safe public message", data: null, requestId: "media-public-request" });
+  assert.equal("diagnostic" in response.body, false);
+});
+
 test("synthetic canary upload marker is explicit, purpose-neutral, and unlinked", async () => {
   const repo = repository(); const p = provider(); const service = createMediaService({ provider: p, repository: repo });
   const result = await service.upload(SCOPE, { name: "feeldao-canary.png", data: PNG, purpose: "content_image", variant: "original", syntheticCanary: true });
@@ -168,9 +287,8 @@ test("ambiguous Storage upload timeout discovers and rolls forward the exact acc
 test("cleanup failure is surfaced as indeterminate and never reported as a clean failure", async () => {
   const repo = repository({ async deleteUploadAttempt() { throw new Error("database unavailable"); } });
   const p = provider({ async verifyObject() { throw new Error("verify"); } });
-  const events = [];
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo, onEvent: (event) => events.push(event) }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
-  assert.equal(events.includes("orphan_object_detected"), true);
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+  assert.equal([...repo.attempts.values()][0].phase, "CLEANUP_REQUIRED");
 });
 
 test("ambiguous ready PATCH is rolled forward only after exact asset, object, link, and bytes verify", async () => {

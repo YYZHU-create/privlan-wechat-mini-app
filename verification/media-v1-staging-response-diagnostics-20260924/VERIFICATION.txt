@@ -1,0 +1,25 @@
+BASELINE
+Command: node --test test/media-service-v1.test.js (cwd admin)
+Literal result: tests=32 passed=32 failed=0; exit=0 (immediately pre-refactor recorded run).
+Command: pnpm test (cwd admin)
+Literal result: tests=377 passed=373 failed=0 skipped=4; exit=0 (immediately pre-refactor recorded run).
+
+MODIFIED
+Command: node --test admin/test/media-service-v1.test.js admin/test/media-staging-diagnostic-route.test.js admin/test/g2b-storage-integration.test.js (cwd repository root)
+Literal result: tests=54 pass=54 fail=0 skipped=0; exit=0.
+Command: pnpm test (cwd admin)
+Literal result: tests=388 pass=384 fail=0 skipped=4; exit=0.
+Command: node --test test/media-upload-postgrest-pg17.integration.test.js (cwd admin)
+Literal result: tests=1 pass=0 fail=0 skipped=1; opt-in variable not set; exit=0.
+
+ROLLBACK COPY
+A separate temporary clone at the base commit is populated only with candidate-owned changed files. ROLLBACK.sh restores those paths to the base commit and removes the candidate-only route/evidence directory. The copy must return clean at the same base SHA; the main worktree remains changed.
+
+Exact rollback-copy invocation: `$env:ALLOW_DIAGNOSTIC_CANDIDATE_ROLLBACK='1'; & 'C:\Program Files\Git\bin\bash.exe' <temporary-copy>/verification/media-v1-staging-response-diagnostics-20260924/ROLLBACK.sh <temporary-copy>` (cwd copied checkout; exit 0).
+Literal output:
+ROLLBACK=PASS
+RESTORED_HEAD=343a374bdf00c3db09256045388267a721281ab5
+RESTORED_STATUS=
+ROLLBACK_TEST_EXIT=0
+RESTORED_STATUS=CLEAN
+ROLLBACK_COPY_REMOVED=YES

@@ -303,10 +303,13 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey 
     return Array.isArray(rows) ? rows[0] || null : rows || null;
   }
 
-  async function transitionUploadAttempt(scope, attemptId, leaseToken, fromPhase, patch = {}) {
+  async function transitionUploadAttempt(scope, attemptId, leaseToken, fromPhase, patch = {}, onDiagnosticOperation = null) {
     const baseQuery = uploadAttemptScopeQuery(scope);
+    const createdAssetPhase = String(patch.phase || "") === "DB_ASSET_CREATED";
+    if (createdAssetPhase) onDiagnosticOperation?.("JOURNAL_DB_ASSET_CREATED_WRITE");
     const rows = await request("media_upload_attempts", `?attempt_id=eq.${encode(attemptId)}&${baseQuery}&lease_token=eq.${encode(leaseToken)}&phase=eq.${encode(fromPhase)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
     if (Array.isArray(rows) && rows[0]) return rows[0];
+    if (createdAssetPhase) onDiagnosticOperation?.("JOURNAL_DB_ASSET_CREATED_VERIFY");
     const observed = await getUploadAttempt(scope, attemptId);
     if (observed && String(observed.phase) === String(patch.phase) && String(observed.lease_token || "") === String(leaseToken)) return observed;
     return null;
