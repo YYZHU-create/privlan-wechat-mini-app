@@ -11,6 +11,7 @@ const UPLOAD_OPERATION = "POST /api/media/v1/upload";
 const UPLOAD_LEASE_MS = 120_000;
 const UPLOAD_HEARTBEAT_MS = 20_000;
 const UPLOAD_RECOVERY_LIMIT = 20;
+const DELAYED_REREAD_DELAY_MS = 250;
 
 class MediaServiceError extends Error {
   constructor(status, code, message) { super(message); this.name = "MediaServiceError"; this.status = status; this.code = code; }
@@ -34,7 +35,20 @@ function assetConfirmDiagnosticReason(error) {
   return "ASSET_CONFIRM_OTHER_ERROR";
 }
 
-function createMediaService({ provider, repository, lifecycleMutationsEnabled = false, lifecycleCanaryConfig = { enabled: false }, runtimeEnvironment = "", runtimeProjectId = "", onEvent = () => {} }) {
+function assetBindingMatches(asset, attempt) {
+  return String(asset.id) === String(attempt.asset_id)
+    && String(asset.tenant_id) === String(attempt.tenant_id)
+    && String(asset.workspace_id) === String(attempt.workspace_id)
+    && String(asset.store_id || "") === String(attempt.store_id || "")
+    && String(asset.object_key) === String(attempt.expected_object_key)
+    && String(asset.metadata?.uploadAttemptId || "") === String(attempt.attempt_id);
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function createMediaService({ provider, repository, lifecycleMutationsEnabled = false, lifecycleCanaryConfig = { enabled: false }, runtimeEnvironment = "", runtimeProjectId = "", onEvent = () => {}, diagnosticWait = delay }) {
   if (!provider || !repository) throw new Error("MediaService provider and repository are required");
   const emit = (event, fields) => { try { onEvent(event, fields); } catch {} };
   async function uploadBoundary(progress, { operation, phase }, action) {
@@ -197,13 +211,13 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
   async function exactAsset(scope, attempt) {
     const asset = await repository.getAssetByIdScoped(scope, attempt.asset_id);
     if (!asset) return null;
-    if (String(asset.id) !== String(attempt.asset_id) || String(asset.tenant_id) !== String(attempt.tenant_id) || String(asset.workspace_id) !== String(attempt.workspace_id) || String(asset.store_id || "") !== String(attempt.store_id || "") || String(asset.object_key) !== String(attempt.expected_object_key) || String(asset.metadata?.uploadAttemptId || "") !== String(attempt.attempt_id)) {
+    if (!assetBindingMatches(asset, attempt)) {
       throw new MediaServiceError(409, "MEDIA_UPLOAD_ASSET_BINDING_MISMATCH", "upload asset binding does not match its attempt");
     }
     return asset;
   }
 
-  async function persistAttemptAsset(scope, attempt, progress = null) {
+  async function persistAttemptAsset(scope, attempt, progress = null, diagnosticObservationEnabled = false) {
     const metadata = attemptMetadata(attempt);
     const asset = { id: attempt.asset_id, objectKey: attempt.expected_object_key, originalName: attempt.original_name, mimeType: attempt.content_type, bytes: Number(attempt.content_length), purpose: attempt.purpose, metadata };
     try {
@@ -217,15 +231,35 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
       if (!existing && !error?.transport?.retryable && Number(error?.status) !== 409) throw error;
       if (!existing) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be reconciled");
     }
-    const confirmed = await uploadBoundary(progress, {
-      operation: "ASSET_CONFIRM",
-      phase: "ASSET_CREATED",
-    }, async () => {
-      const asset = await exactAsset(scope, attempt);
-      if (!asset) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
-      return asset;
-    });
-    return confirmed;
+    try {
+      return await uploadBoundary(progress, {
+        operation: "ASSET_CONFIRM",
+        phase: "ASSET_CREATED",
+      }, async () => {
+        const asset = await exactAsset(scope, attempt);
+        if (!asset) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
+        return asset;
+      });
+    } catch (error) {
+      const diagnosticNotFound = diagnosticObservationEnabled
+        && progress?.failedOperation === "ASSET_CONFIRM"
+        && progress?.assetConfirmReason === "ASSET_CONFIRM_REREAD_NOT_FOUND";
+      if (diagnosticNotFound) {
+        await diagnosticWait(DELAYED_REREAD_DELAY_MS);
+        try {
+          const delayedAsset = await repository.getAssetByIdScoped(scope, attempt.asset_id);
+          if (!delayedAsset) {
+            progress.delayedRereadResult = "NOT_FOUND";
+          } else {
+            progress.delayedRereadResult = "FOUND";
+            progress.delayedRereadBindingMatch = assetBindingMatches(delayedAsset, attempt) ? "YES" : "NO";
+          }
+        } catch {
+          progress.delayedRereadResult = "ERROR";
+        }
+      }
+      throw error;
+    }
   }
 
   async function resultForAttempt(attempt, extra = {}) {
@@ -269,7 +303,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
   }
 
 
-  async function completeAttempt(scope, attempt, leaseToken, inputBytes = null, progress = null) {
+  async function completeAttempt(scope, attempt, leaseToken, inputBytes = null, progress = null, diagnosticObservationEnabled = false) {
     assertAttemptBoundToScope(scope, attempt);
     const cleanupWithOutcome = async error => {
       const outcome = await cleanAttempt(scope, attempt, leaseToken, progress);
@@ -282,7 +316,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
     }, () => exactAsset(scope, attempt));
     if (!asset) {
       if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken, progress);
-      await persistAttemptAsset(scope, attempt, progress);
+      await persistAttemptAsset(scope, attempt, progress, diagnosticObservationEnabled);
       asset = await uploadBoundary(progress, {
         operation: "ASSET_REVALIDATION",
         phase: "ASSET_CREATED",
@@ -394,6 +428,11 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
 
   async function upload(scope, input = {}, { idempotencyKey = null, diagnosticState = null } = {}) {
     const progress = diagnosticState || { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null };
+    const diagnosticObservationEnabled = runtimeEnvironment === "staging" && Boolean(diagnosticState);
+    if (diagnosticObservationEnabled) {
+      progress.delayedRereadResult = "NOT_RUN";
+      progress.delayedRereadDelayMs = DELAYED_REREAD_DELAY_MS;
+    }
     try {
     const purpose = String(input.purpose || "content_image"); const variant = String(input.variant || "original");
     const folderId = String(input.folderId || "").trim();
@@ -433,7 +472,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
     try {
       heartbeat.assert();
       progress.currentOperation = "UPLOAD_COMPLETION";
-      return await completeAttempt(scope, attempt, ownerToken, decoded.buffer, progress);
+      return await completeAttempt(scope, attempt, ownerToken, decoded.buffer, progress, diagnosticObservationEnabled);
     } catch (error) {
       if (!progress.failedOperation) {
         progress.failedOperation = progress.currentOperation || "UPLOAD_COMPLETION";

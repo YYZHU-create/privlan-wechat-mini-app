@@ -105,7 +105,7 @@ async function runDiagnosticFailure({ repo = repository(), p = provider(), input
   const progress = diagnosticProgress();
   let thrown;
   try {
-    await createMediaService({ provider: p, repository: repo }).upload({ ...SCOPE, requestId: "media-diagnostic-request" }, { name: inputName, data: PNG }, { idempotencyKey: "fixture-idempotency-key", diagnosticState: progress });
+    await createMediaService({ provider: p, repository: repo, runtimeEnvironment: "staging", diagnosticWait: async () => {} }).upload({ ...SCOPE, requestId: "media-diagnostic-request" }, { name: inputName, data: PNG }, { idempotencyKey: "fixture-idempotency-key", diagnosticState: progress });
   } catch (error) { thrown = error; }
   assert.ok(thrown, "fixture must fail");
   return { progress, error: thrown };
@@ -157,6 +157,129 @@ test("ASSET_CONFIRM assigns bounded request-local reasons for its source branche
     assert.equal(diagnostic.assetConfirmReason, scenario.reason);
     const serialized = JSON.stringify(diagnostic);
     for (const forbidden of ["fixture private error", "different-id", "different-tenant", "different-workspace", "different-store", "different-key", "different-attempt", SCOPE.userId, SCOPE.tenantId, SCOPE.workspaceId]) assert.equal(serialized.includes(forbidden), false, `diagnostic disclosed ${forbidden}`);
+  });
+});
+
+async function runDelayedRereadCase({ immediateConfirm = "FOUND", delayed = "FOUND", runtimeEnvironment = "staging", diagnosticEnabled = true } = {}) {
+  const repo = repository();
+  const baseRead = repo.getAssetByIdScoped.bind(repo);
+  const reads = [];
+  repo.getAssetByIdScoped = async (scope, assetId) => {
+    reads.push({ scope, assetId });
+    const readNumber = reads.length;
+    if (readNumber === 2 && immediateConfirm === "NOT_FOUND") return null;
+    if (readNumber === 3 && delayed === "NOT_FOUND") return null;
+    if (readNumber === 3 && delayed === "ERROR") throw Object.assign(new Error("delayed reread private error"), { stack: "delayed reread private stack" });
+    if (readNumber === 3 && delayed === "FOUND_MISMATCH") return { ...(await baseRead(scope, assetId)), tenant_id: "different-tenant" };
+    return baseRead(scope, assetId);
+  };
+  const progress = diagnosticProgress();
+  const diagnosticWaitCalls = [];
+  const service = createMediaService({
+    provider: provider(),
+    repository: repo,
+    runtimeEnvironment,
+    diagnosticWait: async ms => { diagnosticWaitCalls.push(ms); }
+  });
+  const scopedRequest = { ...SCOPE, requestId: "delayed-reread-test" };
+  let result = null;
+  let thrown = null;
+  try {
+    result = await service.upload(scopedRequest, { name: "fixture.png", data: PNG }, {
+      idempotencyKey: `delayed-reread-${runtimeEnvironment}-${diagnosticEnabled}`,
+      ...(diagnosticEnabled ? { diagnosticState: progress } : {})
+    });
+  } catch (error) {
+    thrown = error;
+  }
+  return { repo, reads, progress, diagnosticWaitCalls, result, thrown };
+}
+
+test("delayed reread observes the existing first ASSET_CONFIRM result once", async t => {
+  await t.test("first reread found leaves delayed observation NOT_RUN", async () => {
+    const state = await runDelayedRereadCase({ immediateConfirm: "FOUND" });
+    assert.equal(state.thrown, null);
+    assert.equal(state.result.status, "ready");
+    assert.equal(state.progress.delayedRereadResult, "NOT_RUN");
+    assert.deepEqual(state.diagnosticWaitCalls, []);
+  });
+
+  await t.test("delayed reread found does not convert the original failure to success", async () => {
+    const state = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", delayed: "FOUND" });
+    const baseline = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", diagnosticEnabled: false });
+    assert.ok(state.thrown);
+    assert.equal(state.result, null);
+    assert.equal(state.thrown.code, "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+    assert.equal(state.thrown.code, baseline.thrown.code);
+    assert.equal(state.progress.failedOperation, "ASSET_CONFIRM");
+    assert.equal(state.progress.assetConfirmReason, "ASSET_CONFIRM_REREAD_NOT_FOUND");
+    assert.equal(state.progress.failureError.code, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE");
+    assert.equal(state.progress.delayedRereadResult, "FOUND");
+    assert.equal(state.progress.delayedRereadBindingMatch, "YES");
+    assert.deepEqual(state.diagnosticWaitCalls, [250]);
+    assert.strictEqual(state.reads[1].scope, state.reads[2].scope);
+    assert.equal(state.reads[1].assetId, state.reads[2].assetId);
+    const diagnostic = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "delayed-reread-test", progress: state.progress, error: state.progress.failureError });
+    assert.equal(diagnostic.delayedRereadResult, "FOUND");
+    assert.equal(diagnostic.delayedRereadBindingMatch, "YES");
+    assert.equal(diagnostic.delayedRereadDelayMs, 250);
+    const response = { status(status) { this.statusCode = status; return this; }, json(body) { this.body = body; return this; } };
+    respondUnexpectedError(response, state.progress.failureError, { requestId: "delayed-reread-test", fallbackStatus: 500, fallbackCode: "INTERNAL_ERROR", stagingDiagnostic: diagnostic, logger: { error() {} } });
+    assert.equal(response.statusCode, 500);
+    assert.equal(response.body.code, "INTERNAL_ERROR");
+    assert.equal(response.body.diagnostic.failedOperation, "ASSET_CONFIRM");
+    assert.equal(response.body.diagnostic.assetConfirmReason, "ASSET_CONFIRM_REREAD_NOT_FOUND");
+    const baselineResponse = { status(status) { this.statusCode = status; return this; }, json(body) { this.body = body; return this; } };
+    respondUnexpectedError(baselineResponse, baseline.progress.failureError, { requestId: "delayed-reread-test", fallbackStatus: 500, fallbackCode: "INTERNAL_ERROR", logger: { error() {} } });
+    const publicFields = body => Object.fromEntries(Object.entries(body).filter(([key]) => key !== "diagnostic"));
+    assert.deepEqual(publicFields(response.body), publicFields(baselineResponse.body));
+    const serialized = JSON.stringify(response.body);
+    for (const forbidden of ["delayed reread private error", "delayed reread private stack", "fixture.png", SCOPE.userId, SCOPE.tenantId, SCOPE.workspaceId, SCOPE.storeId, "tenant/", "fixture-idempotency-key"]) {
+      assert.equal(serialized.includes(forbidden), false, `diagnostic disclosed ${forbidden}`);
+    }
+  });
+
+  await t.test("delayed reread not found is reported", async () => {
+    const state = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", delayed: "NOT_FOUND" });
+    assert.ok(state.thrown);
+    assert.equal(state.progress.delayedRereadResult, "NOT_FOUND");
+    assert.equal(state.progress.assetConfirmReason, "ASSET_CONFIRM_REREAD_NOT_FOUND");
+  });
+
+  await t.test("delayed row with nonmatching bindings is observed without returning row data", async () => {
+    const state = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", delayed: "FOUND_MISMATCH" });
+    assert.ok(state.thrown);
+    assert.equal(state.progress.delayedRereadResult, "FOUND");
+    assert.equal(state.progress.delayedRereadBindingMatch, "NO");
+    const diagnostic = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "delayed-reread-test", progress: state.progress, error: state.progress.failureError });
+    assert.equal(diagnostic.delayedRereadBindingMatch, "NO");
+    assert.equal(JSON.stringify(diagnostic).includes("different-tenant"), false);
+  });
+
+  await t.test("delayed reread error leaves the first failure classification intact", async () => {
+    const state = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", delayed: "ERROR" });
+    assert.ok(state.thrown);
+    assert.equal(state.progress.delayedRereadResult, "ERROR");
+    assert.equal(state.progress.failedOperation, "ASSET_CONFIRM");
+    assert.equal(state.progress.assetConfirmReason, "ASSET_CONFIRM_REREAD_NOT_FOUND");
+    assert.equal(state.progress.failureError.code, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE");
+    assert.equal(state.thrown.code, "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+    const diagnostic = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "delayed-reread-test", progress: state.progress, error: state.progress.failureError });
+    assert.equal(diagnostic.delayedRereadResult, "ERROR");
+    const serialized = JSON.stringify(diagnostic);
+    for (const forbidden of ["delayed reread private error", "delayed reread private stack", SCOPE.userId, SCOPE.tenantId, SCOPE.workspaceId, SCOPE.storeId]) assert.equal(serialized.includes(forbidden), false);
+  });
+
+  await t.test("Production and requests without diagnostic state skip the observation", async () => {
+    for (const options of [
+      { runtimeEnvironment: "production", diagnosticEnabled: true },
+      { runtimeEnvironment: "staging", diagnosticEnabled: false }
+    ]) {
+      const state = await runDelayedRereadCase({ immediateConfirm: "NOT_FOUND", ...options });
+      assert.ok(state.thrown);
+      assert.deepEqual(state.diagnosticWaitCalls, []);
+      assert.equal(state.progress.delayedRereadResult, undefined);
+    }
   });
 });
 
