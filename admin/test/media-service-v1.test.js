@@ -5,6 +5,7 @@ const { canonicalObjectKey, createMediaService, MediaServiceError } = require(".
 const { createMeooStorageProvider, StorageProviderError } = require("../storage-provider");
 const { hasTrustedPublicMessage } = require("../public-error");
 const { respondUnexpectedError, createStagingMediaDiagnostic, isStagingMediaDiagnosticRequest } = require("../error-response");
+const { AssetRepositoryError } = require("../asset-repository");
 
 const SCOPE = { userId: "00000000-0000-0000-0000-000000000001", tenantId: "00000000-0000-0000-0000-000000000002", workspaceId: "00000000-0000-0000-0000-000000000003", storeId: "00000000-0000-0000-0000-000000000004", requestId: "req-test" };
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -87,8 +88,10 @@ test("Meoo provider exposes provider-neutral upload, verify, read and exact dele
 
 test("V1 upload creates pending asset, object, link and ready state with an attempt marker", async () => {
   const repo = repository(); const svc = createMediaService({ provider: provider(), repository: repo });
-  const result = await svc.upload(SCOPE, { name: "hero.png", data: PNG, purpose: "product_main", entityId: 4 });
+  const diagnosticState = diagnosticProgress();
+  const result = await svc.upload(SCOPE, { name: "hero.png", data: PNG, purpose: "product_main", entityId: 4 }, { diagnosticState });
   assert.equal(result.status, "ready"); assert.equal(result.path, `/api/media/v1/content/${result.id}`);
+  assert.equal(diagnosticState.assetConfirmReason, undefined);
   assert.deepEqual(repo.calls.map(call => call[0]), ["pending", "object", "link", "status"]);
   assert.equal(repo.calls.at(-1)[2], "ready");
   const pending = repo.calls[0][1];
@@ -108,18 +111,53 @@ async function runDiagnosticFailure({ repo = repository(), p = provider(), input
   return { progress, error: thrown };
 }
 
-test("asset confirmation failure localizes to ASSET_CONFIRM", async () => {
-  const repo = repository();
-  const read = repo.getAssetByIdScoped.bind(repo);
-  let reads = 0;
-  repo.getAssetByIdScoped = async (...args) => {
-    reads += 1;
-    if (reads === 2) throw new Error("fixture asset confirmation failure");
-    return read(...args);
-  };
-  const { progress } = await runDiagnosticFailure({ repo });
-  assert.equal(progress.failedOperation, "ASSET_CONFIRM");
-  assert.equal(progress.lastFailedCompletedPhase, "ASSET_CREATED");
+test("ASSET_CONFIRM assigns bounded request-local reasons for its source branches", async t => {
+  const scenarios = [
+    {
+      name: "reread not found",
+      reason: "ASSET_CONFIRM_REREAD_NOT_FOUND",
+      override(reads, read) { return reads === 2 ? null : read(); }
+    },
+    {
+      name: "reread repository error",
+      reason: "ASSET_CONFIRM_REREAD_ERROR",
+      override(reads, read) { if (reads === 2) throw new AssetRepositoryError("DATABASE_UNAVAILABLE", "fixture private error", 503); return read(); }
+    },
+    ...[
+      ["id", "id", "different-id"], ["tenant scope", "tenant_id", "different-tenant"],
+      ["workspace scope", "workspace_id", "different-workspace"], ["store scope", "store_id", "different-store"],
+      ["object binding", "object_key", "different-key"], ["attempt metadata binding", "metadata", { uploadAttemptId: "different-attempt" }]
+    ].map(([name, field, value]) => ({
+      name: `binding mismatch: ${name}`,
+      reason: "ASSET_CONFIRM_BINDING_MISMATCH",
+      override(reads, read) {
+        if (reads !== 2) return read();
+        const row = read();
+        return { ...row, [field]: value };
+      }
+    })),
+    {
+      name: "other reread exception",
+      reason: "ASSET_CONFIRM_OTHER_ERROR",
+      override(reads, read) { if (reads === 2) throw Object.assign(new Error("fixture private error"), { status: 503 }); return read(); }
+    }
+  ];
+
+  for (const scenario of scenarios) await t.test(scenario.name, async () => {
+    const repo = repository();
+    const read = repo.getAssetByIdScoped.bind(repo);
+    let reads = 0;
+    repo.getAssetByIdScoped = async (...args) => scenario.override(++reads, () => read(...args));
+    const { progress } = await runDiagnosticFailure({ repo });
+    assert.equal(progress.failedOperation, "ASSET_CONFIRM");
+    assert.equal(progress.lastFailedCompletedPhase, "ASSET_CREATED");
+    assert.equal(progress.assetConfirmReason, scenario.reason);
+    const diagnostic = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "confirm-branch-test", progress, error: progress.failureError });
+    assert.equal(diagnostic.failedOperation, "ASSET_CONFIRM");
+    assert.equal(diagnostic.assetConfirmReason, scenario.reason);
+    const serialized = JSON.stringify(diagnostic);
+    for (const forbidden of ["fixture private error", "different-id", "different-tenant", "different-workspace", "different-store", "different-key", "different-attempt", SCOPE.userId, SCOPE.tenantId, SCOPE.workspaceId]) assert.equal(serialized.includes(forbidden), false, `diagnostic disclosed ${forbidden}`);
+  });
 });
 
 test("journal advancement write failure localizes independently of journal readback", async () => {
@@ -197,6 +235,15 @@ test("Staging diagnostic envelope is bounded and excludes request, scope, and er
   const serialized = JSON.stringify(response.body);
   for (const forbidden of forbiddenValues) assert.equal(serialized.includes(forbidden), false, `diagnostic disclosed ${forbidden}`);
   assert.equal(response.body.diagnostic.failedOperation, "STORAGE_PUT");
+  for (const reason of ["ASSET_CONFIRM_REREAD_NOT_FOUND", "ASSET_CONFIRM_REREAD_ERROR", "ASSET_CONFIRM_BINDING_MISMATCH", "ASSET_CONFIRM_OTHER_ERROR"]) {
+    const confirm = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "media-diagnostic-request", progress: { failedOperation: "ASSET_CONFIRM", assetConfirmReason: reason }, error: Object.assign(new Error(forbiddenValues.join(" ")), { status: 500, stack: forbiddenValues.join(" ") }) });
+    assert.deepEqual(confirm, { requestId: "media-diagnostic-request", lastCompletedPhase: null, failedOperation: "ASSET_CONFIRM", errorClass: "UNKNOWN_INTERNAL", assetConfirmReason: reason });
+    for (const forbidden of forbiddenValues) assert.equal(JSON.stringify(confirm).includes(forbidden), false, `confirm diagnostic disclosed ${forbidden}`);
+  }
+  const invalidReason = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "media-diagnostic-request", progress: { failedOperation: "ASSET_CONFIRM", assetConfirmReason: "raw-error-message" }, error });
+  assert.equal("assetConfirmReason" in invalidReason, false);
+  const unrelatedOperation = createStagingMediaDiagnostic({ environment: "staging", authenticated: true, headerValue: "1", requestId: "media-diagnostic-request", progress: { failedOperation: "STORAGE_PUT", assetConfirmReason: "ASSET_CONFIRM_REREAD_ERROR" }, error });
+  assert.equal("assetConfirmReason" in unrelatedOperation, false);
 });
 
 test("diagnostic activation requires Staging, authenticated scope, and the explicit header", () => {

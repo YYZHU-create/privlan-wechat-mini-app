@@ -27,6 +27,13 @@ function assertAssetTransition(from, to) {
   if (!ALLOWED_TRANSITIONS.get(String(from))?.has(String(to))) throw new MediaServiceError(409, "ASSET_STATUS_TRANSITION_INVALID", "asset status transition is invalid");
 }
 
+function assetConfirmDiagnosticReason(error) {
+  if (error?.code === "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE") return "ASSET_CONFIRM_REREAD_NOT_FOUND";
+  if (error?.code === "MEDIA_UPLOAD_ASSET_BINDING_MISMATCH") return "ASSET_CONFIRM_BINDING_MISMATCH";
+  if (["AssetRepositoryError", "DatabaseError", "PostgrestError"].includes(String(error?.name || ""))) return "ASSET_CONFIRM_REREAD_ERROR";
+  return "ASSET_CONFIRM_OTHER_ERROR";
+}
+
 function createMediaService({ provider, repository, lifecycleMutationsEnabled = false, lifecycleCanaryConfig = { enabled: false }, runtimeEnvironment = "", runtimeProjectId = "", onEvent = () => {} }) {
   if (!provider || !repository) throw new Error("MediaService provider and repository are required");
   const emit = (event, fields) => { try { onEvent(event, fields); } catch {} };
@@ -43,6 +50,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
         progress.failedOperation = progress.currentOperation || operation;
         progress.lastFailedCompletedPhase = progress.lastCompletedPhase || null;
         progress.failureError = error;
+        if (progress.failedOperation === "ASSET_CONFIRM") progress.assetConfirmReason = assetConfirmDiagnosticReason(error);
       }
       throw error;
     }

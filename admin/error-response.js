@@ -22,6 +22,10 @@ const MEDIA_DIAGNOSTIC_OPERATIONS = new Set([
   "COMPENSATION_ASSET_METADATA_VERIFY", "COMPENSATION_ASSET_REVALIDATION", "UPLOAD_COMPLETION", "UPLOAD_REQUEST"
 ]);
 const MEDIA_DIAGNOSTIC_ERROR_CLASSES = new Set(["MediaServiceError", "StorageProviderError", "DatabaseError", "PostgrestError"]);
+const MEDIA_DIAGNOSTIC_ASSET_CONFIRM_REASONS = new Set([
+  "ASSET_CONFIRM_REREAD_NOT_FOUND", "ASSET_CONFIRM_REREAD_ERROR",
+  "ASSET_CONFIRM_BINDING_MISMATCH", "ASSET_CONFIRM_OTHER_ERROR"
+]);
 const MEDIA_DIAGNOSTIC_DB_CODES = new Set(["08000", "08006", "22P02", "23502", "23503", "23505", "23514", "40001", "40P01", "42501", "42703", "42P01", "57014"]);
 const MEDIA_DIAGNOSTIC_PROVIDER_CODES = new Set([
   "SCOPE_REQUIRED", "INVALID_OBJECT_KEY", "INVALID_OBJECT_BYTES", "STORAGE_URL_REQUIRED",
@@ -39,7 +43,11 @@ function isStagingMediaDiagnosticRequest({ environment, req } = {}) {
 function createStagingMediaDiagnostic({ environment, authenticated, headerValue, requestId, progress, error } = {}) {
   if (environment !== "staging" || authenticated !== true || headerValue !== "1") return null;
   const errorStatus = Number(error?.status ?? error?.statusCode ?? 500);
-  if (!Number.isInteger(errorStatus) || errorStatus < 500 || errorStatus > 599) return null;
+  const failedOperation = String(progress?.failedOperation || progress?.currentOperation || "");
+  const candidateConfirmReason = String(progress?.assetConfirmReason || "");
+  const hasConfirmReason = failedOperation === "ASSET_CONFIRM" && MEDIA_DIAGNOSTIC_ASSET_CONFIRM_REASONS.has(candidateConfirmReason);
+  const serverError = Number.isInteger(errorStatus) && errorStatus >= 500 && errorStatus <= 599;
+  if (!serverError && !(errorStatus === 409 && hasConfirmReason)) return null;
   const requestIdValue = String(requestId || "");
   const safeRequestId = /^[A-Za-z][A-Za-z0-9_-]{1,100}$/.test(requestIdValue) ? requestIdValue : null;
   const phase = progress?.lastFailedCompletedPhase ?? progress?.lastCompletedPhase;
@@ -51,6 +59,10 @@ function createStagingMediaDiagnostic({ environment, authenticated, headerValue,
     failedOperation: MEDIA_DIAGNOSTIC_OPERATIONS.has(String(operation || "")) ? operation : "UPLOAD_REQUEST",
     errorClass
   };
+  const assetConfirmReason = String(progress?.assetConfirmReason || "");
+  if (diagnostic.failedOperation === "ASSET_CONFIRM" && MEDIA_DIAGNOSTIC_ASSET_CONFIRM_REASONS.has(assetConfirmReason)) {
+    diagnostic.assetConfirmReason = assetConfirmReason;
+  }
   const rawDbCode = errorClass === "DatabaseError" ? String(error?.code || error?.sqlState || "") : "";
   if (MEDIA_DIAGNOSTIC_DB_CODES.has(rawDbCode)) diagnostic.dbCode = rawDbCode;
   if (errorClass === "StorageProviderError") {

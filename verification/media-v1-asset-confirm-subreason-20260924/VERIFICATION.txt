@@ -1,0 +1,60 @@
+FEELDAO OS — ASSET_CONFIRM Sub-Reason Diagnostic verification
+
+Changed branch: codex/asset-v1-final-candidate
+Changed field: ASSET_CONFIRM diagnostic adds allowlisted request-local assetConfirmReason; public error behavior and upload business logic unchanged.
+Repository: C:\Users\Administrator\.codex\worktrees\asset-v1-final-candidate
+Base: a257bc3a35c9e1d261c4d2741641a14fc7a09e15
+
+Four artifacts:
+MODIFIED_FILE: admin/media-service-v1.js; admin/error-response.js; admin/test/media-service-v1.test.js; admin/test/media-staging-diagnostic-route.test.js
+DIFF_FILE: verification/media-v1-asset-confirm-subreason-20260924/DIFF.patch
+VERIFICATION.txt: verification/media-v1-asset-confirm-subreason-20260924/VERIFICATION.txt
+ROLLBACK.sh: verification/media-v1-asset-confirm-subreason-20260924/ROLLBACK.sh
+REPORT.md: verification/media-v1-asset-confirm-subreason-20260924/REPORT.md
+
+Original SHA-256 before edits:
+admin/media-service-v1.js FE29477DB883A47F9F5F5F0ECEF75287C679BC322825C1A55DA62E5C08ECEC42
+admin/error-response.js 8EA4FAB8F828E106CBCB7D0C548ECB4E306D9E891FD773DA425401B2A04039ED
+
+BASELINE
+Command: node --test admin/test/media-service-v1.test.js admin/test/media-staging-diagnostic-route.test.js
+Input: base commit a257bc3a35c9e1d261c4d2741641a14fc7a09e15, before changes.
+Literal output summary: tests 43; pass 43; fail 0; skipped 0; exit 0.
+
+MODIFIED — ASSET_CONFIRM focused
+Command: node --test admin/test/media-service-v1.test.js admin/test/media-staging-diagnostic-route.test.js
+Input: four modified files listed under MODIFIED_FILE.
+Literal output summary: tests 53; pass 53; fail 0; skipped 0; exit 0. Nine confirmation branch scenarios passed.
+
+MODIFIED — Media focused
+Command: node --test admin/test/media-service-v1.test.js admin/test/media-runtime-diagnostic.test.js admin/test/media-staging-diagnostic-route.test.js admin/test/media-upload-client.test.js admin/test/meoo-media-repository.test.js admin/test/workspace-media.test.js admin/test/media-runtime-config.test.js
+Input: current candidate working tree.
+Literal output summary: tests 107; pass 107; fail 0; skipped 0; exit 0.
+
+MODIFIED — Full admin suite
+Command: npm test
+Working directory: C:\Users\Administrator\.codex\worktrees\asset-v1-final-candidate\admin
+Input: current candidate working tree.
+Literal output summary: tests 398; pass 394; fail 0; skipped 4; exit 0.
+
+POSTGRESQL / POSTGREST
+PG17_POSTGREST_TESTS=NOT_REQUIRED_FOR_THIS_DIFF (no persistence adapter, SQL, schema, or query changed).
+
+ROLLBACK COPY TEST
+Command: bash <absolute-ROLLBACK.sh> <temporary modified-copy root> <absolute DIFF.patch>
+Actual invocation: bash /c/Users/Administrator/.codex/worktrees/asset-v1-final-candidate/verification/media-v1-asset-confirm-subreason-20260924/ROLLBACK.sh /c/Users/Administrator/AppData/Local/Temp/feeldao-asset-confirm-rollback-final-67ce830f76b448e3b152cba3df879840/modified /c/Users/Administrator/.codex/worktrees/asset-v1-final-candidate/verification/media-v1-asset-confirm-subreason-20260924/DIFF.patch
+Input: disposable copies of four modified source/test files; reverse patch checked before application.
+Literal output: ROLLBACK_OK reverse_patch_applied=1; exit 0.
+Restored behavior/status: all four normalized contents equal their original HEAD copies (`RESTORED_ALL=True`); the actual candidate files were not rolled back.
+ROLLBACK.sh executable check: `test -x <script>` succeeded.
+
+DIFF CHECK
+Command: git diff --check
+Literal output: empty; exit 0.
+
+BOUNDARIES
+REMOTE_STATE_MUTATED=NO
+DEPLOYMENT_EXECUTED=NO
+NEW_STAGING_UPLOAD_EXECUTED=NO
+PRODUCTION_MUTATED=NO
+Candidate commit SHA: recorded in final handoff after commit.

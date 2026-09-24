@@ -8,7 +8,7 @@ const { registerMerchantRoutes } = require("../merchant-routes");
 
 const SCOPE = { userId: "user-fixture", tenantId: "tenant-fixture", workspaceId: "workspace-fixture", storeId: "store-fixture" };
 
-async function withServer({ environment = "staging", authenticated = true } = {}, run) {
+async function withServer({ environment = "staging", authenticated = true, errorStatus = 500, assetConfirmReason = "ASSET_CONFIRM_REREAD_ERROR" } = {}, run) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "media-diag-route-"));
   const app = express();
   app.use(express.json());
@@ -16,11 +16,12 @@ async function withServer({ environment = "staging", authenticated = true } = {}
   const mediaService = {
     async upload(_scope, _body, { diagnosticState }) {
       uploadCalls += 1;
-      const error = Object.assign(new Error("fixture secret: do-not-return"), { status: 500 });
+      const error = Object.assign(new Error("fixture secret: do-not-return"), { status: errorStatus });
       if (diagnosticState) {
         diagnosticState.lastCompletedPhase = "ATTEMPT_CREATED";
         diagnosticState.lastFailedCompletedPhase = "ATTEMPT_CREATED";
         diagnosticState.failedOperation = "ASSET_CONFIRM";
+        diagnosticState.assetConfirmReason = assetConfirmReason;
         diagnosticState.failureError = error;
       }
       throw error;
@@ -63,8 +64,23 @@ test("authenticated Staging opt-in returns the bounded diagnostic envelope", asy
     assert.equal(body.diagnostic.lastCompletedPhase, "ATTEMPT_CREATED");
     assert.equal(body.diagnostic.failedOperation, "ASSET_CONFIRM");
     assert.equal(body.diagnostic.errorClass, "UNKNOWN_INTERNAL");
+    assert.equal(body.diagnostic.assetConfirmReason, "ASSET_CONFIRM_REREAD_ERROR");
     const serialized = JSON.stringify(body);
-    for (const forbidden of ["do-not-return", "not-forwarded-to-diagnostic", "fixture.png", "fixture-session", "fixture-csrf", "tenant-fixture", "workspace-fixture", "user-fixture"]) assert.equal(serialized.includes(forbidden), false, `response disclosed ${forbidden}`);
+    for (const forbidden of ["do-not-return", "not-forwarded-to-diagnostic", "fixture.png", "fixture-session", "fixture-csrf", "tenant-fixture", "workspace-fixture", "user-fixture", "DATABASE_UNAVAILABLE"]) assert.equal(serialized.includes(forbidden), false, `response disclosed ${forbidden}`);
+    assert.equal(calls(), 1);
+  });
+});
+
+test("authenticated Staging diagnostic includes the binding subreason for the 409 confirmation branch", async () => {
+  await withServer({ environment: "staging", errorStatus: 409, assetConfirmReason: "ASSET_CONFIRM_BINDING_MISMATCH" }, async (base, calls) => {
+    const response = await post(base, { diagnosticHeader: true });
+    const body = await response.json();
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_ERROR");
+    assert.equal(body.ok, false);
+    assert.equal(body.diagnostic.failedOperation, "ASSET_CONFIRM");
+    assert.equal(body.diagnostic.assetConfirmReason, "ASSET_CONFIRM_BINDING_MISMATCH");
+    assert.equal(JSON.stringify(body).includes("fixture secret"), false);
     assert.equal(calls(), 1);
   });
 });
