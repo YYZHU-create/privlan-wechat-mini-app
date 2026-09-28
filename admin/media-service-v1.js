@@ -220,8 +220,9 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
   async function persistAttemptAsset(scope, attempt, progress = null, diagnosticObservationEnabled = false) {
     const metadata = attemptMetadata(attempt);
     const asset = { id: attempt.asset_id, objectKey: attempt.expected_object_key, originalName: attempt.original_name, mimeType: attempt.content_type, bytes: Number(attempt.content_length), purpose: attempt.purpose, metadata };
+    let createdAsset = null;
     try {
-      await uploadBoundary(progress, {
+      createdAsset = await uploadBoundary(progress, {
         operation: "ASSET_CREATE",
         phase: "ASSET_CREATED",
       }, () => repository.createPendingAsset(scope, asset));
@@ -236,9 +237,21 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
         operation: "ASSET_CONFIRM",
         phase: "ASSET_CREATED",
       }, async () => {
-        const asset = await exactAsset(scope, attempt);
-        if (!asset) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
-        return asset;
+        // A successful PostgREST INSERT with return=representation is already an
+        // authoritative, request-bound confirmation. Avoid making the upload
+        // depend on a second read becoming visible immediately after the write.
+        if (createdAsset !== null && createdAsset !== undefined) {
+          if (typeof createdAsset !== "object" || Array.isArray(createdAsset)) {
+            throw new MediaServiceError(502, "MEDIA_UPLOAD_ASSET_REPRESENTATION_INVALID", "asset insert representation is invalid");
+          }
+          if (!assetBindingMatches(createdAsset, attempt)) {
+            throw new MediaServiceError(409, "MEDIA_UPLOAD_ASSET_BINDING_MISMATCH", "upload asset binding does not match its attempt");
+          }
+          return createdAsset;
+        }
+        const confirmedAsset = await exactAsset(scope, attempt);
+        if (!confirmedAsset) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
+        return confirmedAsset;
       });
     } catch (error) {
       const diagnosticNotFound = diagnosticObservationEnabled
@@ -316,11 +329,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled = 
     }, () => exactAsset(scope, attempt));
     if (!asset) {
       if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken, progress);
-      await persistAttemptAsset(scope, attempt, progress, diagnosticObservationEnabled);
-      asset = await uploadBoundary(progress, {
-        operation: "ASSET_REVALIDATION",
-        phase: "ASSET_CREATED",
-      }, () => exactAsset(scope, attempt));
+      asset = await persistAttemptAsset(scope, attempt, progress, diagnosticObservationEnabled);
     }
     const wasAlreadyReady = asset.status === "ready";
     if (asset.status === "ready" && attempt.phase === "READY_COMMITTED") return resultForAttempt(attempt);

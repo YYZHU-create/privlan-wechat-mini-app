@@ -99,9 +99,96 @@ test("V1 upload creates pending asset, object, link and ready state with an atte
   assert.equal(repo.assets.get(result.id).metadata.uploadState, "ready");
 });
 
+test("successful asset insert representation confirms the asset without a read-after-write lookup", async () => {
+  const repo = repository();
+  let readVisible = false;
+  let storagePresent = false;
+  let readCount = 0;
+  let readsAtStoragePut = null;
+  const getAsset = repo.getAssetByIdScoped.bind(repo);
+  repo.getAssetByIdScoped = async (...args) => { readCount += 1; return readVisible ? getAsset(...args) : null; };
+  const diagnosticState = diagnosticProgress();
+  const p = provider({
+    async verifyObject(_scope, _key, expected) {
+      if (!storagePresent) throw Object.assign(new Error("not found"), { status: 404 });
+      return { sizeBytes: expected.sizeBytes, checksum: expected.checksum, mimeType: expected.mimeType };
+    },
+    async readObject() { if (!storagePresent) throw Object.assign(new Error("not found"), { status: 404 }); return { bytes: new Uint8Array(1), mimeType: "image/png", sizeBytes: 1 }; },
+    async uploadObject(scope, key, bytes) { readsAtStoragePut = readCount; readVisible = true; storagePresent = true; return { checksum: require("../storage-provider").sha256Hex(bytes) }; }
+  });
+  const svc = createMediaService({ provider: p, repository: repo });
+  const result = await svc.upload(SCOPE, { name: "hero.png", data: PNG, purpose: "product_main", entityId: 4 }, { diagnosticState });
+  assert.equal(result.status, "ready");
+  assert.equal(diagnosticState.failedOperation, null);
+  assert.equal(diagnosticState.assetConfirmReason, undefined);
+  assert.equal(readsAtStoragePut, 1, "confirmation should use the successful INSERT representation");
+  assert.deepEqual(repo.calls.map(call => call[0]), ["pending", "object", "link", "status"]);
+});
+
+async function runInsertRepresentationCase(representation) {
+  const repo = repository();
+  const diagnosticState = diagnosticProgress();
+  let insertReturned = false;
+  let confirmFallbackReads = 0;
+  const getAsset = repo.getAssetByIdScoped.bind(repo);
+  repo.getAssetByIdScoped = async (...args) => {
+    if (insertReturned && diagnosticState.currentOperation === "ASSET_CONFIRM") confirmFallbackReads += 1;
+    return getAsset(...args);
+  };
+  const create = repo.createPendingAsset.bind(repo);
+  repo.createPendingAsset = async (...args) => {
+    await create(...args);
+    insertReturned = true;
+    return representation;
+  };
+  let result = null;
+  let error = null;
+  try {
+    result = await createMediaService({ provider: provider(), repository: repo, runtimeEnvironment: "staging" })
+      .upload({ ...SCOPE, requestId: "representation-state-test" }, { name: "fixture.png", data: PNG }, {
+        idempotencyKey: `representation-${typeof representation}-${Array.isArray(representation) ? "array" : "value"}`,
+        diagnosticState
+      });
+  } catch (caught) { error = caught; }
+  return { result, error, repo, diagnosticState, confirmFallbackReads };
+}
+
+test("missing INSERT representations alone use the exact GET fallback", async t => {
+  for (const [label, representation] of [["null", null], ["undefined", undefined]]) {
+    await t.test(label, async () => {
+      const state = await runInsertRepresentationCase(representation);
+      assert.equal(state.error, null);
+      assert.equal(state.result.status, "ready");
+      assert.equal(state.confirmFallbackReads, 1);
+    });
+  }
+});
+
+test("malformed INSERT representations fail closed without the GET fallback", async t => {
+  const cases = [
+    ["string", "malformed", "ASSET_CONFIRM_OTHER_ERROR"],
+    ["number", 123, "ASSET_CONFIRM_OTHER_ERROR"],
+    ["boolean", true, "ASSET_CONFIRM_OTHER_ERROR"],
+    ["array", [], "ASSET_CONFIRM_OTHER_ERROR"],
+    ["object missing row fields", {}, "ASSET_CONFIRM_BINDING_MISMATCH"]
+  ];
+  for (const [label, representation, expectedReason] of cases) {
+    await t.test(label, async () => {
+      const state = await runInsertRepresentationCase(representation);
+      assert.ok(state.error, "malformed representation must fail the upload");
+      assert.equal(state.result, null);
+      assert.equal(state.confirmFallbackReads, 0);
+      assert.equal(state.diagnosticState.failedOperation, "ASSET_CONFIRM");
+      assert.equal(state.diagnosticState.assetConfirmReason, expectedReason);
+    });
+  }
+});
+
 function diagnosticProgress() { return { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null }; }
 
 async function runDiagnosticFailure({ repo = repository(), p = provider(), inputName = "fixture.png" } = {}) {
+  const create = repo.createPendingAsset.bind(repo);
+  repo.createPendingAsset = async (...args) => { await create(...args); return null; };
   const progress = diagnosticProgress();
   let thrown;
   try {
@@ -162,6 +249,8 @@ test("ASSET_CONFIRM assigns bounded request-local reasons for its source branche
 
 async function runDelayedRereadCase({ immediateConfirm = "FOUND", delayed = "FOUND", runtimeEnvironment = "staging", diagnosticEnabled = true } = {}) {
   const repo = repository();
+  const create = repo.createPendingAsset.bind(repo);
+  repo.createPendingAsset = async (...args) => { await create(...args); return null; };
   const baseRead = repo.getAssetByIdScoped.bind(repo);
   const reads = [];
   repo.getAssetByIdScoped = async (scope, assetId) => {
