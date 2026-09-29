@@ -32,8 +32,6 @@ const MEDIA_DIAGNOSTIC_PROVIDER_CODES = new Set([
   "STORAGE_CREDENTIAL_REQUIRED", "STORAGE_BUCKET_REQUIRED", "STORAGE_UPLOAD_FAILED",
   "STORAGE_READ_FAILED", "STORAGE_VERIFY_FAILED", "STORAGE_DELETE_FAILED"
 ]);
-const MEDIA_DIAGNOSTIC_DELAYED_REREAD_RESULTS = new Set(["FOUND", "NOT_FOUND", "ERROR", "NOT_RUN"]);
-const MEDIA_DIAGNOSTIC_DELAYED_REREAD_DELAY_MS = 250;
 
 function isStagingMediaDiagnosticRequest({ environment, req } = {}) {
   return environment === "staging"
@@ -64,19 +62,6 @@ function createStagingMediaDiagnostic({ environment, authenticated, headerValue,
   const assetConfirmReason = String(progress?.assetConfirmReason || "");
   if (diagnostic.failedOperation === "ASSET_CONFIRM" && MEDIA_DIAGNOSTIC_ASSET_CONFIRM_REASONS.has(assetConfirmReason)) {
     diagnostic.assetConfirmReason = assetConfirmReason;
-    if (assetConfirmReason === "ASSET_CONFIRM_REREAD_NOT_FOUND") {
-      const delayedRereadResult = String(progress?.delayedRereadResult || "");
-      if (MEDIA_DIAGNOSTIC_DELAYED_REREAD_RESULTS.has(delayedRereadResult)) {
-        diagnostic.delayedRereadResult = delayedRereadResult;
-        if (Number(progress?.delayedRereadDelayMs) === MEDIA_DIAGNOSTIC_DELAYED_REREAD_DELAY_MS) {
-          diagnostic.delayedRereadDelayMs = MEDIA_DIAGNOSTIC_DELAYED_REREAD_DELAY_MS;
-        }
-        const bindingMatch = String(progress?.delayedRereadBindingMatch || "");
-        if (delayedRereadResult === "FOUND" && ["YES", "NO"].includes(bindingMatch)) {
-          diagnostic.delayedRereadBindingMatch = bindingMatch;
-        }
-      }
-    }
   }
   const rawDbCode = errorClass === "DatabaseError" ? String(error?.code || error?.sqlState || "") : "";
   if (MEDIA_DIAGNOSTIC_DB_CODES.has(rawDbCode)) diagnostic.dbCode = rawDbCode;
