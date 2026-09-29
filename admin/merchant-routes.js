@@ -7,7 +7,9 @@ const { createMeooMediaRepository } = require("./meoo-media-repository");
 const { registerMerchantAppointmentRoutes } = require("./appointment-routes");
 const { registerWorkflowRoutes } = require("./workflow-routes");
 const { registerAiTemplateRoutes } = require("./ai-template-routes");
-const { respondUnexpectedError } = require("./error-response");
+const { respondUnexpectedError, isStagingMediaDiagnosticRequest, createStagingMediaDiagnostic } = require("./error-response");
+const { createAssetRepository } = require("./asset-repository");
+const { generateLifecycleMaintenanceReport } = require("./asset-lifecycle-report");
 
 const SESSION_COOKIE = "atelier_merchant_session";
 const CSRF_COOKIE = "atelier_csrf";
@@ -21,8 +23,8 @@ function cookies(req) {
   }, {});
 }
 function success(res, data, message = "操作成功", status = 200, id = requestId()) { return res.status(status).json({ ok: true, code: "OK", message, data, requestId: id }); }
-function failure(res, error, id = requestId()) {
-  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
+function failure(res, error, id = requestId(), stagingDiagnostic = null) {
+  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用", stagingDiagnostic });
 }
 function setSessionCookies(res, session) {
   const secure = process.env.NODE_ENV === "production";
@@ -62,7 +64,7 @@ function registerMerchantRoutes(app, getService, options = {}) {
   const workspaceMedia = service => {
     if (!mediaByService.has(service)) {
       const repository = service.db?.kind === "meoo" ? (options.mediaRepository || createMeooMediaRepository()) : null;
-      mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot, repository }));
+      mediaByService.set(service, createWorkspaceMedia({ db: service.db, dataRoot: options.dataRoot, legacyImagesDir: options.imagesDir, repository }));
     }
     return mediaByService.get(service);
   };
@@ -263,7 +265,16 @@ function registerMerchantRoutes(app, getService, options = {}) {
   });
   app.get("/api/media/content/:id", async (req, res, next) => {
     if (!req.saasService) return next();
-    try { const asset = await workspaceMedia(req.saasService).get(req.merchantScope, req.params.id); res.type(asset.row.mime_type); return res.sendFile(asset.filePath); }
+    try {
+      const asset = await workspaceMedia(req.saasService).readHistoricalContent(req.merchantScope, req.params.id);
+      res.type(asset.mimeType);
+      return res.sendFile(asset.filePath, error => {
+        if (!error) return;
+        if (res.headersSent) return res.destroy(error);
+        const missing = ["ENOENT", "ENOTDIR"].includes(error?.code);
+        return failure(res, new ServiceError(missing ? 404 : 503, missing ? "ASSET_CONTENT_NOT_FOUND" : "ASSET_CONTENT_UNAVAILABLE", missing ? "素材内容不存在" : "素材内容暂时不可用"), req.requestId);
+      });
+    }
     catch (error) { return failure(res, error, req.requestId); }
   });
   app.post("/api/media/upload", async (req, res, next) => {
@@ -288,8 +299,16 @@ function registerMerchantRoutes(app, getService, options = {}) {
   // Legacy /api/media behavior remains unchanged until MEDIA_ASSET_V1_ENABLED is enabled.
   app.post("/api/media/v1/upload", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
-    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}) }); }
-    catch (error) { return failure(res, error, req.requestId); }
+    const diagnosticEnabled = isStagingMediaDiagnosticRequest({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, req });
+    const diagnosticState = diagnosticEnabled ? { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null } : null;
+    try {
+      req.saasService.assertWritable(req.merchantScope);
+      const data = await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null, diagnosticState });
+      return res.status(201).json({ ok: true, data });
+    } catch (error) {
+      const diagnostic = diagnosticEnabled ? createStagingMediaDiagnostic({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, authenticated: Boolean(req.saasService && req.merchantScope), headerValue: req.get("X-FEELDAO-Media-Diagnostic"), requestId: req.requestId, progress: diagnosticState, error: diagnosticState.failureError || error }) : null;
+      return failure(res, error, req.requestId, diagnostic);
+    }
   });
   registration.mediaUploadRouteRegistered = true;
   app.get("/api/media/v1/content/:id", async (req, res, next) => {
@@ -299,7 +318,12 @@ function registerMerchantRoutes(app, getService, options = {}) {
   });
   app.post("/api/media/v1/delete", async (req, res, next) => {
     if (!req.saasService || !options.mediaService) return next();
-    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.remove(req.merchantScope, String(req.body?.assetId || "")) }); }
+    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.remove(req.merchantScope, String(req.body?.assetId || ""), { operation: String(req.body?.operation || ""), policyId: String(req.body?.policyId || ""), attemptId: String(req.body?.attemptId || "") }) }); }
+    catch (error) { return failure(res, error, req.requestId); }
+  });
+  app.post("/api/media/v1/delete/recover", async (req, res, next) => {
+    if (!req.saasService || !options.mediaService) return next();
+    try { req.saasService.assertWritable(req.merchantScope); return res.json({ ok: true, data: await options.mediaService.recoverDeletion(req.merchantScope, String(req.body?.assetId || ""), { operation: String(req.body?.operation || ""), policyId: String(req.body?.policyId || ""), attemptId: String(req.body?.attemptId || "") }) }); }
     catch (error) { return failure(res, error, req.requestId); }
   });
 
@@ -320,7 +344,25 @@ function registerMerchantRoutes(app, getService, options = {}) {
   return registration;
 }
 
-function registerOpsSaasRoutes(app, getService) {
+function requirePlatformOperator(req) {
+  if (!req.operator) throw new ServiceError(401, "OPS_AUTH_REQUIRED", "请登录 Feeldao OS 运营后台");
+  if (req.operator.role !== "super_admin") throw new ServiceError(403, "OPS_PLATFORM_ROLE_REQUIRED", "需要平台运营权限");
+}
+
+function createOperatorReadLimiter({ windowMs = 60_000, limit = 12, now = () => Date.now() } = {}) {
+  const buckets = new Map();
+  return operatorId => {
+    const key = String(operatorId || ""); const timestamp = now();
+    const requests = (buckets.get(key) || []).filter(value => timestamp - value < windowMs);
+    if (requests.length >= limit) throw new ServiceError(429, "OPS_RATE_LIMITED", "操作过于频繁，请稍后重试");
+    requests.push(timestamp); buckets.set(key, requests);
+  };
+}
+
+function registerOpsSaasRoutes(app, getService, options = {}) {
+  const buildLifecycleReport = options.buildLifecycleReport || (input => generateLifecycleMaintenanceReport({ repository: createAssetRepository(), ...input }));
+  const lifecycleLogger = options.lifecycleLogger || console;
+  const limitLifecycleRead = options.limitLifecycleRead || createOperatorReadLimiter();
   app.get("/ops/v1/health", async (req, res) => {
     const id = requestId("ops_health");
     try { return success(res, await (await getService()).operatorHealth(), "运营服务状态已获取", 200, id); }
@@ -353,6 +395,24 @@ function registerOpsSaasRoutes(app, getService) {
     try { return success(res, await (await getService()).extendSubscription(req.params.workspaceId, req.body?.days, { id: req.operator.userId, requestId: id }), "订阅已延长", 200, id); }
     catch (error) { return failure(res, error, id); }
   });
+  app.get("/ops/v1/asset-lifecycle/dry-run", async (req, res) => {
+    const id = requestId("ops_lifecycle");
+    try {
+      requirePlatformOperator(req);
+      limitLifecycleRead(req.operator.userId);
+      const service = await getService();
+      const scope = await service.validateOperatorScope(req.query?.tenantId, req.query?.workspaceId);
+      const report = await buildLifecycleReport({
+        scope,
+        requestId: id,
+        operatorUserId: req.operator.userId,
+        onEvent: (event, fields) => lifecycleLogger.info(JSON.stringify({ event, ...fields }))
+      });
+      return success(res, report, "Asset V1 生命周期只读报告已生成", 200, id);
+    } catch (error) {
+      return respondUnexpectedError(res, error, { requestId: id, fallbackStatus: 503, fallbackCode: "DATABASE_UNAVAILABLE", fallbackMessage: "生命周期报告暂时不可用" });
+    }
+  });
 }
 
 function registerOpsAuthRoutes(app, getService) {
@@ -376,4 +436,4 @@ function registerOpsAuthRoutes(app, getService) {
   });
 }
 
-module.exports = { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes, SESSION_COOKIE, CSRF_COOKIE, success, failure };
+module.exports = { registerMerchantRoutes, registerOpsAuthRoutes, registerOpsSaasRoutes, requirePlatformOperator, createOperatorReadLimiter, SESSION_COOKIE, CSRF_COOKIE, success, failure };

@@ -20,16 +20,29 @@ function makeRepository(overrides = {}) {
   const calls = [];
   const assets = new Map();
   const objects = new Map();
+  const links = new Map();
+  const attempts = new Map();
+  const keys = new Map();
   const repo = {
-    calls, assets, objects,
-    async createPendingAsset(scope, input) { calls.push(["pending", input]); const row = { ...input, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, status: "pending" }; assets.set(input.id, row); return row; },
-    async createAssetObject(scope, input) { calls.push(["object", input]); const row = { ...input, id: input.id || "object" }; objects.set(input.assetId, row); return row; },
-    async createAssetLink(scope, input) { calls.push(["link", input]); return input; },
-    async transitionAssetStatus(scope, id, status) { calls.push(["status", id, status]); const row = assets.get(id); if (row) row.status = status; return row; },
+    calls, assets, objects, links, attempts,
+    async createPendingAsset(scope, input) { calls.push(["pending", input]); const row = { ...input, object_key: input.objectKey, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, status: "pending" }; assets.set(input.id, row); return row; },
+    async createAssetObject(scope, input) { calls.push(["object", input]); const row = { ...input, object_key: input.objectKey, variant: input.variant, mime_type: input.mimeType, size_bytes: input.sizeBytes, checksum: input.checksum, id: input.id || "object" }; objects.set(input.assetId, row); return row; },
+    async listAssetObjects(scope, id) { const row = objects.get(id); return row ? [row] : []; },
+    async createAssetLink(scope, input) { calls.push(["link", input]); links.set(input.assetId, [{ ...input, asset_id: input.assetId, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId }]); return input; },
+    async listAssetLinks(scope, id) { return links.get(id) || []; },
+    async transitionAssetStatus(scope, id, status, input = {}) { calls.push(["status", id, status]); const row = assets.get(id); if (row) { row.status = status; if (input.metadata) row.metadata = input.metadata; } return row; },
     async getAssetByIdScoped(scope, id) { const row = assets.get(id); return row && row.tenant_id === scope.tenantId && row.workspace_id === scope.workspaceId ? row : null; },
     async getAssetObject(scope, id) { return objects.get(id) || null; },
-    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return this.transitionAssetStatus(scope, id, "deletion_requested"); },
+    async deleteUploadAttempt(scope, id, input) { calls.push(["cleanup", id, input]); const row = assets.get(id); if (row) { if (row.metadata?.uploadAttemptId !== input.uploadAttemptId || row.object_key !== input.objectKey || !["pending", "failed"].includes(row.status)) throw new Error("exact cleanup mismatch"); assets.delete(id); objects.delete(id); links.delete(id); } return { deleted: true }; },
+    async reserveUploadAttempt(scope, input) { const key = [scope.tenantId, scope.workspaceId, scope.storeId || "", scope.userId, input.idempotencyKeyHash].join("|"); if (keys.has(key)) { const a = attempts.get(keys.get(key)); return { created: false, attempt: a, fingerprintMismatch: a.request_fingerprint !== input.requestFingerprint }; } const a = { attempt_id: input.attemptId, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId || null, owner_user_id: scope.userId, operation: "POST /api/media/v1/upload", idempotency_key_hash: input.idempotencyKeyHash, request_fingerprint: input.requestFingerprint, asset_id: input.assetId, expected_object_key: input.expectedObjectKey, content_sha256: input.contentSha256, content_length: input.contentLength, content_type: input.contentType, original_name: input.originalName, purpose: input.purpose, variant: input.variant, entity_id: input.entityId == null ? null : String(input.entityId), position: input.position, synthetic_canary: input.syntheticCanary, asset_metadata: input.assetMetadata, phase: "ATTEMPT_CREATED", terminal_state: null, lease_token: input.leaseToken, lease_expires_at: input.leaseExpiresAt, result: null }; attempts.set(a.attempt_id, a); keys.set(key, a.attempt_id); return { created: true, attempt: a }; },
+    async getUploadAttempt(scope, id) { const a = attempts.get(id); return a && a.tenant_id === scope.tenantId && a.workspace_id === scope.workspaceId && a.owner_user_id === scope.userId ? a : null; },
+    async claimUploadAttempt(scope, id, token, now, expires) { const a = await this.getUploadAttempt(scope,id); if (!a || new Date(a.lease_expires_at) > new Date(now) || ["READY_COMMITTED","CLEANED"].includes(a.phase)) return null; a.lease_token=token; a.lease_expires_at=expires; return a; },
+    async renewUploadAttemptLease(scope,id,token,expires) { const a=await this.getUploadAttempt(scope,id); if(!a||a.lease_token!==token)return null; a.lease_expires_at=expires; return a; },
+    async transitionUploadAttempt(scope,id,token,from,patch) { const a=await this.getUploadAttempt(scope,id); if(!a||a.lease_token!==token||a.phase!==from)return null; Object.assign(a,patch); return a; },
+    async listRecoverableUploadAttempts(now,limit) { return [...attempts.values()].filter(a=>!['READY_COMMITTED','CLEANED'].includes(a.phase)&&new Date(a.lease_expires_at)<=new Date(now)).slice(0,limit); },
+    async requestAssetDeletion(scope, id) { calls.push(["deletion_requested", id]); return { outcome: "CAS_ACQUIRED", asset: await this.transitionAssetStatus(scope, id, "deletion_requested") }; },
     async markAssetDeleted(scope, id) { calls.push(["deleted", id]); return this.transitionAssetStatus(scope, id, "deleted"); },
+    async finalizeAssetDeletion(_scope, id, input) { calls.push(["finalize", id, input]); const row = assets.get(id); if (row) { row.status = "deleted"; row.deleted_at = input.storageVerifiedAt; } return { id, deleted: true, duplicate: false }; },
     async productInScope() { return true; },
     ...overrides,
   };
@@ -38,12 +51,13 @@ function makeRepository(overrides = {}) {
 
 function makeProvider(overrides = {}) {
   const calls = [];
+  let present = false;
   return {
     name: "meoo", bucket: "isolated-g2b-bucket", calls,
-    async uploadObject(scope, key, bytes) { calls.push(["upload", key]); return { checksum: sha256Hex(bytes) }; },
-    async verifyObject(scope, key, expected) { calls.push(["verify", key]); return { sizeBytes: expected.sizeBytes, checksum: expected.checksum, mimeType: expected.mimeType, bytes: new Uint8Array(expected.sizeBytes) }; },
-    async readObject(scope, key) { calls.push(["read", key]); return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
-    async deleteObject(scope, key) { calls.push(["delete", key]); return { deleted: true }; },
+    async uploadObject(scope, key, bytes) { calls.push(["upload", key]); present = true; return { checksum: sha256Hex(bytes) }; },
+    async verifyObject(scope, key, expected) { calls.push(["verify", key]); if (!present) { const error = new Error("not found"); error.status = 404; throw error; } return { sizeBytes: expected.sizeBytes, checksum: expected.checksum, mimeType: expected.mimeType, bytes: new Uint8Array(expected.sizeBytes) }; },
+    async readObject(scope, key) { calls.push(["read", key]); if (!present) { const error = new Error("not found"); error.status = 404; throw error; } return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; },
+    async deleteObject(scope, key) { calls.push(["delete", key]); present = false; return { deleted: true }; },
     async verifyDeleted(scope, key) { calls.push(["verifyDeleted", key]); return true; },
     ...overrides,
   };
@@ -67,41 +81,47 @@ test("upload failure leaves no ready asset and never falls back to local storage
   const repo = makeRepository(); const p = makeProvider({ async uploadObject() { throw new Error("provider down"); } }); const service = createMediaService({ provider: p, repository: repo });
   await assert.rejects(() => service.upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_FAILED");
   const id = repo.calls.find(call => call[0] === "pending")[1].id;
-  assert.equal(repo.assets.get(id).status, "failed");
+  assert.equal(repo.assets.has(id), false);
+  assert.equal(repo.attempts.values().next().value.terminal_state, "CONSISTENT_CLEANED");
   assert.equal(repo.objects.size, 0);
   assert.equal(p.calls.some(call => call[0] === "delete"), false);
 });
 
 test("verification and asset_objects failures compensate with exact-key delete", async () => {
-  for (const overrides of [
-    { provider: { async verifyObject() { throw new Error("mismatch"); } } },
-    { repository: { async createAssetObject() { throw new Error("db"); } } },
-  ]) {
-    const repo = makeRepository(overrides.repository); const p = makeProvider(overrides.provider); const events = [];
-    const service = createMediaService({ provider: p, repository: repo, onEvent: event => events.push(event) });
-    await assert.rejects(() => service.upload(SCOPE, { name: "hero.png", data: PNG }));
-    assert.equal(p.calls.filter(call => call[0] === "delete").length, 1);
-    assert.equal(repo.calls.at(-1)[2], "failed");
-    assert.equal(events.includes("orphan_object_detected"), false);
-  }
+  const repo = makeRepository(); const p = makeProvider({ async verifyObject() { throw new Error("verification unavailable"); }, async readObject() { return { bytes: new Uint8Array([9]), mimeType: "image/png", sizeBytes: 1 }; } });
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).upload(SCOPE, { name: "hero.png", data: PNG }));
+  assert.equal(p.calls.filter(call => call[0] === "delete").length, 1);
+  assert.equal(repo.calls.at(-1)[0], "cleanup"); assert.equal(repo.assets.size, 0);
+  const recoveringRepo = makeRepository(); let failObjectRecord = true;
+  recoveringRepo.createAssetObject = async function(scope, input) { if (failObjectRecord) { failObjectRecord = false; throw new Error("transient db response loss"); } const row = { ...input, object_key: input.objectKey, variant: input.variant, mime_type: input.mimeType, size_bytes: input.sizeBytes, checksum: input.checksum }; this.objects.set(input.assetId, row); return row; };
+  const p2 = makeProvider(); const service = createMediaService({ provider: p2, repository: recoveringRepo });
+  await assert.rejects(() => service.upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+  const attempt = recoveringRepo.attempts.values().next().value; attempt.lease_expires_at = "2000-01-01T00:00:00.000Z";
+  const recovery = await service.recoverExpiredUploadAttempts();
+  assert.equal(recovery[0].outcome, "CONSISTENT_READY"); assert.equal(recoveringRepo.assets.get(attempt.asset_id).status, "ready");
+  assert.equal(p2.calls.filter(call => call[0] === "delete").length, 0);
 });
 
 test("asset link failure follows frozen failed-plus-compensation policy", async () => {
-  const repo = makeRepository({ async createAssetLink() { throw new Error("link db"); } }); const p = makeProvider(); const service = createMediaService({ provider: p, repository: repo });
-  await assert.rejects(() => service.upload(SCOPE, { name: "hero.png", data: PNG, purpose: "product_main", entityId: 4 }));
-  assert.equal(p.calls.filter(call => call[0] === "delete").length, 1);
-  const id = repo.calls.find(call => call[0] === "pending")[1].id;
-  assert.equal(repo.assets.get(id).status, "failed");
+  const repo = makeRepository(); let failOnce = true;
+  repo.createAssetLink = async function(scope, input) { if (failOnce) { failOnce = false; throw new Error("transient link write response loss"); } this.links.set(input.assetId, [{ ...input, asset_id: input.assetId, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId }]); return input; };
+  const p = makeProvider(); const service = createMediaService({ provider: p, repository: repo });
+  await assert.rejects(() => service.upload(SCOPE, { name: "hero.png", data: PNG, purpose: "product_main", entityId: 4 }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+  const attempt = repo.attempts.values().next().value; attempt.lease_expires_at = "2000-01-01T00:00:00.000Z";
+  assert.equal((await service.recoverExpiredUploadAttempts())[0].outcome, "CONSISTENT_READY");
+  assert.equal(repo.assets.get(attempt.asset_id).status, "ready"); assert.equal(p.calls.filter(call => call[0] === "delete").length, 0);
 });
 
-test("cleanup failure retains the original failure and emits orphan evidence", async () => {
-  const repo = makeRepository(); const p = makeProvider({ async verifyObject() { throw new Error("verify mismatch"); }, async deleteObject() { throw new Error("cleanup unavailable"); } }); const events = [];
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo, onEvent: event => events.push(event) }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_FAILED");
-  assert.equal(events.includes("orphan_object_detected"), true);
+test("cleanup failure retains the original failure and durable reconciliation state", async () => {
+  const repo = makeRepository(); const p = makeProvider({ async verifyObject() { throw new Error("verify mismatch"); }, async deleteObject() { throw new Error("cleanup unavailable"); } });
+  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).upload(SCOPE, { name: "hero.png", data: PNG }), error => error.code === "MEDIA_UPLOAD_CLEANUP_INDETERMINATE");
+  const attempt = repo.attempts.values().next().value;
+  assert.equal(attempt.phase, "CLEANUP_REQUIRED");
+  assert.equal(repo.assets.has(attempt.asset_id), true);
 });
 
 test("private reads require ready state and scoped identity", async () => {
-  const repo = makeRepository(); const p = makeProvider(); const service = createMediaService({ provider: p, repository: repo });
+  const repo = makeRepository(); const p = makeProvider({ async readObject() { return { bytes: new Uint8Array([1, 2]), mimeType: "image/png", sizeBytes: 2 }; } }); const service = createMediaService({ provider: p, repository: repo });
   repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" });
   repo.objects.set("asset", { object_key: "tenant/x", mime_type: "image/png" });
   assert.equal((await service.read(SCOPE, "asset")).sizeBytes, 2);
@@ -112,10 +132,10 @@ test("private reads require ready state and scoped identity", async () => {
 
 test("delete verifies exact object removal before marking deleted", async () => {
   const repo = makeRepository(); const p = makeProvider(); repo.assets.set("asset", { id: "asset", tenant_id: SCOPE.tenantId, workspace_id: SCOPE.workspaceId, status: "ready" }); repo.objects.set("asset", { object_key: "tenant/exact" });
-  await createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset");
+  await createMediaService({ provider: p, repository: repo, lifecycleMutationsEnabled: true }).remove(SCOPE, "asset");
   assert.deepEqual(p.calls.filter(call => ["delete", "verifyDeleted"].includes(call[0])).map(call => call[1]), ["tenant/exact", "tenant/exact"]);
   assert.equal(repo.assets.get("asset").status, "deleted");
-  await assert.rejects(() => createMediaService({ provider: p, repository: repo }).remove(SCOPE, "asset"), error => error.code === "ASSET_STATUS_TRANSITION_INVALID");
+  assert.deepEqual(await createMediaService({ provider: p, repository: repo, lifecycleMutationsEnabled: true }).remove(SCOPE, "asset"), { id: "asset", deleted: true, duplicate: true });
 });
 
 test("V1 response and source do not expose credentials or provider URLs", () => {

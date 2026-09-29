@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { readBuildMetadata, safeCommitSha } = require("./runtime-identity");
+const crypto = require("node:crypto");
+const { readBuildMetadata, safeArtifactDigest, safeSha256Digest, safeBranch, safeBuildTime, safeCommitSha } = require("./runtime-identity");
 
 const DIAGNOSTIC_SCHEMA_VERSION = "g2c10e-v1";
 const STAGING_PROJECT_ID = "asmhysidbg5g";
@@ -89,10 +90,10 @@ function inspectRuntimeBuildMetadata({ env = process.env, readFile = fs.readFile
     parsed = JSON.parse(readFile(metadataPath, "utf8"));
   } catch (error) {
     const code = error && error.code === "ENOENT" ? "FILE_ABSENT" : error instanceof SyntaxError ? "INVALID_JSON" : "FILE_UNREADABLE";
-    return { runtimeBuildMetadataFilePresent: code !== "FILE_ABSENT", runtimeBuildMetadataReadable: false, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: "unknown", runtimeBuildMetadataSourceCommit: "unknown", runtimeBuildMetadataDeclaredTargetProjectId: null, runtimeBuildMetadataEnvironment: "unknown", runtimeBuildMetadataRuntimeConfigDigest: "unknown", runtimeBuildMetadataConfigSchemaVersion: "unknown", runtimeBuildMetadataSchemaVersion: "unknown", runtimeBuildMetadataErrorClass: code };
+    return { runtimeBuildMetadataFilePresent: code !== "FILE_ABSENT", runtimeBuildMetadataReadable: false, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: "unknown", runtimeBuildMetadataSourceCommit: "unknown", runtimeBuildMetadataBranch: "unknown", runtimeBuildMetadataBuildTime: "unknown", runtimeBuildMetadataArtifactDigest: "unknown", runtimeBuildMetadataDeclaredTargetProjectId: null, runtimeBuildMetadataEnvironment: "unknown", runtimeBuildMetadataRuntimeConfigDigest: "unknown", runtimeBuildMetadataConfigSchemaVersion: "unknown", runtimeBuildMetadataSchemaVersion: "unknown", runtimeBuildMetadataErrorClass: code };
   }
   const commit = safeCommitSha(parsed?.commitSha || parsed?.sha);
-  return { runtimeBuildMetadataFilePresent: true, runtimeBuildMetadataReadable: true, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: commit, runtimeBuildMetadataSourceCommit: safeCommitSha(parsed.sourceCommit), runtimeBuildMetadataDeclaredTargetProjectId: /^[a-z0-9]{6,32}$/.test(String(parsed.declaredTargetProjectId || "")) ? parsed.declaredTargetProjectId : null, runtimeBuildMetadataEnvironment: ["development", "staging", "production"].includes(String(parsed.environment || "")) ? parsed.environment : "unknown", runtimeBuildMetadataRuntimeConfigDigest: /^[0-9a-f]{64}$/i.test(String(parsed.runtimeConfigDigest || "")) ? String(parsed.runtimeConfigDigest).toLowerCase() : "unknown", runtimeBuildMetadataConfigSchemaVersion: String(parsed.configSchemaVersion || "unknown"), runtimeBuildMetadataSchemaVersion: String(parsed.schemaVersion || "unknown"), runtimeBuildMetadataErrorClass: commit === "unknown" ? "COMMIT_MISSING" : "NONE" };
+  return { runtimeBuildMetadataFilePresent: true, runtimeBuildMetadataReadable: true, runtimeBuildMetadataPathSource: configuredPath ? "ENV" : "DEFAULT", runtimeBuildMetadataCommit: commit, runtimeBuildMetadataSourceCommit: safeCommitSha(parsed.sourceCommit), runtimeBuildMetadataBranch: safeBranch(parsed.branch), runtimeBuildMetadataBuildTime: safeBuildTime(parsed.buildTime), runtimeBuildMetadataArtifactDigest: safeArtifactDigest(parsed.artifactDigest), runtimeBuildMetadataDeclaredTargetProjectId: /^[a-z0-9]{6,32}$/.test(String(parsed.declaredTargetProjectId || "")) ? parsed.declaredTargetProjectId : null, runtimeBuildMetadataEnvironment: ["development", "staging", "production"].includes(String(parsed.environment || "")) ? parsed.environment : "unknown", runtimeBuildMetadataRuntimeConfigDigest: /^[0-9a-f]{64}$/i.test(String(parsed.runtimeConfigDigest || "")) ? String(parsed.runtimeConfigDigest).toLowerCase() : "unknown", runtimeBuildMetadataConfigSchemaVersion: String(parsed.configSchemaVersion || "unknown"), runtimeBuildMetadataSchemaVersion: String(parsed.schemaVersion || "unknown"), runtimeBuildMetadataErrorClass: commit === "unknown" ? "COMMIT_MISSING" : "NONE" };
 }
 
 function compareEnvResolved(envClass, resolved, expectedClass, { absentDefault = false, fallbackValue = "" } = {}) {
@@ -127,9 +128,19 @@ function resolveBuildIdentity({ env = process.env, readFile = fs.readFileSync } 
   const metadata = readBuildMetadata(env.ATELIER_RELEASE_METADATA_PATH, readFile);
   const runtimeCommit = safeCommitSha(env.ATELIER_GIT_SHA);
   const buildCommit = safeCommitSha(metadata.commitSha);
-  if (buildCommit !== "unknown") return { buildCommit, buildIdentitySource: "build-metadata" };
-  if (runtimeCommit !== "unknown") return { buildCommit: runtimeCommit, buildIdentitySource: "runtime-metadata" };
-  return { buildCommit: "unknown", buildIdentitySource: "unknown" };
+  const commit = buildCommit !== "unknown" ? buildCommit : runtimeCommit;
+  const buildIdentitySource = buildCommit !== "unknown" ? "build-metadata" : runtimeCommit !== "unknown" ? "runtime-metadata" : "unknown";
+  const buildTime = safeBuildTime(metadata.buildTime || env.ATELIER_BUILD_TIME);
+  const artifactDigest = safeArtifactDigest(metadata.artifactDigest || env.ATELIER_ARTIFACT_DIGEST);
+  const sourceId = safeCommitSha(metadata.sourceCommit || metadata.commitSha || env.ATELIER_GIT_SHA);
+  const artifactId = artifactDigest;
+  const configDigest = safeSha256Digest(metadata.runtimeConfigDigest);
+  const effectiveConfigDigest = safeSha256Digest(env.ATELIER_RUNTIME_CONFIG_DIGEST);
+  const buildId = sourceId !== "unknown" && artifactId !== "unknown" && configDigest !== "unknown"
+    ? `sha256:${crypto.createHash("sha256").update(JSON.stringify([sourceId, artifactId, configDigest])).digest("hex")}`
+    : "unknown";
+  const branch = safeBranch(metadata.branch || env.ATELIER_GIT_BRANCH);
+  return { buildCommit: commit, buildIdentitySource, buildTime, artifactDigest, branch, sourceId, artifactId, configDigest, effectiveConfigDigest, buildId, buildIdentityStatus: commit !== "unknown" && buildTime !== "unknown" ? "verified" : "unknown/unverified" };
 }
 
 function cleanEnvironment(value) {
@@ -159,6 +170,9 @@ function buildMediaRuntimeDiagnostic({
   serviceRolePresent = false,
   databaseUrlPresent = false,
   bucket = "",
+  lifecycleMutationGlobalEnabled = false,
+  lifecycleCanaryConfigured = false,
+  lifecycleCanaryAuthorizationAvailable = false,
   env = process.env,
   runtimeRoot = path.resolve(__dirname, ".."),
   readFile = fs.readFileSync
@@ -201,6 +215,10 @@ function buildMediaRuntimeDiagnostic({
     configSourceDiagnosticVersion: CONFIG_SOURCE_DIAGNOSTIC_VERSION,
     buildCommit: buildIdentity.buildCommit || "unknown",
     buildIdentitySource: ["build-metadata", "runtime-metadata", "unknown"].includes(buildIdentity.buildIdentitySource) ? buildIdentity.buildIdentitySource : "unknown",
+    buildTime: safeBuildTime(buildIdentity.buildTime),
+    buildArtifactDigest: safeArtifactDigest(buildIdentity.artifactDigest),
+    buildBranch: safeBranch(buildIdentity.branch),
+    buildIdentityStatus: buildIdentity.buildIdentityStatus === "verified" ? "verified" : "unknown/unverified",
     environmentResolved: environment || "unknown",
     projectIdentityClass: projectClass,
     databaseBackendResolved: backend,
@@ -208,6 +226,9 @@ function buildMediaRuntimeDiagnostic({
     mediaAssetV1Requested: requested,
     mediaAssetV1Active: active,
     mediaUploadRouteRegistered: routeRegistered,
+    lifecycleMutationGlobalEnabled: lifecycleMutationGlobalEnabled === true,
+    lifecycleCanaryConfigured: lifecycleCanaryConfigured === true,
+    lifecycleCanaryAuthorizationAvailable: lifecycleCanaryAuthorizationAvailable === true,
     mediaBucketClass: bucketClass({ environmentResolved: environment, projectIdentityClass: projectClass, mediaProviderResolved: provider, bucket: String(bucket || "").trim() }),
     supabaseUrlPresent: Boolean(supabaseUrlPresent),
     serviceRolePresent: Boolean(serviceRolePresent),

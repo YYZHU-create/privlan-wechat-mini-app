@@ -31,3 +31,4 @@ release-branch
 release-environment
 release-build-time
 runtime-build.json
+.meoo/config.json

@@ -59,7 +59,7 @@ function createMeooStorageProvider({ url = process.env.SUPABASE_URL, serviceRole
     const result = await readObject(scope, objectKey);
     if (expected.sizeBytes != null && Number(expected.sizeBytes) !== result.sizeBytes) throw new StorageProviderError("STORAGE_VERIFY_FAILED", "stored size does not match", 502);
     if (expected.checksum && String(expected.checksum).toLowerCase() !== result.checksum) throw new StorageProviderError("STORAGE_VERIFY_FAILED", "stored checksum does not match", 502);
-    if (expected.mimeType && result.mimeType && result.mimeType !== expected.mimeType) throw new StorageProviderError("STORAGE_VERIFY_FAILED", "stored MIME does not match", 502);
+    if (expected.mimeType && result.mimeType !== expected.mimeType) throw new StorageProviderError("STORAGE_VERIFY_FAILED", "stored MIME does not match", 502);
     return result;
   }
 

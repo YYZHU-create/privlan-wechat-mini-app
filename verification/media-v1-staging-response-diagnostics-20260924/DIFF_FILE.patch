@@ -1,0 +1,410 @@
+# Sanitized implementation-only unified diff (zero context). Test sources and payload fixtures are intentionally omitted; verification results and changed test paths are recorded in the accompanying evidence.
+
+diff --git a/admin/asset-repository.js b/admin/asset-repository.js
+index 8a18cdd..af7201a 100644
+--- a/admin/asset-repository.js
++++ b/admin/asset-repository.js
+@@ -306 +306 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey
+-  async function transitionUploadAttempt(scope, attemptId, leaseToken, fromPhase, patch = {}) {
++  async function transitionUploadAttempt(scope, attemptId, leaseToken, fromPhase, patch = {}, onDiagnosticOperation = null) {
+@@ -307,0 +308,2 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey
++    const createdAssetPhase = String(patch.phase || "") === "DB_ASSET_CREATED";
++    if (createdAssetPhase) onDiagnosticOperation?.("JOURNAL_DB_ASSET_CREATED_WRITE");
+@@ -309,0 +312 @@ function createAssetRepository({ url = process.env.SUPABASE_URL, serviceRoleKey
++    if (createdAssetPhase) onDiagnosticOperation?.("JOURNAL_DB_ASSET_CREATED_VERIFY");
+diff --git a/admin/error-response.js b/admin/error-response.js
+index ee2bc35..6185484 100644
+--- a/admin/error-response.js
++++ b/admin/error-response.js
+@@ -7,0 +8,56 @@ const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/;
++const MEDIA_DIAGNOSTIC_PHASES = new Set([
++  "ATTEMPT_CREATED", "ASSET_CREATED", "DB_ASSET_CREATED", "STORAGE_OBJECT_PRESENT",
++  "ASSET_OBJECT_RECORDED", "LINKS_RECORDED", "READY_COMMITTED", "ASSET_READY",
++  "CLEANUP_REQUIRED", "CLEANED"
++]);
++const MEDIA_DIAGNOSTIC_OPERATIONS = new Set([
++  "REQUEST_VALIDATION", "ATTEMPT_RESERVATION", "ASSET_REVALIDATION", "ASSET_CREATE", "ASSET_CONFIRM",
++  "JOURNAL_DB_ASSET_CREATED_WRITE", "JOURNAL_DB_ASSET_CREATED_VERIFY", "JOURNAL_PHASE_TRANSITION",
++  "STORAGE_EXISTS_CHECK", "STORAGE_PUT", "STORAGE_VERIFY_AFTER_PUT_ERROR", "STORAGE_VERIFY_AFTER_PUT",
++  "ASSET_OBJECT_LOOKUP", "ASSET_OBJECT_WRITE", "ASSET_OBJECT_RECONCILIATION", "ASSET_LINK_LOOKUP",
++  "ASSET_LINK_WRITE", "ASSET_LINK_RECONCILIATION", "READY_ASSET_REVALIDATION", "READY_FINALIZE",
++  "READY_ASSET_CONFIRMATION", "READY_ASSET_VERIFIED", "RECONCILIATION_ATTEMPT_READ",
++  "RECONCILIATION_ASSET_READ", "RECONCILIATION_STORAGE_VERIFY", "COMPENSATION_STORAGE_VERIFY",
++  "COMPENSATION_STORAGE_DELETE", "COMPENSATION_STORAGE_DELETE_VERIFY", "COMPENSATION_ASSET_METADATA_DELETE",
++  "COMPENSATION_ASSET_METADATA_VERIFY", "COMPENSATION_ASSET_REVALIDATION", "UPLOAD_COMPLETION", "UPLOAD_REQUEST"
++]);
++const MEDIA_DIAGNOSTIC_ERROR_CLASSES = new Set(["MediaServiceError", "StorageProviderError", "DatabaseError", "PostgrestError"]);
++const MEDIA_DIAGNOSTIC_DB_CODES = new Set(["08000", "08006", "22P02", "23502", "23503", "23505", "23514", "40001", "40P01", "42501", "42703", "42P01", "57014"]);
++const MEDIA_DIAGNOSTIC_PROVIDER_CODES = new Set([
++  "SCOPE_REQUIRED", "INVALID_OBJECT_KEY", "INVALID_OBJECT_BYTES", "STORAGE_URL_REQUIRED",
++  "STORAGE_CREDENTIAL_REQUIRED", "STORAGE_BUCKET_REQUIRED", "STORAGE_UPLOAD_FAILED",
++  "STORAGE_READ_FAILED", "STORAGE_VERIFY_FAILED", "STORAGE_DELETE_FAILED"
++]);
++
++function isStagingMediaDiagnosticRequest({ environment, req } = {}) {
++  return environment === "staging"
++    && Boolean(req?.saasService && req?.merchantScope)
++    && typeof req?.get === "function"
++    && req.get("X-FEELDAO-Media-Diagnostic") === "1";
++}
++
++function createStagingMediaDiagnostic({ environment, authenticated, headerValue, requestId, progress, error } = {}) {
++  if (environment !== "staging" || authenticated !== true || headerValue !== "1") return null;
++  const errorStatus = Number(error?.status ?? error?.statusCode ?? 500);
++  if (!Number.isInteger(errorStatus) || errorStatus < 500 || errorStatus > 599) return null;
++  const requestIdValue = String(requestId || "");
++  const safeRequestId = /^[A-Za-z][A-Za-z0-9_-]{1,100}$/.test(requestIdValue) ? requestIdValue : null;
++  const phase = progress?.lastFailedCompletedPhase ?? progress?.lastCompletedPhase;
++  const operation = progress?.failedOperation ?? progress?.currentOperation;
++  const errorClass = MEDIA_DIAGNOSTIC_ERROR_CLASSES.has(String(error?.name || "")) ? String(error.name) : "UNKNOWN_INTERNAL";
++  const diagnostic = {
++    requestId: safeRequestId,
++    lastCompletedPhase: MEDIA_DIAGNOSTIC_PHASES.has(String(phase || "")) ? phase : null,
++    failedOperation: MEDIA_DIAGNOSTIC_OPERATIONS.has(String(operation || "")) ? operation : "UPLOAD_REQUEST",
++    errorClass
++  };
++  const rawDbCode = errorClass === "DatabaseError" ? String(error?.code || error?.sqlState || "") : "";
++  if (MEDIA_DIAGNOSTIC_DB_CODES.has(rawDbCode)) diagnostic.dbCode = rawDbCode;
++  if (errorClass === "StorageProviderError") {
++    const providerStatus = Number(error?.status ?? error?.statusCode);
++    if (Number.isInteger(providerStatus) && providerStatus >= 400 && providerStatus <= 599) diagnostic.providerStatus = providerStatus;
++    const providerCode = String(error?.code || "");
++    if (MEDIA_DIAGNOSTIC_PROVIDER_CODES.has(providerCode)) diagnostic.providerCode = providerCode;
++  }
++  return diagnostic;
++}
+@@ -46 +102,2 @@ function respondUnexpectedError(res, error, {
+-  logger
++  logger,
++  stagingDiagnostic = null
+@@ -56 +113,3 @@ function respondUnexpectedError(res, error, {
+-  return res.status(resolvedStatus).json({ ok: false, code: resolvedCode, message: responseMessage, error: responseMessage, data: null, requestId });
++  const body = { ok: false, code: resolvedCode, message: responseMessage, error: responseMessage, data: null, requestId };
++  if (resolvedStatus >= 500 && stagingDiagnostic) body.diagnostic = stagingDiagnostic;
++  return res.status(resolvedStatus).json(body);
+@@ -59 +118 @@ function respondUnexpectedError(res, error, {
+-module.exports = { ERROR_CODE_PATTERN, FALLBACK_ERROR_CODES, normalizeStatus, respondUnexpectedError, safeClientMessage, safeCode, writeErrorLog };
++module.exports = { ERROR_CODE_PATTERN, FALLBACK_ERROR_CODES, normalizeStatus, respondUnexpectedError, safeClientMessage, safeCode, writeErrorLog, isStagingMediaDiagnosticRequest, createStagingMediaDiagnostic };
+diff --git a/admin/media-service-v1.js b/admin/media-service-v1.js
+index bfde4dc..8f32028 100644
+--- a/admin/media-service-v1.js
++++ b/admin/media-service-v1.js
+@@ -32,0 +33,17 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++  async function uploadBoundary(progress, { operation, phase }, action) {
++    if (!progress) return action();
++    progress.currentOperation = operation;
++    try {
++      const result = await action();
++      if (phase) progress.lastCompletedPhase = phase;
++      progress.currentOperation = null;
++      return result;
++    } catch (error) {
++      if (!progress.failedOperation) {
++        progress.failedOperation = progress.currentOperation || operation;
++        progress.lastFailedCompletedPhase = progress.lastCompletedPhase || null;
++        progress.failureError = error;
++      }
++      throw error;
++    }
++  }
+@@ -127 +144 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-  async function writeAttemptPhase(scope, attempt, leaseToken, nextPhase, extra = {}) {
++  async function writeAttemptPhase(scope, attempt, leaseToken, nextPhase, extra = {}, progress = null) {
+@@ -130,4 +147,17 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    const updated = await repository.transitionUploadAttempt(scope, attempt.attempt_id, leaseToken, fromPhase, patch);
+-    if (!updated) throw new MediaServiceError(409, "MEDIA_UPLOAD_LEASE_LOST", "upload attempt ownership changed");
+-    Object.assign(attempt, updated);
+-    return attempt;
++    return uploadBoundary(progress, {
++      operation: nextPhase === "DB_ASSET_CREATED" ? "JOURNAL_DB_ASSET_CREATED_WRITE" : "JOURNAL_PHASE_TRANSITION",
++      phase: nextPhase,
++    }, async () => {
++      const updated = await repository.transitionUploadAttempt(scope, attempt.attempt_id, leaseToken, fromPhase, patch, operation => {
++        if (progress) progress.currentOperation = operation;
++      });
++      if (!updated) {
++        if (progress && nextPhase === "DB_ASSET_CREATED" && !progress.failedOperation) {
++          progress.failedOperation = "JOURNAL_DB_ASSET_CREATED_VERIFY";
++          progress.lastFailedCompletedPhase = progress.lastCompletedPhase || null;
++        }
++        throw new MediaServiceError(409, "MEDIA_UPLOAD_LEASE_LOST", "upload attempt ownership changed");
++      }
++      Object.assign(attempt, updated);
++      return attempt;
++    });
+@@ -151,0 +182,7 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++  async function verifyAttemptObjectForUpload(scope, attempt, progress, operation) {
++    const result = await uploadBoundary(progress, {
++      operation,
++    }, () => verifyAttemptObject(scope, attempt));
++    return result;
++  }
++
+@@ -161 +198 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-  async function persistAttemptAsset(scope, attempt) {
++  async function persistAttemptAsset(scope, attempt, progress = null) {
+@@ -164 +201,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    try { await repository.createPendingAsset(scope, asset); }
++    try {
++      await uploadBoundary(progress, {
++        operation: "ASSET_CREATE",
++        phase: "ASSET_CREATED",
++      }, () => repository.createPendingAsset(scope, asset));
++    }
+@@ -170,2 +212,8 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    const confirmed = await exactAsset(scope, attempt);
+-    if (!confirmed) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
++    const confirmed = await uploadBoundary(progress, {
++      operation: "ASSET_CONFIRM",
++      phase: "ASSET_CREATED",
++    }, async () => {
++      const asset = await exactAsset(scope, attempt);
++      if (!asset) throw new MediaServiceError(503, "MEDIA_UPLOAD_ASSET_CREATE_INDETERMINATE", "upload asset creation could not be confirmed");
++      return asset;
++    });
+@@ -181 +229 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-  async function cleanAttempt(scope, attempt, leaseToken) {
++  async function cleanAttempt(scope, attempt, leaseToken, progress = null) {
+@@ -183,2 +231,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase !== "CLEANUP_REQUIRED") await writeAttemptPhase(scope, attempt, leaseToken, "CLEANUP_REQUIRED", { terminal_state: null });
+-    const asset = await exactAsset(scope, attempt);
++    if (attempt.phase !== "CLEANUP_REQUIRED") await writeAttemptPhase(scope, attempt, leaseToken, "CLEANUP_REQUIRED", { terminal_state: null }, progress);
++    const asset = await uploadBoundary(progress, {
++      operation: "COMPENSATION_ASSET_REVALIDATION",
++    }, () => exactAsset(scope, attempt));
+@@ -187 +237,3 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    const observed = await verifyAttemptObject(scope, attempt);
++    const observed = progress
++      ? await verifyAttemptObjectForUpload(scope, attempt, progress, "COMPENSATION_STORAGE_VERIFY")
++      : await verifyAttemptObject(scope, attempt);
+@@ -189 +241,5 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      try { await provider.deleteObject(scope, attempt.expected_object_key); }
++      try {
++        await uploadBoundary(progress, {
++          operation: "COMPENSATION_STORAGE_DELETE",
++        }, () => provider.deleteObject(scope, attempt.expected_object_key));
++      }
+@@ -191 +247,3 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      await verifyStorageAbsent(scope, attempt.asset_id, { object_key: attempt.expected_object_key }, "upload-compensation", 1);
++      await uploadBoundary(progress, {
++        operation: "COMPENSATION_STORAGE_DELETE_VERIFY",
++      }, () => verifyStorageAbsent(scope, attempt.asset_id, { object_key: attempt.expected_object_key }, "upload-compensation", 1));
+@@ -193,2 +251,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (asset) await repository.deleteUploadAttempt(scope, attempt.asset_id, { objectKey: attempt.expected_object_key, uploadAttemptId: attempt.attempt_id, variant: attempt.variant });
+-    const remaining = await repository.getAssetByIdScoped(scope, attempt.asset_id);
++    if (asset) await uploadBoundary(progress, {
++      operation: "COMPENSATION_ASSET_METADATA_DELETE",
++    }, () => repository.deleteUploadAttempt(scope, attempt.asset_id, { objectKey: attempt.expected_object_key, uploadAttemptId: attempt.attempt_id, variant: attempt.variant }));
++    const remaining = await uploadBoundary(progress, {
++      operation: "COMPENSATION_ASSET_METADATA_VERIFY",
++    }, () => repository.getAssetByIdScoped(scope, attempt.asset_id));
+@@ -197 +259 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    await writeAttemptPhase(scope, attempt, leaseToken, "CLEANED", { terminal_state: "CONSISTENT_CLEANED", last_error_class: attempt.last_error_class || null, result });
++    await writeAttemptPhase(scope, attempt, leaseToken, "CLEANED", { terminal_state: "CONSISTENT_CLEANED", last_error_class: attempt.last_error_class || null, result }, progress);
+@@ -201 +263,2 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-  async function completeAttempt(scope, attempt, leaseToken, inputBytes = null) {
++
++  async function completeAttempt(scope, attempt, leaseToken, inputBytes = null, progress = null) {
+@@ -204 +267 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      const outcome = await cleanAttempt(scope, attempt, leaseToken);
++      const outcome = await cleanAttempt(scope, attempt, leaseToken, progress);
+@@ -208 +271,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    let asset = await exactAsset(scope, attempt);
++    let asset = await uploadBoundary(progress, {
++      operation: "ASSET_REVALIDATION",
++      phase: attempt.phase,
++    }, () => exactAsset(scope, attempt));
+@@ -210,3 +276,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken);
+-      await persistAttemptAsset(scope, attempt);
+-      asset = await exactAsset(scope, attempt);
++      if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken, progress);
++      await persistAttemptAsset(scope, attempt, progress);
++      asset = await uploadBoundary(progress, {
++        operation: "ASSET_REVALIDATION",
++        phase: "ASSET_CREATED",
++      }, () => exactAsset(scope, attempt));
+@@ -217 +286 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase === "ATTEMPT_CREATED") await writeAttemptPhase(scope, attempt, leaseToken, "DB_ASSET_CREATED");
++    if (attempt.phase === "ATTEMPT_CREATED") await writeAttemptPhase(scope, attempt, leaseToken, "DB_ASSET_CREATED", {}, progress);
+@@ -219 +288 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    let storage = await verifyAttemptObject(scope, attempt);
++    let storage = await verifyAttemptObjectForUpload(scope, attempt, progress, "STORAGE_EXISTS_CHECK");
+@@ -222 +291 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken);
++      if (!inputBytes) return cleanAttempt(scope, attempt, leaseToken, progress);
+@@ -225 +294,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      try { await provider.uploadObject(scope, attempt.expected_object_key, inputBytes, attempt.content_type); }
++      try {
++        await uploadBoundary(progress, {
++          operation: "STORAGE_PUT",
++          phase: attempt.phase,
++        }, () => provider.uploadObject(scope, attempt.expected_object_key, inputBytes, attempt.content_type));
++      }
+@@ -227 +301 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        storage = await verifyAttemptObject(scope, attempt);
++        storage = await verifyAttemptObjectForUpload(scope, attempt, progress, "STORAGE_VERIFY_AFTER_PUT_ERROR");
+@@ -233 +307 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      storage = await verifyAttemptObject(scope, attempt);
++      storage = await verifyAttemptObjectForUpload(scope, attempt, progress, "STORAGE_VERIFY_AFTER_PUT");
+@@ -236 +310 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase === "DB_ASSET_CREATED") await writeAttemptPhase(scope, attempt, leaseToken, "STORAGE_OBJECT_PRESENT");
++    if (attempt.phase === "DB_ASSET_CREATED") await writeAttemptPhase(scope, attempt, leaseToken, "STORAGE_OBJECT_PRESENT", {}, progress);
+@@ -238 +312,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    let objects = await repository.listAssetObjects(scope, attempt.asset_id);
++    let objects = await uploadBoundary(progress, {
++      operation: "ASSET_OBJECT_LOOKUP",
++      phase: attempt.phase,
++    }, () => repository.listAssetObjects(scope, attempt.asset_id));
+@@ -243 +320,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        await repository.createAssetObject(scope, { assetId: attempt.asset_id, bucket: provider.bucket, objectKey: attempt.expected_object_key, variant: attempt.variant, mimeType: attempt.content_type, sizeBytes: Number(attempt.content_length), checksum: String(attempt.content_sha256), originalFilename: attempt.original_name, width: attempt.asset_metadata?.dimensions?.width, height: attempt.asset_metadata?.dimensions?.height });
++        await uploadBoundary(progress, {
++          operation: "ASSET_OBJECT_WRITE",
++          phase: attempt.phase,
++        }, () => repository.createAssetObject(scope, { assetId: attempt.asset_id, bucket: provider.bucket, objectKey: attempt.expected_object_key, variant: attempt.variant, mimeType: attempt.content_type, sizeBytes: Number(attempt.content_length), checksum: String(attempt.content_sha256), originalFilename: attempt.original_name, width: attempt.asset_metadata?.dimensions?.width, height: attempt.asset_metadata?.dimensions?.height }));
+@@ -245 +325,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        objects = await repository.listAssetObjects(scope, attempt.asset_id);
++        objects = await uploadBoundary(progress, {
++          operation: "ASSET_OBJECT_RECONCILIATION",
++          phase: attempt.phase,
++        }, () => repository.listAssetObjects(scope, attempt.asset_id));
+@@ -249 +332 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase === "STORAGE_OBJECT_PRESENT") await writeAttemptPhase(scope, attempt, leaseToken, "ASSET_OBJECT_RECORDED");
++    if (attempt.phase === "STORAGE_OBJECT_PRESENT") await writeAttemptPhase(scope, attempt, leaseToken, "ASSET_OBJECT_RECORDED", {}, progress);
+@@ -251 +334,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    let links = await repository.listAssetLinks(scope, attempt.asset_id);
++    let links = await uploadBoundary(progress, {
++      operation: "ASSET_LINK_LOOKUP",
++      phase: attempt.phase,
++    }, () => repository.listAssetLinks(scope, attempt.asset_id));
+@@ -259,2 +345,13 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        try { await repository.createAssetLink(scope, { assetId: attempt.asset_id, entityType: "workspace_config_product", entityId: String(attempt.entity_id), purpose: attempt.purpose, position: attempt.position }); }
+-        catch (error) { links = await repository.listAssetLinks(scope, attempt.asset_id); if (links.length !== 1 || !linkMatches(links[0])) throw error; }
++        try {
++          await uploadBoundary(progress, {
++            operation: "ASSET_LINK_WRITE",
++            phase: attempt.phase,
++          }, () => repository.createAssetLink(scope, { assetId: attempt.asset_id, entityType: "workspace_config_product", entityId: String(attempt.entity_id), purpose: attempt.purpose, position: attempt.position }));
++        }
++        catch (error) {
++          links = await uploadBoundary(progress, {
++            operation: "ASSET_LINK_RECONCILIATION",
++            phase: attempt.phase,
++          }, () => repository.listAssetLinks(scope, attempt.asset_id));
++          if (links.length !== 1 || !linkMatches(links[0])) throw error;
++        }
+@@ -263 +360 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase === "ASSET_OBJECT_RECORDED") await writeAttemptPhase(scope, attempt, leaseToken, "LINKS_RECORDED");
++    if (attempt.phase === "ASSET_OBJECT_RECORDED") await writeAttemptPhase(scope, attempt, leaseToken, "LINKS_RECORDED", {}, progress);
+@@ -265 +362,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    asset = await exactAsset(scope, attempt);
++    asset = await uploadBoundary(progress, {
++      operation: "READY_ASSET_REVALIDATION",
++      phase: attempt.phase,
++    }, () => exactAsset(scope, attempt));
+@@ -269,2 +369,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      const ready = await repository.transitionAssetStatus(scope, attempt.asset_id, "ready", { expectedStatus: "pending", metadata: readyMetadata });
+-      asset = ready || await exactAsset(scope, attempt);
++      const ready = await uploadBoundary(progress, {
++        operation: "READY_FINALIZE",
++      }, () => repository.transitionAssetStatus(scope, attempt.asset_id, "ready", { expectedStatus: "pending", metadata: readyMetadata }));
++      asset = ready || await uploadBoundary(progress, {
++        operation: "READY_ASSET_CONFIRMATION",
++      }, () => exactAsset(scope, attempt));
+@@ -272,0 +377,4 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++    if (progress) {
++      progress.lastCompletedPhase = "ASSET_READY";
++      progress.currentOperation = "READY_ASSET_VERIFIED";
++    }
+@@ -274 +382 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    if (attempt.phase !== "READY_COMMITTED") await writeAttemptPhase(scope, attempt, leaseToken, "READY_COMMITTED", { terminal_state: "CONSISTENT_READY", result });
++    if (attempt.phase !== "READY_COMMITTED") await writeAttemptPhase(scope, attempt, leaseToken, "READY_COMMITTED", { terminal_state: "CONSISTENT_READY", result }, progress);
+@@ -279 +387,3 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-  async function upload(scope, input = {}, { idempotencyKey = null } = {}) {
++  async function upload(scope, input = {}, { idempotencyKey = null, diagnosticState = null } = {}) {
++    const progress = diagnosticState || { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null };
++    try {
+@@ -291,0 +402 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++    progress.currentOperation = "ATTEMPT_RESERVATION";
+@@ -293 +404,3 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-    const reservation = await repository.reserveUploadAttempt(scope, { attemptId, assetId, expectedObjectKey: objectKey, idempotencyKeyHash, requestFingerprint, contentSha256: checksum, contentLength: decoded.buffer.length, contentType: decoded.mime, originalName, purpose, variant, entityId: input.entityId, position: normalizedPosition, syntheticCanary: input.syntheticCanary === true, assetMetadata: { kind: decoded.kind, dimensions: decoded.dimensions || null, folderId }, leaseToken, leaseExpiresAt: expiresAt });
++    const reservation = await uploadBoundary(progress, {
++      operation: "ATTEMPT_RESERVATION",
++    }, () => repository.reserveUploadAttempt(scope, { attemptId, assetId, expectedObjectKey: objectKey, idempotencyKeyHash, requestFingerprint, contentSha256: checksum, contentLength: decoded.buffer.length, contentType: decoded.mime, originalName, purpose, variant, entityId: input.entityId, position: normalizedPosition, syntheticCanary: input.syntheticCanary === true, assetMetadata: { kind: decoded.kind, dimensions: decoded.dimensions || null, folderId }, leaseToken, leaseExpiresAt: expiresAt }));
+@@ -295,0 +409 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++    progress.lastCompletedPhase = attempt.phase;
+@@ -313 +427,2 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      return await completeAttempt(scope, attempt, ownerToken, decoded.buffer);
++      progress.currentOperation = "UPLOAD_COMPLETION";
++      return await completeAttempt(scope, attempt, ownerToken, decoded.buffer, progress);
+@@ -314,0 +430,5 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++      if (!progress.failedOperation) {
++        progress.failedOperation = progress.currentOperation || "UPLOAD_COMPLETION";
++        progress.lastFailedCompletedPhase = progress.lastCompletedPhase || null;
++        progress.failureError = error;
++      }
+@@ -316,2 +436,6 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        const current = await repository.getUploadAttempt(scope, attempt.attempt_id);
+-        if (current?.phase === "CLEANED") throw error;
++        const current = await uploadBoundary(progress, {
++          operation: "RECONCILIATION_ATTEMPT_READ",
++        }, () => repository.getUploadAttempt(scope, attempt.attempt_id));
++        if (current?.phase === "CLEANED") {
++          throw error;
++        }
+@@ -320,4 +444,10 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-          const readyAsset = await exactAsset(scope, attempt);
+-          if (readyAsset?.status === "ready") return await completeAttempt(scope, attempt, ownerToken, decoded.buffer);
+-          if (error?.status === 400 || error?.status === 403 || error?.code === "MEDIA_IDEMPOTENCY_KEY_REUSE") return await cleanAttempt(scope, attempt, ownerToken).then(() => { throw error; });
+-          const observed = await verifyAttemptObject(scope, attempt);
++          const readyAsset = await uploadBoundary(progress, {
++            operation: "RECONCILIATION_ASSET_READ",
++          }, () => exactAsset(scope, attempt));
++          if (readyAsset?.status === "ready") {
++            return await completeAttempt(scope, attempt, ownerToken, decoded.buffer, progress);
++          }
++          if (error?.status === 400 || error?.status === 403 || error?.code === "MEDIA_IDEMPOTENCY_KEY_REUSE") {
++            return await cleanAttempt(scope, attempt, ownerToken, progress).then(() => { throw error; });
++          }
++          const observed = await verifyAttemptObjectForUpload(scope, attempt, progress, "RECONCILIATION_STORAGE_VERIFY");
+@@ -325 +455 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-            await cleanAttempt(scope, attempt, ownerToken);
++            await cleanAttempt(scope, attempt, ownerToken, progress);
+@@ -331 +460,0 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-        emit("orphan_object_detected", { requestId: scope.requestId || null, assetId: attempt.asset_id, uploadAttemptId: attempt.attempt_id, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "cleanup", errorClass: recoveryError.code || "RECOVERY_INDETERMINATE" });
+@@ -336 +464,0 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
+-      emit("orphan_object_detected", { requestId: scope.requestId || null, assetId: attempt.asset_id, uploadAttemptId: attempt.attempt_id, tenantId: scope.tenantId, workspaceId: scope.workspaceId, provider: provider.name, operation: "cleanup", errorClass: error.code || "RECOVERY_INDETERMINATE" });
+@@ -338,0 +467,8 @@ function createMediaService({ provider, repository, lifecycleMutationsEnabled =
++    } catch (error) {
++      if (!progress.failedOperation) {
++        progress.failedOperation = progress.currentOperation || "UPLOAD_REQUEST";
++        progress.lastFailedCompletedPhase = progress.lastCompletedPhase || null;
++        progress.failureError = error;
++      }
++      throw error;
++    }
+diff --git a/admin/merchant-routes.js b/admin/merchant-routes.js
+index 46807bf..9a118d6 100644
+--- a/admin/merchant-routes.js
++++ b/admin/merchant-routes.js
+@@ -10 +10 @@ const { registerAiTemplateRoutes } = require("./ai-template-routes");
+-const { respondUnexpectedError } = require("./error-response");
++const { respondUnexpectedError, isStagingMediaDiagnosticRequest, createStagingMediaDiagnostic } = require("./error-response");
+@@ -26,2 +26,2 @@ function success(res, data, message = "操作成功", status = 200, id = request
+-function failure(res, error, id = requestId()) {
+-  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用" });
++function failure(res, error, id = requestId(), stagingDiagnostic = null) {
++  return respondUnexpectedError(res, error, { requestId: id, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "服务暂时不可用", stagingDiagnostic });
+@@ -302,2 +302,10 @@ function registerMerchantRoutes(app, getService, options = {}) {
+-    try { req.saasService.assertWritable(req.merchantScope); return res.status(201).json({ ok: true, data: await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null }) }); }
+-    catch (error) { return failure(res, error, req.requestId); }
++    const diagnosticEnabled = isStagingMediaDiagnosticRequest({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, req });
++    const diagnosticState = diagnosticEnabled ? { lastCompletedPhase: null, currentOperation: "REQUEST_VALIDATION", failedOperation: null, lastFailedCompletedPhase: null } : null;
++    try {
++      req.saasService.assertWritable(req.merchantScope);
++      const data = await options.mediaService.upload(req.merchantScope, req.body || {}, { idempotencyKey: req.get("Idempotency-Key") || null, diagnosticState });
++      return res.status(201).json({ ok: true, data });
++    } catch (error) {
++      const diagnostic = diagnosticEnabled ? createStagingMediaDiagnostic({ environment: options.runtimeEnvironment ?? process.env.ATELIER_ENVIRONMENT, authenticated: Boolean(req.saasService && req.merchantScope), headerValue: req.get("X-FEELDAO-Media-Diagnostic"), requestId: req.requestId, progress: diagnosticState, error: diagnosticState.failureError || error }) : null;
++      return failure(res, error, req.requestId, diagnostic);
++    }

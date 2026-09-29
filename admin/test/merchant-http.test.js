@@ -1,10 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const express = require("express");
+const { registerMerchantRoutes } = require("../merchant-routes");
 
 const ADMIN_DIR = path.resolve(__dirname, "..");
 const APPOINTMENT_TOKEN = "appointment-http-gateway-token-32-bytes";
@@ -87,9 +90,20 @@ test("HTTP authentication sets secure server sessions and isolates workspace hin
     assert.equal(redeemed.status, 200);
   }
   await activate(aCookie, aCsrf); await activate(bCookie, bCsrf);
-  const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]);
-  const uploadA = await api("/api/media/upload", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name: "a.png", data: `data:image/png;base64,${png.toString("base64")}` }) });
+  const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]); const jpg = Buffer.from([0xff,0xd8,0xff]); const gif = Buffer.from("GIF89a", "ascii");
+  const upload = (name, mime, bytes) => api("/api/media/upload", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ name, data: `data:${mime};base64,${bytes.toString("base64")}` }) });
+  const uploadA = await upload("a.png", "image/png", png);
   assert.equal(uploadA.status, 200);
+  const uploadJpg = await upload("a.jpg", "image/jpeg", jpg); const uploadGif = await upload("a.gif", "image/gif", gif);
+  assert.equal(uploadJpg.status, 200); assert.equal(uploadGif.status, 200);
+  const historicalItems = (await api("/api/media", { headers: { Cookie: aCookie } })).data;
+  const historical = [[uploadA.data.id, png, "image/png"], [uploadJpg.data.id, jpg, "image/jpeg"], [uploadGif.data.id, gif, "image/gif"]].map(([id, bytes, mime]) => ({ item: historicalItems.find(value => value.id === id), bytes, mime }));
+  const missingHistorical = await api(historical[0].item.path, { headers: { Cookie: aCookie } }); assert.equal(missingHistorical.status, 404); assert.equal(missingHistorical.data.code, "ASSET_CONTENT_NOT_FOUND");
+  for (const { item, bytes, mime } of historical) {
+    fs.writeFileSync(path.join(temp, "images", item.mpPath.slice("/images/".length)), bytes);
+    const historicalRead = await fetch(`${baseUrl}${item.path}`, { headers: { Cookie: aCookie } });
+    assert.equal(historicalRead.status, 200); assert.match(historicalRead.headers.get("content-type"), new RegExp(`^${mime}`)); assert.deepEqual(Buffer.from(await historicalRead.arrayBuffer()), bytes);
+  }
   assert.equal((await api(`/api/media/content/${uploadA.data.id}`, { headers: { Cookie: bCookie } })).status, 404);
   assert.equal((await api("/api/media", { headers: { Cookie: bCookie } })).data.length, 0);
   const aiA = await api("/v1/ai/connections", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf, "Content-Type": "application/json" }, body: JSON.stringify({ providerName: "A Provider", baseUrl: "https://example.com/v1", model: "a-model", apiKey: "secret-a" }) });
@@ -101,6 +115,46 @@ test("HTTP authentication sets secure server sessions and isolates workspace hin
   assert.equal((await api("/ops/v1/bootstrap", { headers: { Cookie: aCookie } })).status, 401);
   assert.equal((await api("/auth/logout", { method: "POST", headers: { Cookie: aCookie, "x-atelier-csrf": aCsrf } })).status, 200);
   assert.equal((await api("/auth/session", { headers: { Cookie: aCookie } })).status, 401);
+});
+
+test("historical media uses a server-controlled filename MIME while V1 keeps provider MIME", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "historical-mime-http-"));
+  const images = path.join(root, "images"); fs.mkdirSync(images);
+  const scope = { tenantId: "tenant-a", workspaceId: "workspace-a", storeId: "store-a", userId: "user-a", role: "merchant", workspace: {} };
+  const row = (id, objectKey, overrides = {}) => ({ id, tenant_id: scope.tenantId, workspace_id: scope.workspaceId, store_id: scope.storeId, object_key: objectKey, original_name: objectKey, mime_type: "application/octet-stream", bytes: 3, metadata: {}, status: "pending", purpose: null, deleted_at: null, ...overrides });
+  const historical = [
+    ["legacy-jpg", "legacy.jpg", "image/jpeg"], ["legacy-jpeg", "legacy.JPEG", "image/jpeg"], ["legacy-png", "legacy.png", "image/png"], ["legacy-gif", "legacy.gif", "image/gif"],
+    ["legacy-webp", "legacy.webp", "image/webp"], ["legacy-mp4", "legacy.mp4", "video/mp4"], ["legacy-mov", "legacy.mov", "video/quicktime"], ["legacy-webm", "legacy.webm", "video/webm"]
+  ];
+  const rows = [
+    ...historical.map(([id, objectKey]) => row(id, objectKey)), row("missing", "missing.png"), row("unknown", "legacy.bmp"), row("deleted", "deleted.png", { deleted_at: "2026-09-18T00:00:00.000Z" }),
+    row("v1-pending", "v1-pending.png", { purpose: "content_image" }), row("other-workspace", "other.png", { workspace_id: "workspace-b" }), row("traversal", "../outside.png"), row("absolute", path.join(root, "outside.png")), row("legacy-trash", "trash.png", { metadata: { deletedAt: "2026-09-18T00:00:00.000Z" } })
+  ];
+  for (const [, objectKey] of historical) fs.writeFileSync(path.join(images, objectKey), Buffer.from([1, 2, 3]));
+  fs.writeFileSync(path.join(images, "legacy.bmp"), Buffer.from([1, 2, 3]));
+  fs.writeFileSync(path.join(root, "outside.png"), Buffer.from([1, 2, 3]));
+  const db = { async query(sql, params) { if (/where id=\$1/.test(sql)) return { rows: rows.filter(item => item.id === params[0] && item.tenant_id === params[1] && item.workspace_id === params[2] && item.store_id === params[3]) }; throw new Error("UNEXPECTED_QUERY"); } };
+  const providerCalls = [];
+  const service = { db, async resolveSession() { return scope; } };
+  const mediaService = { async read(requestScope, id) { providerCalls.push([requestScope.workspaceId, id]); if (id !== "v1-ready") throw new Error("UNEXPECTED_V1_ASSET"); return { mimeType: "image/webp", sizeBytes: 3, bytes: Uint8Array.from([4, 5, 6]) }; } };
+  const app = express();
+  app.use((req, res, next) => { res.set("X-Content-Type-Options", "nosniff"); next(); });
+  registerMerchantRoutes(app, async () => service, { dataRoot: path.join(root, "data"), imagesDir: images, mediaService });
+  const server = http.createServer(app); const serverPort = await listen(server); const base = `http://127.0.0.1:${serverPort}`;
+  const get = pathname => fetch(`${base}${pathname}`, { headers: { Cookie: "atelier_merchant_session=fixture" } });
+  try {
+    for (const [id, , mime] of historical) {
+      const response = await get(`/api/media/content/${id}`);
+      assert.equal(response.status, 200); assert.match(response.headers.get("content-type"), new RegExp(`^${mime}`)); assert.equal(response.headers.get("x-content-type-options"), "nosniff"); assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([1, 2, 3]));
+    }
+    const unknown = await get("/api/media/content/unknown"); assert.equal(unknown.status, 415); assert.equal((await unknown.json()).code, "UNSUPPORTED_MEDIA_TYPE");
+    const missing = await get("/api/media/content/missing"); assert.equal(missing.status, 404); assert.equal((await missing.json()).code, "ASSET_CONTENT_NOT_FOUND");
+    for (const id of ["deleted", "v1-pending", "other-workspace", "legacy-trash"]) { const response = await get(`/api/media/content/${id}`); assert.equal(response.status, 404); assert.equal((await response.json()).code, "ASSET_NOT_FOUND"); }
+    for (const id of ["traversal", "absolute"]) { const response = await get(`/api/media/content/${id}`); assert.equal(response.status, 400); assert.equal((await response.json()).code, "INVALID_OBJECT_KEY"); }
+    const v1 = await get("/api/media/v1/content/v1-ready"); assert.equal(v1.status, 200); assert.match(v1.headers.get("content-type"), /^image\/webp/); assert.deepEqual(Buffer.from(await v1.arrayBuffer()), Buffer.from([4, 5, 6])); assert.deepEqual(providerCalls, [[scope.workspaceId, "v1-ready"]]);
+  } finally {
+    await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("rejects mutation without CSRF before subscription checks", async () => {

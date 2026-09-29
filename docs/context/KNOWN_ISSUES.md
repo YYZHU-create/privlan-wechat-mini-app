@@ -36,6 +36,15 @@ EVIDENCE=Historical Product Media thread and current media adapters.
 NEXT_SAFE_ACTION=Create a single-target Product Media implementation/audit task with explicit fixtures and generated-package checks.
 BLOCKS=Confident media closure and archive of mixed media history.
 
+## ISSUE-MEDIA-002
+MODULE=Product Media / Asset V1
+SEVERITY=MEDIUM
+STATUS=OPEN
+DESCRIPTION=Asset V1 lifecycle source includes exact Storage deletion, 30-day tombstone retention, audit-backed link cleanup, bounded maintenance purge, a super-admin-only aggregate dry-run report, and a fail-closed lifecycle mutation capability. Staging remains on migration 014, so lifecycle writes must stay disabled until migration 015 is separately applied and verified.
+EVIDENCE=015_asset_lifecycle_v1.sql, asset-lifecycle-report.js, and portable PostgreSQL/operator route tests; no runtime or persistent-data mutation performed by source validation.
+NEXT_SAFE_ACTION=Complete independent review of the uncommitted mutation-gated candidate, then authorize a deployment-bearing stage with lifecycle mutations disabled before using the scoped report in Staging. Any later purge still requires a separately authorized Storage-verified apply operation after migration 015 verification and explicit capability enablement.
+BLOCKS=Staging runtime validation, migration execution, and one-time historical deleted-link reconciliation.
+
 ## ISSUE-CONFIG-001
 MODULE=Merchant Admin / Config
 SEVERITY=MEDIUM
@@ -80,3 +89,12 @@ DESCRIPTION=AI fallback, SSRF controls, key protection, error redaction, and cus
 EVIDENCE=Historical AI/security discussions and current platform README.
 NEXT_SAFE_ACTION=Create a focused security acceptance task with non-secret fixtures and route-level checks.
 BLOCKS=Security closure.
+
+## ISSUE-MEDIA-003
+MODULE=Media V1 recovery worker
+SEVERITY=MEDIUM
+STATUS=OPEN_NON_BLOCKING
+DESCRIPTION=The recovery worker's lease-renewal gap remains a concurrency-hardening follow-up for durable upload recovery.
+EVIDENCE=Previously identified recovery-worker review; it was not exercised as part of the v69 normal-upload acceptance.
+NEXT_SAFE_ACTION=Address in a separate bounded worker-concurrency task with lease-expiry and competing-owner tests.
+BLOCKS=NONE_FOR_MEDIA_V1_ASSET_CONFIRM_ACCEPTANCE

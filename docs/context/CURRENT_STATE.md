@@ -153,3 +153,64 @@ STATUS=RESOLVED
 ## Historical state rule
 
 Historical ports, URLs, SHAs, runtime observations, database credentials, and deployment results are evidence only. Revalidate them before using them as current production truth.
+
+## Media V1 acceptance update — 2026-09-29
+
+- Staging project `asmhysidbg5g` reached active release v69 from source `f5150d28d64f1865cd0285eba107b688950b50ef`.
+- One normal Media V1 acceptance upload returned HTTP 201. Request-correlated read-only persistence evidence matched one attempt and one asset: attempt `READY_COMMITTED` / `CONSISTENT_READY`, asset `ready`, one `asset_objects` row, and zero business links (the upload was not linked to a business entity).
+- The corresponding Merchant media entry rendered from its `/api/media/v1/content/<asset-id>` route with a fully loaded 2×2 image. The browser did not retain a direct HTTP status or exact Storage inventory count; those details remain unrecorded.
+- The ASSET_CONFIRM repair uses the successful INSERT representation as its request-bound confirmation, with the existing scoped fallback only when that representation is absent. The 250 ms delayed-reread observation has been removed from the local candidate source and Staging diagnostic response; this local cleanup has not been deployed. Staging runtime remains v69 until a later authorized release.
+- The recovery-worker lease-renewal gap remains a separately tracked, non-blocking technical debt item; it is not a blocker for this ASSET_CONFIRM upload acceptance.
+- Sanitized GitHub summary: `verification/media-v1-github-synchronization-20260929/REPORT.md`.
+
+## Media V1 follow-up — v70 deployment and initial runtime evidence — 2026-09-29
+
+- The recorded Meoo CLI deployment for Staging project `asmhysidbg5g` returned success with release version `70`, using source commit `11b494f9ffbf60f4fde5fa84953bb9a63f23632f`. The prepared build record lists artifact digest `sha256:11762a45e5bd716448da23e3a520f18f6c48e211b628dc2527838cbaaa193b8f` and runtime-config digest `sha256:af438c57b230b2afa585a0301151936bf568028f114f998473b30afacd181cff`.
+- The supplied authenticated same-origin runtime sample returned HTTP 200 and reported the same source commit, `staging`, and the matching runtime-config digest. It reported artifact and build identity as unknown. The earlier stored acceptance result was blocked on an expected-source mismatch; the revised GET-only script passed local syntax/mock validation, but a result from executing that revised script in the authenticated browser has not been recorded.
+- At the time of this initial evidence snapshot, the deployment command result and source/config sample were recorded while final v70 runtime acceptance and a fresh active-release readback remained `NOT_VERIFIED`. The subsequent final acceptance is recorded below.
+- Repository synchronization record: `verification/media-v1-github-synchronization-20260929/REPORT.md`.
+
+## Current Media V1 Staging state — final v70 runtime acceptance — 2026-09-29
+
+CURRENT_STAGING_RELEASE=v70
+CURRENT_STAGING_RELEASE_STATUS=SUCCESS/ACTIVE
+CURRENT_STAGING_SOURCE_COMMIT=11b494f9ffbf60f4fde5fa84953bb9a63f23632f
+STAGING_V70_RUNTIME_ACCEPTANCE=PASS_WITH_ARTIFACT_BUILD_IDENTITY_LIMITATION
+RUNTIME_SOURCE_COMMIT_MATCH=YES
+RUNTIME_SOURCE_IDENTITY_VERIFIED=NOT_VERIFIED
+RUNTIME_CONFIG_IDENTITY_MATCH=YES
+RUNTIME_ARTIFACT_IDENTITY_MATCH=NOT_VERIFIED
+RUNTIME_BUILD_IDENTITY_MATCH=NOT_VERIFIED
+RUNTIME_ENVIRONMENT=staging
+RUNTIME_CONFIG_STATUS=LOADED_VALIDATED
+RUNTIME_CODE_VERSION_PROVEN_BY_SOURCE_COMMIT=YES
+RUNTIME_DELAYED_REREAD_CODE_PRESENT=NO
+RUNTIME_DELAYED_REREAD_RESPONSE_FIELDS_PRESENT=NO
+RUNTIME_INSERT_REPRESENTATION_CONFIRM_PRESENT=YES
+RUNTIME_FALLBACK_ONLY_ON_MISSING_REPRESENTATION=YES
+RUNTIME_MALFORMED_REPRESENTATION_FAILS_CLOSED=YES
+RUNTIME_BINDING_MISMATCH_FAILS_CLOSED=YES
+PUBLIC_HEALTH=PASS
+OPERATOR_DB_HEALTH=PASS
+OPERATOR_SESSION=PASS
+OPERATOR_ROLE=super_admin
+BOOTSTRAP_HTTP=200
+BOOTSTRAP_EXPECTED_SCOPE_MATCH=YES
+BOOTSTRAP_MATCHING_ACTIVE_SCOPE_COUNT=1
+H0_GLOBAL_MUTATION_GATE_OFF=YES
+CANARY_OFF=YES
+ACTIVE_CANARY_AUTHORIZATION=NONE
+MEDIA_V1_ASSET_CONFIRM_FIX=PASS
+MEDIA_V1_END_TO_END_ACCEPTANCE=PASS
+MEDIA_V1_DIAGNOSTIC_CLEANUP=PASS
+MEDIA_V1_V64_V70_MAINLINE_CLOSED=YES
+ADDITIONAL_MEDIA_UPLOAD_REQUIRED=NO
+ISSUE-MEDIA-003=OPEN_NON_BLOCKING
+
+- The authenticated, same-origin GET-only v70 acceptance observed origin `https://asmhysidbg5g.meoo.pub`, path `/ops/`, and the expected active release and source commit. Runtime source and frozen-commit content establish the deployed code version; the runtime diagnostic does not expose enough artifact/build identity metadata to verify those two identities. This is a metadata limitation, not an observed identity mismatch.
+- The final v70 runtime no longer contains the temporary 250 ms delayed-reread diagnostic. The formal `ASSET_CONFIRM` behavior remains: use the successful INSERT representation for request-bound confirmation; use the exact scoped GET fallback only when the representation is null or undefined; fail closed for malformed representation or binding mismatch.
+- The v69 normal acceptance upload returned HTTP 201 and its request-correlated durable state was `READY_COMMITTED` / `CONSISTENT_READY`, with asset status `ready` and one `asset_objects` row. It was not linked to a business entity; the exact Storage inventory count and direct content-response HTTP status were not captured. This establishes the observed Media V1 end-to-end acceptance for the tested unlinked upload.
+- The underlying platform mechanism behind the earlier immediate-reread invisibility remains unproven. That uncertainty does not block the accepted implementation because successful confirmation no longer depends on that reread when INSERT representation is present.
+- `ISSUE-MEDIA-003` remains a separate recovery-worker lease-renewal-gap technical-debt item; it does not block the completed Media V1 `ASSET_CONFIRM` acceptance.
+- The earlier GitHub synchronization report records the evidence state available when it was written. This section records the later final v70 acceptance and supersedes its runtime-acceptance status for current-state purposes; the historical report is retained unchanged.
+- Acceptance evidence: `verification/media-v1-v70-final-runtime-acceptance/` and the authenticated browser result supplied for the final GET-only run. The earlier local script-preparation `VERIFICATION.txt` is local-validation evidence only, not the browser acceptance result.

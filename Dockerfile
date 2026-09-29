@@ -1,8 +1,9 @@
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 ARG ATELIER_GIT_SHA=unknown
 ARG ATELIER_GIT_BRANCH=unknown
 ARG ATELIER_BUILD_TIME=unknown
+ARG ATELIER_ARTIFACT_DIGEST=unknown
 ARG ATELIER_ENVIRONMENT=production
 
 ENV NODE_ENV=production
@@ -14,7 +15,7 @@ COPY --chown=node:node admin/package.json admin/pnpm-lock.yaml ./admin/
 RUN cd admin && pnpm install --prod --frozen-lockfile
 
 COPY --chown=node:node . .
-RUN node -e 'const fs=require("fs"); let current={}; try { current=JSON.parse(fs.readFileSync("/app/runtime-build.json","utf8")); } catch {} const metadata={...current, schemaVersion:current.schemaVersion||"g2c10n-v1", commitSha:current.commitSha||"unknown", sourceCommit:current.sourceCommit||current.commitSha||"unknown", declaredTargetProjectId:current.declaredTargetProjectId||null, environment:current.environment||process.env.ATELIER_ENVIRONMENT||"unknown", runtimeConfigDigest:current.runtimeConfigDigest||"unknown", configSchemaVersion:current.configSchemaVersion||"v1"}; fs.writeFileSync("/app/runtime-build.json", JSON.stringify(metadata)+"\n")' \
+RUN node /app/scripts/write-runtime-build-metadata.js \
  && mkdir -p /app/images /app/fonts /app/admin/data /app/admin/config-backups /app/admin/media-trash \
  && chown -R node:node /app/images /app/fonts /app/admin /app/runtime-build.json
 
@@ -24,4 +25,4 @@ EXPOSE 9000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:9000/health').then(async r=>{const body=await r.json();if(!r.ok||body.status!=='ok')process.exit(1)}).catch(()=>process.exit(1))"
 
-CMD ["node", "server.js"]
+CMD ["node", "/app/scripts/runtime-bootstrap.js"]

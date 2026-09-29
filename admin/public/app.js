@@ -76,7 +76,7 @@ createApp({
     const tabBarCrop = reactive({
       open: false, index: 0, field: "icon", source: "", zoom: 1,
       offsetX: 0, offsetY: 0, imageWidth: 0, imageHeight: 0,
-      loading: false, applying: false, error: "", isGif: false
+      loading: false, applying: false, error: "", isGif: false, idempotencyKey: "", uploadName: "", uploadData: ""
     });
     const tabBarCropCanvas = ref(null);
     const tabBarCropPreviewCanvas = ref(null);
@@ -2094,7 +2094,7 @@ createApp({
         source: cropSource,
         zoom: normalized.zoom, offsetX: normalized.offsetX, offsetY: normalized.offsetY,
         imageWidth: 0, imageHeight: 0, loading: true, applying: false, error: "",
-        isGif: isAnimatedImage(cropSource)
+        isGif: isAnimatedImage(cropSource), idempotencyKey: "", uploadName: "", uploadData: ""
       });
       mediaPickerOpen.value = false;
       nextTick(() => {
@@ -2164,18 +2164,26 @@ createApp({
         drawTabBarCrop();
         const isCenterButton = tabBarCrop.field === "centerIcon";
         const data = tabBarCropCanvas.value.toDataURL(isCenterButton ? "image/jpeg" : "image/webp", .92);
-        const name = `tab-${tabBarCrop.index + 1}-${tabBarCrop.field}-crop-${Date.now()}.${isCenterButton ? "jpg" : "webp"}`;
-        const response = await fetch("/api/media/upload", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, data })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) throw new Error(result.error || "取景图片保存失败");
-        const item = cfg.value?.tabBar?.items?.[tabBarCrop.index];
-        if (!item) throw new Error("未找到对应的导航项");
-        item[tabBarCrop.field] = result.mpPath;
-        item[tabBarCropSourceField(tabBarCrop.field)] = tabBarCrop.source;
-        item[tabBarCropSettingsField(tabBarCrop.field)] = normalizeCrop(tabBarCrop);
+        const name = tabBarCrop.uploadName || `tab-${tabBarCrop.index + 1}-${tabBarCrop.field}-crop.${isCenterButton ? "jpg" : "webp"}`;
+        if (tabBarCrop.uploadData !== data) {
+          tabBarCrop.uploadName = name;
+          tabBarCrop.uploadData = data;
+          tabBarCrop.idempotencyKey = MediaUploadClient.createIdempotencyKey();
+        }
+        const result = await uploadRequest({ name, data, purpose: "content_image", variant: "original" }, value => {}, tabBarCrop.idempotencyKey);
+        if (result.terminalState === "CONSISTENT_CLEANED") {
+          tabBarCrop.idempotencyKey = ""; tabBarCrop.uploadData = "";
+          throw MediaUploadClient.safeError("MEDIA_UPLOAD_ATTEMPT_CLEANED", 409);
+        }
+        const uploadedItem = MediaUploadClient.asLegacyMediaItem(result, { name, type: isCenterButton ? "image/jpeg" : "image/webp" });
+        const tabItem = cfg.value?.tabBar?.items?.[tabBarCrop.index];
+        if (!tabItem) throw new Error("未找到对应的导航项");
+        tabItem[tabBarCrop.field] = uploadedItem.mpPath;
+        tabItem[tabBarCropSourceField(tabBarCrop.field)] = tabBarCrop.source;
+        tabItem[tabBarCropSettingsField(tabBarCrop.field)] = normalizeCrop(tabBarCrop);
         const label = tabBarCropTitle();
+        tabBarCrop.idempotencyKey = ""; tabBarCrop.uploadData = ""; tabBarCrop.uploadName = "";
+        tabBarCrop.idempotencyKey = "";
         tabBarCrop.open = false;
         tabBarCropImage = null;
         await loadMedia();
@@ -2338,40 +2346,62 @@ createApp({
       }
     }
 
-    function uploadRequest(payload, onProgress) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest(); xhr.open("POST", "/api/media/upload"); xhr.withCredentials = true;
-        const csrf = document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("atelier_csrf="))?.slice("atelier_csrf=".length);
-        if (csrf) xhr.setRequestHeader("x-atelier-csrf", decodeURIComponent(csrf));
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)); };
-        xhr.onerror = () => reject(new Error("网络连接失败，请重试")); xhr.onabort = () => reject(new Error("上传已取消"));
-        xhr.onload = () => { let result = {}; try { result = JSON.parse(xhr.responseText || "{}"); } catch (error) {} if (xhr.status >= 200 && xhr.status < 300 && result.ok !== false) resolve(result); else reject(new Error(result.error || result.message || ("上传失败（" + xhr.status + "）"))); };
-        xhr.send(JSON.stringify(payload));
-      });
+    function uploadRequest(payload, onProgress, idempotencyKey) {
+      return MediaUploadClient.sendUploadRequest({ payload, idempotencyKey, onProgress, csrfToken: MediaUploadClient.csrfCookie(document) });
     }
 
     async function uploadSingleFile(file, addToCarousel, folderId, upload) {
-      upload.status = "uploading"; upload.progress = 1;
+      upload.status = "uploading"; upload.attemptState = "in-flight"; upload.progress = 1;
+      if (!upload.idempotencyKey) upload.idempotencyKey = MediaUploadClient.createIdempotencyKey();
       try {
-        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("读取文件失败")); reader.readAsDataURL(file); });
-        const result = await uploadRequest({ name: file.name, data, folderId: folderId || "" }, value => { upload.progress = value; });
-        upload.status = "success"; upload.progress = 100; upload.result = result; if (addToCarousel) addMediaToHero(result); return result;
-      } catch (error) { upload.status = "failed"; upload.error = error.message; throw error; }
+        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(MediaUploadClient.safeError("MEDIA_FILE_READ_FAILED", 0)); reader.readAsDataURL(file); });
+        const context = upload.uploadContext || {};
+        const payload = {
+          name: file.name,
+          data,
+          folderId: folderId || "",
+          purpose: context.purpose || (file.type.startsWith("video/") ? "content_video" : "content_image"),
+          variant: context.variant || "original",
+          ...(context.entityId == null ? {} : { entityId: String(context.entityId) }),
+          ...(context.position == null ? {} : { position: Number(context.position) })
+        };
+        const dataResult = await uploadRequest(payload, value => { upload.progress = value; }, upload.idempotencyKey);
+        if (dataResult.terminalState === "CONSISTENT_CLEANED") {
+          upload.status = "failed"; upload.error = "本次上传已清理完成。请重新选择文件开始新的上传。";
+          MediaUploadClient.retireAttempt(upload, "cleaned");
+          throw MediaUploadClient.safeError("MEDIA_UPLOAD_ATTEMPT_CLEANED", 409);
+        }
+        const result = MediaUploadClient.asLegacyMediaItem(dataResult, file, folderId);
+        upload.status = "success"; upload.progress = 100; upload.result = result;
+        MediaUploadClient.retireAttempt(upload, "success");
+        if (addToCarousel) addMediaToHero(result);
+        return result;
+      } catch (error) {
+        if (upload.attemptState !== "cleaned") {
+          upload.status = "failed";
+          upload.attemptState = error.retryable ? "uncertain" : "terminal";
+          upload.error = error.message || "上传未完成，请检查后重试。";
+          if (!error.retryable) MediaUploadClient.retireAttempt(upload, "terminal");
+        }
+        throw error;
+      }
     }
 
     async function retryMediaUpload(upload) {
-      if (!upload?.file || upload.status === "uploading") return;
-      upload.status = "retrying"; upload.error = ""; upload.progress = 0;
+      if (!upload?.file || upload.status === "uploading" || ["success", "cleaned", "terminal"].includes(upload.attemptState)) return;
+      upload.status = "retrying"; upload.attemptState = "in-flight"; upload.error = ""; upload.progress = 0;
       try { await uploadSingleFile(upload.file, upload.addToCarousel, upload.folderId, upload); await loadMedia(); toast("上传已恢复", upload.file.name); } catch (error) { toast(`重试失败：${upload.file.name}`, error.message, "error"); }
     }
 
-    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value) {
+    async function uploadFiles(fileList, addToCarousel = false, folderId = mediaFolderId.value, uploadContext = {}) {
       const files = Array.from(fileList || []).filter(file => { const extension = String(file.name || "").split(".").pop().toLowerCase(); return file.type.startsWith("image/") || file.type.startsWith("video/") || mediaExtensions.has(extension); });
       if (!files.length) return []; const uploaded = []; const existing = new Set(media.value.map(item => `${item.name}:${item.sizeKB}`));
+      let logicalFileIndex = 0;
       for (const file of files) {
         const key = `${file.name}:${Math.round(Number(file.size || 0) / 1024)}`; if (existing.has(key)) { toast("已跳过重复素材", file.name, "error"); continue; }
-        const upload = reactive({ id: crypto.randomUUID(), file, name: file.name, status: "queued", progress: 0, error: "", result: null, addToCarousel, folderId }); mediaUploads.value = [...mediaUploads.value, upload];
+        const perFileContext = { ...uploadContext, folderId, ...(uploadContext.position == null ? {} : { position: Number(uploadContext.position) + logicalFileIndex }) };
+        logicalFileIndex += 1;
+        const upload = reactive({ ...MediaUploadClient.createUploadAttempt(file, perFileContext), name: file.name, addToCarousel }); mediaUploads.value = [...mediaUploads.value, upload];
         try { const result = await uploadSingleFile(file, addToCarousel, folderId, upload); uploaded.push(result); existing.add(`${file.name}:${result.sizeKB}`); } catch (error) { toast(`上传失败：${file.name}`, error.message, "error"); }
       }
       await loadMedia(); toast("上传处理完成", `成功 ${uploaded.length} 个，失败 ${files.length - uploaded.length} 个`); return uploaded;
@@ -2380,7 +2410,12 @@ createApp({
       const remaining = Math.max(0, (target === "detail" ? 12 : 5) - (target === "detail" ? (editingProduct.value?.detailImages || []).length : productImages(editingProduct.value).length));
       const files = Array.from(fileList || []).filter(file => file.type.startsWith("image/")).slice(0, remaining);
       if (!files.length) { toast(target === "detail" ? "最多保留 12 张详情图" : "最多保留 5 张主图", "请先删除现有图片，或选择图片文件。", "error"); return; }
-      const uploaded = await uploadFiles(files, false);
+      const basePosition = target === "detail" ? (editingProduct.value?.detailImages || []).length : productImages(editingProduct.value).length;
+      const uploaded = await uploadFiles(files, false, undefined, {
+        purpose: target === "detail" ? "product_detail" : "product_gallery",
+        entityId: editingProduct.value?.id,
+        position: basePosition
+      });
       if (target === "detail") {
         editingProduct.value.detailImages = [...(editingProduct.value.detailImages || []), ...uploaded.filter(item => item.kind !== "video").map(item => item.mpPath)].filter((path, index, list) => list.indexOf(path) === index).slice(0, 12);
         return;
@@ -3282,7 +3317,7 @@ createApp({
 
           <section v-else-if="currentView === 'media'" class="management">
             <div class="management-header"><div><h1>媒体库</h1><p>统一管理轮播图片、视频和商品素材，可直接用于页面区块。</p></div><div class="management-actions"><button class="btn" @click="openMediaTrash"><iconify-icon class="icon" icon="ph:trash"></iconify-icon>回收站</button><button class="btn" @click="loadMedia"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon>刷新</button><label class="btn primary"><iconify-icon class="icon" icon="ph:upload-simple"></iconify-icon>上传媒体<input type="file" accept="image/*,video/*" multiple hidden @change="uploadFiles($event.target.files);$event.target.value=''" /></label></div></div>
-             <div v-if="mediaUploads.some(item => ['uploading', 'retrying', 'failed'].includes(item.status))" class="media-upload-queue" aria-live="polite"><article v-for="item in mediaUploads.filter(entry => ['uploading', 'retrying', 'failed'].includes(entry.status))" :key="item.id" class="media-upload-item"><div><strong>{{ item.name }}</strong><span v-if="item.status === 'failed'">{{ item.error }}</span><span v-else>{{ item.status === 'retrying' ? '正在重试' : '正在上传' }} · {{ item.progress }}%</span></div><div class="media-upload-progress"><i :style="{width:item.progress + '%'}"></i></div><button v-if="item.status === 'failed'" type="button" class="btn small" @click="retryMediaUpload(item)">重试</button></article></div>
+             <div v-if="mediaUploads.some(item => ['uploading', 'retrying', 'failed'].includes(item.status))" class="media-upload-queue" aria-live="polite"><article v-for="item in mediaUploads.filter(entry => ['uploading', 'retrying', 'failed'].includes(entry.status))" :key="item.id" class="media-upload-item"><div><strong>{{ item.name }}</strong><span v-if="item.status === 'failed'">{{ item.error }}</span><span v-else>{{ item.status === 'retrying' ? '正在重试' : '正在上传' }} · {{ item.progress }}%</span></div><div class="media-upload-progress"><i :style="{width:item.progress + '%'}"></i></div><button v-if="item.status === 'failed' && item.attemptState === 'uncertain'" type="button" class="btn small" @click="retryMediaUpload(item)">重试</button></article></div>
              <div class="data-card"><div class="data-toolbar"><div class="search-wrap"><iconify-icon class="icon" icon="ph:magnifying-glass"></iconify-icon><input v-model="mediaQuery" class="search-input" type="search" placeholder="搜索文件名"></div><div class="media-filter-row"><select v-model="mediaUsageFilter" aria-label="素材使用状态"><option value="all">全部状态</option><option value="used">正在使用</option><option value="unused">未使用</option></select><select v-model="mediaTypeFilter" aria-label="素材类型"><option value="all">全部类型</option><option value="image">图片</option><option value="gif">GIF</option><option value="video">视频</option></select><select v-model="mediaSort" aria-label="素材排序"><option value="newest">最新上传</option><option value="size">文件大小</option><option value="name">文件名称</option></select></div><div class="media-toolbar-actions"><span class="crumb">{{ mediaSelectionMode ? '已选择 ' + selectedMediaCount + ' 个' : filteredMedia.length + ' 个文件' }}</span><select v-if="mediaSelectionMode && selectedMediaCount" v-model="mediaMoveTarget" class="media-move-select" aria-label="移动到文件夹"><option value="">移到全部素材</option><option v-for="folder in mediaFolders" :key="folder.id" :value="folder.id">移到 {{ folder.name }}</option></select><button v-if="mediaSelectionMode && selectedMediaCount" type="button" class="btn subtle" @click="moveSelectedMedia()"><iconify-icon class="icon" icon="ph:folder-notch-open"></iconify-icon>移动</button><button v-if="mediaSelectionMode" type="button" class="btn subtle" @click="toggleAllFilteredMedia">{{ allFilteredMediaSelected ? '取消当前全选' : '选择当前结果' }}</button><button v-if="mediaSelectionMode" type="button" class="btn danger" :disabled="!selectedMediaCount || mediaDeleting" @click="deleteSelectedMedia"><iconify-icon class="icon" :icon="mediaDeleting ? 'ph:spinner-gap' : 'ph:trash'"></iconify-icon>{{ mediaDeleting ? '正在删除' : '删除所选 (' + selectedMediaCount + ')' }}</button><button type="button" class="btn" :class="{primary:mediaSelectionMode}" @click="toggleMediaSelectionMode"><iconify-icon class="icon" :icon="mediaSelectionMode ? 'ph:check' : 'ph:checks'"></iconify-icon>{{ mediaSelectionMode ? '完成' : '批量管理' }}</button></div></div><div class="media-folder-row"><div class="media-folder-list"><button type="button" class="media-folder-pill" :class="{active:!mediaFolderId}" @click="mediaFolderId=''">全部素材 <span>{{ media.length }}</span></button><button v-for="folder in mediaFolders" :key="folder.id" type="button" class="media-folder-pill" :class="{active:mediaFolderId===folder.id}" @click="mediaFolderId=folder.id">{{ folder.name }} <span>{{ folder.count }}</span></button></div><div class="media-folder-actions"><button type="button" class="btn small" @click="createMediaFolder"><iconify-icon class="icon" icon="ph:folder-plus"></iconify-icon>新建文件夹</button><button v-if="mediaFolderId" type="button" class="icon-btn small" title="重命名文件夹" @click="renameMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:pencil-simple"></iconify-icon></button><button v-if="mediaFolderId" type="button" class="icon-btn small danger" title="删除文件夹" @click="deleteMediaFolder(mediaFolders.find(folder => folder.id === mediaFolderId))"><iconify-icon class="icon" icon="ph:trash"></iconify-icon></button></div></div>
               <div v-if="mediaLoading" class="skeleton-grid"><div v-for="n in 8" :key="n" class="skeleton"></div></div>
               <div v-else-if="mediaError" class="empty-state"><iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>媒体库加载失败</h3><p>{{ mediaError }}</p><button class="btn" @click="loadMedia">重试</button></div>

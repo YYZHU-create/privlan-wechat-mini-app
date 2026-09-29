@@ -18,10 +18,13 @@ function fixtureAdapter(data) {
 }
 
 test("Meoo customer repository lists and stats only within trusted scope", async () => {
+  const now = Date.now();
+  const recentCreatedAt = new Date(now - 7 * 86400000).toISOString();
+  const oldCreatedAt = new Date(now - 60 * 86400000).toISOString();
   const adapter = fixtureAdapter({
     customers: [
-      { id: "c-1", display_name: "Alice", phone: "13800138000", source: "mini_program", order_count: 2, total_spend_fen: 300, appointment_count: 1, created_at: "2026-08-30T00:00:00Z", last_seen_at: "2026-08-31T00:00:00Z" },
-      { id: "c-2", display_name: "Bob", phone: "13900139000", source: "import", order_count: 0, total_spend_fen: 0, appointment_count: 0, created_at: "2026-07-01T00:00:00Z", last_seen_at: "2026-07-01T00:00:00Z" }
+      { id: "c-1", display_name: "Alice", phone: "13800138000", source: "mini_program", order_count: 2, total_spend_fen: 300, appointment_count: 1, created_at: recentCreatedAt, last_seen_at: "2026-08-31T00:00:00Z" },
+      { id: "c-2", display_name: "Bob", phone: "13900139000", source: "import", order_count: 0, total_spend_fen: 0, appointment_count: 0, created_at: oldCreatedAt, last_seen_at: "2026-07-01T00:00:00Z" }
     ],
     customer_memberships: [{ customer_id: "c-1", status: "active" }]
   });

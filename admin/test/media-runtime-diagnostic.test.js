@@ -23,8 +23,34 @@ const valid = {
 };
 
 test("build identity uses immutable metadata and never git fallback", () => {
-  assert.deepEqual(resolveBuildIdentity({ env: { ATELIER_GIT_SHA: "bad", ATELIER_RELEASE_METADATA_PATH: "missing" } }), { buildCommit: "unknown", buildIdentitySource: "unknown" });
-  assert.deepEqual(resolveBuildIdentity({ env: { ATELIER_GIT_SHA: SHA } }), { buildCommit: SHA, buildIdentitySource: "runtime-metadata" });
+  assert.deepEqual(resolveBuildIdentity({ env: { ATELIER_GIT_SHA: "bad", ATELIER_RELEASE_METADATA_PATH: "missing" } }), { buildCommit: "unknown", buildIdentitySource: "unknown", buildTime: "unknown", artifactDigest: "unknown", branch: "unknown", sourceId: "unknown", artifactId: "unknown", configDigest: "unknown", effectiveConfigDigest: "unknown", buildId: "unknown", buildIdentityStatus: "unknown/unverified" });
+  assert.deepEqual(resolveBuildIdentity({ env: { ATELIER_GIT_SHA: SHA } }), { buildCommit: SHA, buildIdentitySource: "runtime-metadata", buildTime: "unknown", artifactDigest: "unknown", branch: "unknown", sourceId: SHA, artifactId: "unknown", configDigest: "unknown", effectiveConfigDigest: "unknown", buildId: "unknown", buildIdentityStatus: "unknown/unverified" });
+});
+
+test("build identity composes immutable source, artifact and config digests", () => {
+  const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "feeldao-build-complete-"));
+  const metadataPath = path.join(temp, "runtime-build.json");
+  const artifactDigest = `sha256:${"a".repeat(64)}`;
+  const configDigest = `sha256:${"b".repeat(64)}`;
+  fs.writeFileSync(metadataPath, JSON.stringify({ commitSha: SHA, branch: "release/v1", buildTime: "2026-09-23T00:00:00.000Z", artifactDigest, runtimeConfigDigest: configDigest }));
+  try {
+    const first = resolveBuildIdentity({ env: { ATELIER_RELEASE_METADATA_PATH: metadataPath, ATELIER_RUNTIME_CONFIG_DIGEST: configDigest } });
+    const second = resolveBuildIdentity({ env: { ATELIER_RELEASE_METADATA_PATH: metadataPath, ATELIER_RUNTIME_CONFIG_DIGEST: configDigest } });
+    assert.equal(first.buildId, second.buildId);
+    assert.match(first.buildId, /^sha256:[0-9a-f]{64}$/);
+    assert.equal(first.sourceId, SHA);
+    assert.equal(first.artifactId, artifactDigest);
+    assert.equal(first.configDigest, configDigest);
+    assert.equal(first.effectiveConfigDigest, configDigest);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+test("runtime build identity keeps unavailable artifact digest UNKNOWN", () => {
+  const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "feeldao-build-identity-"));
+  const metadata = path.join(temp, "runtime-build.json");
+  fs.writeFileSync(metadata, JSON.stringify({ commitSha: SHA, branch: "main", buildTime: "2026-09-23T00:00:00.000Z", artifactDigest: "not-a-digest" }));
+  const identity = resolveBuildIdentity({ env: { ATELIER_RELEASE_METADATA_PATH: metadata } });
+  assert.deepEqual(identity, { buildCommit: SHA, buildIdentitySource: "build-metadata", buildTime: "2026-09-23T00:00:00.000Z", artifactDigest: "unknown", branch: "main", sourceId: SHA, artifactId: "unknown", configDigest: "unknown", effectiveConfigDigest: "unknown", buildId: "unknown", buildIdentityStatus: "verified" });
+  fs.rmSync(temp, { recursive: true, force: true });
 });
 
 test("active state requires the effective media service prerequisites", () => {
@@ -149,7 +175,7 @@ test("absent process media keys are distinguished from file overrides", () => {
 test("runtime build metadata reports valid and missing files", () => {
   const temp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "g2c10k-build-"));
   const metadata = path.join(temp, "runtime-build.json");
-  fs.writeFileSync(metadata, JSON.stringify({ schemaVersion: "g2c10n-v1", commitSha: SHA, sourceCommit: SHA, declaredTargetProjectId: "asmhysidbg5g", environment: "staging", runtimeConfigDigest: "a".repeat(64), configSchemaVersion: "v1", branch: "main", buildTime: "2026-09-14T00:00:00Z" }));
+  fs.writeFileSync(metadata, JSON.stringify({ schemaVersion: "feeldao-build-identity-v1", commitSha: SHA, sourceCommit: SHA, declaredTargetProjectId: "asmhysidbg5g", environment: "staging", runtimeConfigDigest: "a".repeat(64), configSchemaVersion: "v1", branch: "main", buildTime: "2026-09-14T00:00:00Z", artifactDigest: `sha256:${"b".repeat(64)}` }));
   const validResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: metadata } });
   assert.equal(validResult.runtimeBuildMetadataReadable, true);
   assert.equal(validResult.runtimeBuildMetadataCommit, SHA);
@@ -157,6 +183,9 @@ test("runtime build metadata reports valid and missing files", () => {
   assert.equal(validResult.runtimeBuildMetadataDeclaredTargetProjectId, "asmhysidbg5g");
   assert.equal(validResult.runtimeBuildMetadataRuntimeConfigDigest, "a".repeat(64));
   assert.equal(validResult.runtimeBuildMetadataConfigSchemaVersion, "v1");
+  assert.equal(validResult.runtimeBuildMetadataBranch, "main");
+  assert.equal(validResult.runtimeBuildMetadataBuildTime, "2026-09-14T00:00:00.000Z");
+  assert.equal(validResult.runtimeBuildMetadataArtifactDigest, `sha256:${"b".repeat(64)}`);
   const missingResult = inspectRuntimeBuildMetadata({ env: { ATELIER_RELEASE_METADATA_PATH: path.join(temp, "missing.json") } });
   assert.equal(missingResult.runtimeBuildMetadataErrorClass, "FILE_ABSENT");
   fs.writeFileSync(metadata, "not-json");
@@ -182,6 +211,36 @@ test("production and unknown environments remain denied by the operator route", 
   const unknown = makeResponse();
   await unknownRoutes["/ops/v1/runtime/media-diagnostic"]({ operator: { id: "operator" } }, unknown);
   assert.equal(unknown.statusCode, 404);
+});
+
+test("build identity route requires operator auth, is Staging-only, and returns safe immutable fields", () => {
+  const routes = {};
+  registerLaunchV1OpsRoutes({ get(route, handler) { routes[route] = handler; }, patch() {}, post() {} }, () => Promise.resolve(null), { buildIdentity: () => ({ environment: "staging", commit: SHA, branch: "codex/canary", buildId: "unknown", sourceId: SHA, artifactId: "unknown", configDigest: "unknown", effectiveConfigDigest: "unknown", instanceIdAvailable: false, instanceFingerprint: "abcdef0123456789", builtAt: "2026-09-23T00:00:00.000Z", artifactDigest: "unknown", identitySource: "build-metadata", identityStatus: "verified", canary: { enabled: false, configValid: true, operation: "asset.delete", scopeConfigured: true, scopeFingerprint: "0123456789abcdef", policyFingerprint: "1111111111111111", attemptFingerprint: "2222222222222222", configDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", recoveryAvailable: true } }) });
+  const unauthorized = makeResponse();
+  routes["/ops/v1/runtime/build-identity"]({}, unauthorized);
+  assert.equal(unauthorized.statusCode, 401);
+  const response = makeResponse();
+  routes["/ops/v1/runtime/build-identity"]({ operator: { id: "operator" } }, response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["Cache-Control"], "no-store");
+  assert.equal(response.body.data.commit, SHA);
+  assert.equal(response.body.data.artifactDigest, "unknown");
+  assert.equal(response.body.data.canary.enabled, false);
+  assert.equal(response.body.data.canary.configValid, true);
+  assert.equal(response.body.data.canary.operation, "asset.delete");
+  assert.equal(response.body.data.canary.scopeFingerprint, "0123456789abcdef");
+  assert.equal(response.body.data.canary.policyFingerprint, "1111111111111111");
+  assert.equal(response.body.data.canary.attemptFingerprint, "2222222222222222");
+  assert.equal(response.body.data.canary.configDigest.length, 64);
+  assert.equal(response.body.data.instanceIdAvailable, false);
+  assert.match(response.body.data.instanceFingerprint, /^[0-9a-f]{16}$/);
+  assert.doesNotMatch(JSON.stringify(response.body.data.canary), /00000000-0000-/);
+  assert.doesNotMatch(JSON.stringify(response.body), /secret|password|token|postgres(?:ql)?:\/\//i);
+  const productionRoutes = {};
+  registerLaunchV1OpsRoutes({ get(route, handler) { productionRoutes[route] = handler; }, patch() {}, post() {} }, () => Promise.resolve(null), { buildIdentity: () => ({ environment: "production", commit: SHA }) });
+  const production = makeResponse();
+  productionRoutes["/ops/v1/runtime/build-identity"]({ operator: { id: "operator" } }, production);
+  assert.equal(production.statusCode, 404);
 });
 
 function makeResponse() {

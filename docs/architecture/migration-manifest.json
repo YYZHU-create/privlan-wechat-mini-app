@@ -70,7 +70,17 @@
       "version": "014_asset_access_hardening",
       "file": "014_asset_access_hardening.sql",
       "sha256": "82657b870c2b8568a854dbc069475603326b55dd9c118ddda9a1ec281dd7f2ab"
+    },
+    {
+      "version": "015_asset_lifecycle_v1",
+      "file": "015_asset_lifecycle_v1.sql",
+      "sha256": "afb66ccd6a5c41658f151bc617ab13e6a9415688ed6b615e2b2efaef6886a316"
+    },
+    {
+      "version": "016_media_upload_attempt_journal",
+      "file": "016_media_upload_attempt_journal.sql",
+      "sha256": "ebd13e2b246b17b7bffcc2f292890bb4f3e392fe46fa07b23f1a9e8112306d58"
     }
   ],
-  "digest": "6000acde7821e8a3b938a46fc2f3c8c30423b757322d09c12a945720c621ce4f"
+  "digest": "e0d5bc236b5b2b6ff03594e7fd0afd0e65cbdba03a35404f8a18ae0fd9324f0e"
 }

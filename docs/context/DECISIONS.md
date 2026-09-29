@@ -98,3 +98,21 @@ RATIONALE=Mixed conversation threads otherwise make historical proposals and inc
 CONSEQUENCES=Canonical context records durable decisions and current gates; implementation and production tasks must link their evidence without collapsing statuses.
 SUPERSEDES=Mixed conversation as the sole project status record.
 DATE=2026-09-06
+
+## DEC-012
+TITLE=Asset V1 irreversible deletion and retained metadata lifecycle
+STATUS=DECIDED
+DECISION=Delete Storage content immediately by exact key, retain deleted asset and object metadata for 30 days, remove links when logical deletion finalizes, and use audit_events for lifecycle evidence. Purge is a separately invoked, scoped, audited maintenance operation with dry-run and bounded batches; no scheduler is introduced.
+RATIONALE=The platform requires irreversible content deletion together with a durable, scoped record for reconciliation and controlled metadata expiry.
+CONSEQUENCES=Storage absence is verified before finalization and purge. Purge requires a deleted tombstone past the cutoff, no links, a deletion audit event, fresh verification for every registered object, and matching object counts. Existing deleted links require a separately authorized reconciliation run.
+SUPERSEDES=Unspecified post-delete metadata retention and cleanup behavior.
+DATE=2026-09-19
+
+## DEC-013
+TITLE=Asset lifecycle mutations require an explicit runtime capability
+STATUS=DECIDED
+DECISION=Asset V1 lifecycle mutations use a target-bound server capability that defaults to disabled and is independent of the Asset V1 media availability flag.
+RATIONALE=Migration 014 does not contain the 015 lifecycle finalization RPCs; permitting deletion before that capability is verified could remove Storage content without completing the metadata transition.
+CONSEQUENCES=Merchant deletion and maintenance apply operations reject before metadata or Storage access until migration 015 has been separately verified and an authorized runtime configuration enables lifecycle mutations. Operator lifecycle dry-run remains available as a read-only report.
+SUPERSEDES=Asset V1 media availability as sufficient evidence for lifecycle mutation readiness.
+DATE=2026-09-21

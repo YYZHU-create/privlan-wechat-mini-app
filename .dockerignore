@@ -1,6 +1,7 @@
 # Meoo Image Runtime deployment context
 .env
 .env.*
+.meoo/config.json
 .cutover-artifacts/
 **/node_modules
 **/*.log
