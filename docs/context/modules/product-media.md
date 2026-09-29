@@ -30,7 +30,16 @@ Use explicit fixtures for legacy `img`, `gallery`, `productMediaSlot`, main medi
 - Recovery-worker lease-renewal gap: independently tracked as open non-blocking technical debt; not part of the v69 ASSET_CONFIRM acceptance gate.
 - Sanitized acceptance and synchronization summary: `verification/media-v1-github-synchronization-20260929/REPORT.md`.
 
-## Staging v70 follow-up — 2026-09-29
+## Staging v70 initial runtime evidence — 2026-09-29
 
 - The recorded deployment command returned success for v70 from source `11b494f9ffbf60f4fde5fa84953bb9a63f23632f`; its prepared artifact digest is `sha256:11762a45e5bd716448da23e3a520f18f6c48e211b628dc2527838cbaaa193b8f`.
-- An authenticated runtime sample reported that source commit, `staging`, and the expected runtime-config digest; artifact/build identity fields were unknown. The revised GET-only acceptance script has local validation evidence, but no post-edit browser execution result is recorded. Treat complete v70 runtime acceptance as `NOT_VERIFIED` until that evidence is captured.
+- At the time of this initial evidence snapshot, an authenticated runtime sample reported the source commit, `staging`, and the expected runtime-config digest; artifact/build identity fields were unknown, and no post-edit browser execution result had been recorded. The subsequent final acceptance is recorded below.
+
+## Current Staging v70 runtime acceptance — 2026-09-29
+
+- Final authenticated same-origin GET-only acceptance passed for active Staging release v70 and source commit `11b494f9ffbf60f4fde5fa84953bb9a63f23632f`. The source commit matched and the runtime reported `staging`; runtime configuration identity matched and was loaded/validated. Public health, Operator database health, Operator session, and the unique expected bootstrap scope passed.
+- Acceptance status: `PASS_WITH_ARTIFACT_BUILD_IDENTITY_LIMITATION`. Artifact and build identity remain `NOT_VERIFIED` because the runtime diagnostic does not expose sufficient metadata. No explicit identity mismatch was observed; these fields are not classified as mismatches.
+- The v70 runtime contains the formal INSERT-representation `ASSET_CONFIRM` fix and no longer contains the temporary delayed-reread diagnostic. The implementation uses an exact scoped GET fallback only when the INSERT representation is null or undefined, and fails closed for malformed representations and binding mismatches.
+- The v69 normal upload acceptance remains the end-to-end evidence: HTTP 201; correlated attempt `READY_COMMITTED` / `CONSISTENT_READY`; asset `ready`; one `asset_objects` row; zero business links for the unlinked upload. Exact external Storage inventory count and direct content-response HTTP status were not retained.
+- The platform mechanism behind the earlier immediate-reread invisibility remains unproven and is not required by the accepted confirmation path. `ISSUE-MEDIA-003` remains open non-blocking technical debt for the recovery-worker lease-renewal gap, outside the closed ASSET_CONFIRM acceptance chain.
+- The earlier GitHub synchronization report reflects the evidence available when it was written; this later runtime result updates the current status without changing that historical report.
