@@ -89,3 +89,12 @@ DESCRIPTION=AI fallback, SSRF controls, key protection, error redaction, and cus
 EVIDENCE=Historical AI/security discussions and current platform README.
 NEXT_SAFE_ACTION=Create a focused security acceptance task with non-secret fixtures and route-level checks.
 BLOCKS=Security closure.
+
+## ISSUE-MEDIA-003
+MODULE=Media V1 recovery worker
+SEVERITY=MEDIUM
+STATUS=OPEN_NON_BLOCKING
+DESCRIPTION=The recovery worker's lease-renewal gap remains a concurrency-hardening follow-up for durable upload recovery.
+EVIDENCE=Previously identified recovery-worker review; it was not exercised as part of the v69 normal-upload acceptance.
+NEXT_SAFE_ACTION=Address in a separate bounded worker-concurrency task with lease-expiry and competing-owner tests.
+BLOCKS=NONE_FOR_MEDIA_V1_ASSET_CONFIRM_ACCEPTANCE

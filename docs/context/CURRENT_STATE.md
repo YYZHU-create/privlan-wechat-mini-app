@@ -153,3 +153,19 @@ STATUS=RESOLVED
 ## Historical state rule
 
 Historical ports, URLs, SHAs, runtime observations, database credentials, and deployment results are evidence only. Revalidate them before using them as current production truth.
+
+## Media V1 acceptance update — 2026-09-29
+
+- Staging project `asmhysidbg5g` reached active release v69 from source `f5150d28d64f1865cd0285eba107b688950b50ef`.
+- One normal Media V1 acceptance upload returned HTTP 201. Request-correlated read-only persistence evidence matched one attempt and one asset: attempt `READY_COMMITTED` / `CONSISTENT_READY`, asset `ready`, one `asset_objects` row, and zero business links (the upload was not linked to a business entity).
+- The corresponding Merchant media entry rendered from its `/api/media/v1/content/<asset-id>` route with a fully loaded 2×2 image. The browser did not retain a direct HTTP status or exact Storage inventory count; those details remain unrecorded.
+- The ASSET_CONFIRM repair uses the successful INSERT representation as its request-bound confirmation, with the existing scoped fallback only when that representation is absent. The 250 ms delayed-reread observation has been removed from the local candidate source and Staging diagnostic response; this local cleanup has not been deployed. Staging runtime remains v69 until a later authorized release.
+- The recovery-worker lease-renewal gap remains a separately tracked, non-blocking technical debt item; it is not a blocker for this ASSET_CONFIRM upload acceptance.
+- Sanitized GitHub summary: `verification/media-v1-github-synchronization-20260929/REPORT.md`.
+
+## Media V1 follow-up — v70 deployment and runtime identity — 2026-09-29
+
+- The recorded Meoo CLI deployment for Staging project `asmhysidbg5g` returned success with release version `70`, using source commit `11b494f9ffbf60f4fde5fa84953bb9a63f23632f`. The prepared build record lists artifact digest `sha256:11762a45e5bd716448da23e3a520f18f6c48e211b628dc2527838cbaaa193b8f` and runtime-config digest `sha256:af438c57b230b2afa585a0301151936bf568028f114f998473b30afacd181cff`.
+- The supplied authenticated same-origin runtime sample returned HTTP 200 and reported the same source commit, `staging`, and the matching runtime-config digest. It reported artifact and build identity as unknown. The earlier stored acceptance result was blocked on an expected-source mismatch; the revised GET-only script passed local syntax/mock validation, but a result from executing that revised script in the authenticated browser has not been recorded.
+- Therefore the deployment command result and source/config sample are recorded, while final v70 runtime acceptance and a fresh active-release readback remain `NOT_VERIFIED`. The previous v69 acceptance remains a historical result, not v70 acceptance.
+- Repository synchronization record: `verification/media-v1-github-synchronization-20260929/REPORT.md`.
