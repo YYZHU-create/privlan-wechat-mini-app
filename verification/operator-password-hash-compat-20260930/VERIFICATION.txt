@@ -1,0 +1,43 @@
+FEELDAO OS Operator Password Hash Compatibility
+
+CHANGED_BRANCH=codex/operator-hash-compat
+CHANGED_FIELD=operator authentication password verification branch: current two-part base64 scrypt plus strict legacy five-part base64url scrypt compatibility
+BASE_HEAD=a0633a604c2a4df53b38266249b2c27cdbaf519e
+ORIGINAL_SOURCE_BLOB_SHA256=8e9dce4ccd0b4826113a2921e9ee65030186bd1ee6823b29c53ef352d8257176
+MODIFIED_WORKTREE_SHA256=47cae23db5258472f5cb2e2d9d8db0569ba73e13fc896c1524dc59c4f4640097
+
+ARTIFACT_1=C:\Users\Administrator\.codex\worktrees\operator-hash-compat\Privlan WeChat Mini Apps\verification\operator-password-hash-compat-20260930\MODIFIED_FILE
+ARTIFACT_2=C:\Users\Administrator\.codex\worktrees\operator-hash-compat\Privlan WeChat Mini Apps\verification\operator-password-hash-compat-20260930\DIFF_FILE
+ARTIFACT_3=C:\Users\Administrator\.codex\worktrees\operator-hash-compat\Privlan WeChat Mini Apps\verification\operator-password-hash-compat-20260930\VERIFICATION.txt
+ARTIFACT_4=C:\Users\Administrator\.codex\worktrees\operator-hash-compat\Privlan WeChat Mini Apps\verification\operator-password-hash-compat-20260930\ROLLBACK.sh
+
+BASELINE
+COMMAND=Push-Location admin; pnpm exec node --test test/ops-saas.test.js; Pop-Location
+INPUT=base commit a0633a604c2a4df53b38266249b2c27cdbaf519e; existing current two-part Operator authentication flow
+LITERAL_OUTPUT=tests 1 | pass 1 | fail 0 | skipped 0 | operator sessions, license management and manual extension are database-backed and audited
+EXIT_STATUS=0
+RESULT=PASS_CURRENT_OPERATOR_BASELINE
+
+MODIFIED
+COMMAND=node --check admin/platform-store.js; node --check admin/saas-service.js; node --check admin/test/operator-password-compat.test.js; Push-Location admin; pnpm exec node --test test/operator-password-compat.test.js test/ops-saas.test.js test/meoo-operator-repository.test.js; Pop-Location; Push-Location admin; pnpm exec node --test --test-concurrency=1; Pop-Location; git diff --check
+INPUT=current two-part hash; fixed legacy five-part $scrypt N=16384,r=8,p=1 salt16/dk32 hash; correct/wrong passwords; malformed/non-canonical formats; Operator repository integration; full project test suite
+LITERAL_OUTPUT=focused tests 6 | pass 6 | fail 0 | skipped 0; full tests 413 | pass 409 | fail 0 | skipped 4; syntax checks exit 0; git diff --check exit 0
+EXIT_STATUS=0
+RESULT=PASS
+
+ROLLBACK
+COMMAND="C:\Program Files\Git\bin\bash.exe" "C:\Users\Administrator\.codex\worktrees\operator-hash-compat\Privlan WeChat Mini Apps\verification\operator-password-hash-compat-20260930\ROLLBACK.sh" "C:\Users\Administrator\AppData\Local\Temp\operator-hash-rollback-final-4fb34e7504fd40a4a3416a8488d6c71f" a0633a604c2a4df53b38266249b2c27cdbaf519e; Push-Location <rollback-copy>\admin; pnpm exec node --test test/ops-saas.test.js; Pop-Location
+INPUT=independent Git copy at base commit with DIFF_FILE applied; rollback-copy baseline SHA256 54fd293dcac06c7245ba9e5173034550bc7a9d115e440d09f9d5d88dd4355743
+LITERAL_OUTPUT=Operator password compatibility rollback applied. | RESTORED_SHA256=54fd293dcac06c7245ba9e5173034550bc7a9d115e440d09f9d5d88dd4355743 | RESTORED_GIT_STATUS=clean | LEGACY_TEST_PRESENT_AFTER_ROLLBACK=False | TASK_DOC_PRESENT_AFTER_ROLLBACK=False | baseline tests 1 pass 1 fail 0
+EXIT_STATUS=0
+RESULT=PASS
+RESTORED_BEHAVIOR_STATUS=current two-part Operator authentication baseline restored; legacy five-part compatibility test and task record removed from rollback copy
+
+SECURITY_AND_SCOPE
+NEW_PASSWORD_HASH_GENERATION_CHANGED=NO
+MERCHANT_PASSWORD_VERIFIER_CHANGED=NO
+DATABASE_SCHEMA_CHANGED=NO
+MIGRATION_EXECUTED=NO
+DEPLOYMENT_EXECUTED=NO
+PRODUCTION_MUTATED=NO
+RAW_CREDENTIALS_STORED=NO

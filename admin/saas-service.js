@@ -1,6 +1,6 @@
 const { markTrustedPublicMessage } = require("./public-error");
 const crypto = require("node:crypto");
-const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
+const { hashPassword, verifyPassword, verifyOperatorPassword, encryptSecret, decryptSecret } = require("./platform-store");
 const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
 const { createAppointmentService } = require("./appointment-service");
 const { createCustomerService } = require("./customer-service");
@@ -408,7 +408,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   async function operatorLogin(emailValue, password, context = {}) {
     if (operatorRepository) {
       const email = normalizeLogin(emailValue); const user = await operatorRepository.findOperatorByEmail(email);
-      if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
+      if (!user || user.status !== "active" || !verifyOperatorPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
       const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
       await operatorRepository.createSession({id:sessionId,operator_id:user.id,token_hash:sha256(token),expires_at:expiresAt.toISOString()});
       await operatorRepository.audit({id:id(),tenant_id:null,workspace_id:null,actor_type:"operator",actor_id:user.id,action:"operator.login",resource_type:"operator_session",resource_id:sessionId,request_id:context.requestId||id(),metadata:{ip:context.ipAddress||null}});
@@ -416,7 +416,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     }
     await ensureOperatorFromEnv();
     const email = normalizeLogin(emailValue); const user = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
-    if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
+    if (!user || user.status !== "active" || !verifyOperatorPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
     const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
     await db.transaction(async tx => { await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)",[sessionId,user.id,sha256(token),expiresAt]); await audit(tx,{actorType:"operator",actorId:user.id,requestId:context.requestId},"operator.login","operator_session",sessionId,{ip:context.ipAddress||null}); });
     return {token,expiresAt,user:{userId:user.id,email:user.email,name:user.display_name,role:user.role}};

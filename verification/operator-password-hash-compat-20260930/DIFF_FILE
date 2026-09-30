@@ -1,0 +1,236 @@
+NORMALIZED_DISPLAY_DIFF (trailing whitespace removed; use ROLLBACK.sh for restoration)
+diff --git a/admin/platform-store.js b/admin/platform-store.js
+index 42a507f..9ff41fc 100644
+--- a/admin/platform-store.js
++++ b/admin/platform-store.js
+@@ -5,6 +5,10 @@ const crypto = require("crypto");
+ const STATE_PATH = process.env.ATELIER_STATE_PATH ? path.resolve(process.env.ATELIER_STATE_PATH) : path.join(__dirname, "saas-state.json");
+ const MASTER_KEY_PATH = process.env.ATELIER_MASTER_KEY_PATH ? path.resolve(process.env.ATELIER_MASTER_KEY_PATH) : path.join(__dirname, ".platform-master-key");
+
++// Existing Operator records may use this fixed legacy format. New hashes remain on hashPassword().
++const LEGACY_OPERATOR_SCRYPT = Object.freeze({ N: 16384, r: 8, p: 1, saltBytes: 16, derivedKeyBytes: 32, maxmem: 64 * 1024 * 1024 });
++const LEGACY_OPERATOR_HASH_PATTERN = /^\$scrypt\$N=16384,r=8,p=1\$([A-Za-z0-9_-]{22})\$([A-Za-z0-9_-]{43})$/;
++
+ const PROVIDER_PRESETS = [
+   { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat", protocol: "openai", region: "中国大陆" },
+   { id: "qwen", name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", protocol: "openai", region: "中国大陆" },
+@@ -143,6 +147,56 @@ function verifyPassword(password, stored) {
+   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+ }
+
++function decodeCanonicalBase64(value, encoding, expectedBytes) {
++  try {
++    const decoded = Buffer.from(value, encoding);
++    if (decoded.length !== expectedBytes) return null;
++    if (decoded.toString(encoding) !== value) return null;
++    return decoded;
++  } catch {
++    return null;
++  }
++}
++
++function verifyCurrentOperatorPassword(password, stored) {
++  const parts = String(stored || "").split(".");
++  if (parts.length !== 2) return false;
++  const salt = decodeCanonicalBase64(parts[0], "base64", 16);
++  const expected = decodeCanonicalBase64(parts[1], "base64", 64);
++  if (!salt || !expected) return false;
++  try {
++    const actual = crypto.scryptSync(String(password), salt, expected.length);
++    return crypto.timingSafeEqual(expected, actual);
++  } catch {
++    return false;
++  }
++}
++
++function verifyLegacyOperatorPassword(password, stored) {
++  const match = LEGACY_OPERATOR_HASH_PATTERN.exec(String(stored || ""));
++  if (!match) return false;
++  const salt = decodeCanonicalBase64(match[1], "base64url", LEGACY_OPERATOR_SCRYPT.saltBytes);
++  const expected = decodeCanonicalBase64(match[2], "base64url", LEGACY_OPERATOR_SCRYPT.derivedKeyBytes);
++  if (!salt || !expected) return false;
++  try {
++    const actual = crypto.scryptSync(String(password), salt, expected.length, {
++      N: LEGACY_OPERATOR_SCRYPT.N,
++      r: LEGACY_OPERATOR_SCRYPT.r,
++      p: LEGACY_OPERATOR_SCRYPT.p,
++      maxmem: LEGACY_OPERATOR_SCRYPT.maxmem
++    });
++    return crypto.timingSafeEqual(expected, actual);
++  } catch {
++    return false;
++  }
++}
++
++function verifyOperatorPassword(password, stored) {
++  const value = String(stored || "");
++  if (value.startsWith("$scrypt$")) return verifyLegacyOperatorPassword(password, value);
++  return verifyCurrentOperatorPassword(password, value);
++}
++
+ function appendAudit(state, event) {
+   state.auditEvents.unshift({ id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...event });
+   state.auditEvents = state.auditEvents.slice(0, 2000);
+@@ -167,6 +221,7 @@ module.exports = {
+   decryptSecret,
+   hashPassword,
+   verifyPassword,
++  verifyOperatorPassword,
+   appendAudit,
+   publicConnection,
+   findScopedPolicy
+diff --git a/admin/saas-service.js b/admin/saas-service.js
+index feb8f71..4960366 100644
+--- a/admin/saas-service.js
++++ b/admin/saas-service.js
+@@ -1,6 +1,6 @@
+ const { markTrustedPublicMessage } = require("./public-error");
+ const crypto = require("node:crypto");
+-const { hashPassword, verifyPassword, encryptSecret, decryptSecret } = require("./platform-store");
++const { hashPassword, verifyPassword, verifyOperatorPassword, encryptSecret, decryptSecret } = require("./platform-store");
+ const { createWorkspaceConfig, listBusinessTemplates, applyBusinessTemplate } = require("./workspace-templates");
+ const { createAppointmentService } = require("./appointment-service");
+ const { createCustomerService } = require("./customer-service");
+@@ -408,7 +408,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+   async function operatorLogin(emailValue, password, context = {}) {
+     if (operatorRepository) {
+       const email = normalizeLogin(emailValue); const user = await operatorRepository.findOperatorByEmail(email);
+-      if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
++      if (!user || user.status !== "active" || !verifyOperatorPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
+       const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
+       await operatorRepository.createSession({id:sessionId,operator_id:user.id,token_hash:sha256(token),expires_at:expiresAt.toISOString()});
+       await operatorRepository.audit({id:id(),tenant_id:null,workspace_id:null,actor_type:"operator",actor_id:user.id,action:"operator.login",resource_type:"operator_session",resource_id:sessionId,request_id:context.requestId||id(),metadata:{ip:context.ipAddress||null}});
+@@ -416,7 +416,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
+     }
+     await ensureOperatorFromEnv();
+     const email = normalizeLogin(emailValue); const user = (await db.query("select * from operator_users where email=$1", [email])).rows[0];
+-    if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
++    if (!user || user.status !== "active" || !verifyOperatorPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
+     const token = crypto.randomBytes(32).toString("base64url"); const expiresAt = addHours(new Date(), 8); const sessionId = id();
+     await db.transaction(async tx => { await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)",[sessionId,user.id,sha256(token),expiresAt]); await audit(tx,{actorType:"operator",actorId:user.id,requestId:context.requestId},"operator.login","operator_session",sessionId,{ip:context.ipAddress||null}); });
+     return {token,expiresAt,user:{userId:user.id,email:user.email,name:user.display_name,role:user.role}};
+diff --git a/admin/test/operator-password-compat.test.js b/admin/test/operator-password-compat.test.js
+new file mode 100644
+index 0000000..5ced02c
+--- /dev/null
++++ b/admin/test/operator-password-compat.test.js
+@@ -0,0 +1,81 @@
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const crypto = require("node:crypto");
++const { hashPassword, verifyPassword, verifyOperatorPassword } = require("../platform-store");
++const { createSaasService } = require("../saas-service");
++
++function legacyOperatorHash(password, overrides = {}) {
++  const salt = overrides.salt || Buffer.from("00112233445566778899aabbccddeeff", "hex");
++  const params = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024, ...(overrides.params || {}) };
++  const derivedKey = crypto.scryptSync(String(password), salt, overrides.derivedKeyBytes || 32, params);
++  return `$scrypt$N=${params.N},r=${params.r},p=${params.p}$${salt.toString("base64url")}$${derivedKey.toString("base64url")}`;
++}
++
++test("operator password verifier preserves the current two-part format", () => {
++  const stored = hashPassword("current-operator-password");
++  assert.equal(verifyOperatorPassword("current-operator-password", stored), true);
++  assert.equal(verifyOperatorPassword("wrong-password", stored), false);
++  assert.equal(verifyPassword("current-operator-password", stored), true);
++});
++
++test("operator password verifier accepts the fixed legacy five-part format", () => {
++  const stored = legacyOperatorHash("legacy-operator-password");
++  assert.equal(verifyOperatorPassword("legacy-operator-password", stored), true);
++  assert.equal(verifyOperatorPassword("wrong-password", stored), false);
++  assert.equal(verifyPassword("legacy-operator-password", stored), false);
++});
++
++test("operator password verifier rejects non-canonical or unsupported formats", () => {
++  const valid = legacyOperatorHash("legacy-operator-password");
++  const current = hashPassword("current-operator-password");
++  const [currentSalt, currentHash] = current.split(".");
++  const malformed = [
++    "",
++    "salt.hash.extra",
++    "not-a-password-hash",
++    `${currentSalt.slice(0, -2)}.${currentHash}`,
++    `${currentSalt}.${currentHash.slice(0, -2)}`,
++    `${currentSalt.replace(/=$/, "A")}.${currentHash}`,
++    valid.replace("N=16384", "N=32768"),
++    valid.replace("r=8", "r=4"),
++    valid.replace("p=1", "p=2"),
++    valid.replace(/\$[A-Za-z0-9_-]{22}\$/, "$short$"),
++    `${valid}x`,
++    valid.replace(/.$/, "="),
++    "$scrypt$N=16384,r=8,p=1$______________________$___________________________________________"
++  ];
++  for (const stored of malformed) assert.equal(verifyOperatorPassword("legacy-operator-password", stored), false, stored);
++});
++
++test("operator service uses legacy compatibility only for operator credentials", async () => {
++  const sessions = [];
++  const audits = [];
++  const operatorRepository = {
++    async findOperatorByEmail(email) {
++      return {
++        id: "operator-legacy",
++        email,
++        display_name: "Legacy Operator",
++        password_hash: legacyOperatorHash("legacy-operator-password"),
++        role: "owner",
++        status: "active"
++      };
++    },
++    async createSession(session) { sessions.push(session); },
++    async audit(event) { audits.push(event); }
++  };
++  const service = createSaasService({ db: {}, operatorRepository });
++
++  const result = await service.operatorLogin("operator@example.com", "legacy-operator-password", { requestId: "compat-test" });
++  assert.equal(result.user.role, "owner");
++  assert.equal(sessions.length, 1);
++  assert.equal(audits.length, 1);
++  assert.equal(audits[0].action, "operator.login");
++
++  await assert.rejects(
++    service.operatorLogin("operator@example.com", "wrong-password", { requestId: "compat-test-wrong" }),
++    error => error?.status === 401 && error?.code === "OPS_INVALID_CREDENTIALS"
++  );
++  assert.equal(sessions.length, 1);
++  assert.equal(audits.length, 1);
++});
+diff --git a/docs/tasks/operator-password-hash-compat-20260930.md b/docs/tasks/operator-password-hash-compat-20260930.md
+new file mode 100644
+index 0000000..dd534b9
+--- /dev/null
++++ b/docs/tasks/operator-password-hash-compat-20260930.md
+@@ -0,0 +1,32 @@
++# Operator password hash compatibility
++
++STATUS=LOCAL_VALIDATION_PASS
++BRANCH=codex/operator-hash-compat
++BASE_COMMIT=a0633a604c2a4df53b38266249b2c27cdbaf519e
++
++## Objective
++
++Allow the Operator authentication path to verify the fixed historical five-part scrypt format while preserving the existing two-part password format and Merchant authentication behavior.
++
++## Scope
++
++- `admin/platform-store.js`: add a strictly bounded Operator-only legacy verifier.
++- `admin/saas-service.js`: use the Operator-specific verifier for `operator_users` authentication.
++- `admin/test/operator-password-compat.test.js`: verify both accepted formats, malformed-input rejection, wrong-password rejection, service wiring, and Merchant isolation.
++
++## Compatibility contract
++
++The existing generated format remains `base64(salt16).base64(scrypt64)`. The Operator compatibility path additionally accepts only `$scrypt$N=16384,r=8,p=1$<base64url-salt16>$<base64url-scrypt32>`. Parameters and decoded lengths are fixed, encodings must be canonical, comparisons use `timingSafeEqual`, and unrecognized formats fail closed.
++
++## Verification
++
++- Focused Operator compatibility and service/repository tests: PASS, 6/6.
++- Existing `merchant-http.test.js`: PASS, 6/6.
++- Full Admin suite in serial mode: PASS, 409 passed / 0 failed / 4 skipped.
++- Syntax checks and `git diff --check`: PASS.
++
++The default parallel full-suite run encountered a Windows `VirtualAlloc` resource failure in `merchant-http.test.js`; that test passed alone, and the full suite passed with `--test-concurrency=1`.
++
++## Runtime state
++
++No Staging or Production deployment, database write, password reset, session revocation, migration, or configuration change was performed. Production acceptance remains a later, separately authorized task.
