@@ -14,9 +14,9 @@ MODULE=Production
 SEVERITY=HIGH
 STATUS=OPEN
 DESCRIPTION=Production Function API URL, access domain, Supabase URL, public Ops ingress, same-origin behavior, and function custom-domain support remain unverified.
-EVIDENCE=CURRENT_STATE.md production and domain records; production runbook requires separate B1/B2 gates.
-NEXT_SAFE_ACTION=Obtain an approved read-only platform verification path and record route ownership without mutating production.
-BLOCKS=Native route decision and full rewrite readiness.
+EVIDENCE=CURRENT_STATE.md production and domain records; docs/runbooks/production-evidence-gates.md records the 2026-09-30 supplied read-only evidence snapshot and unresolved route/runtime/rollback/backup bindings.
+NEXT_SAFE_ACTION=Obtain authoritative read-only evidence for the actual Meoo deployment target, separate SPA and API route ownership, effective runtime configuration, target-specific rollback, and restore-verified backup.
+BLOCKS=Production deployment and migration authorization.
 
 ## ISSUE-AUTH-001
 MODULE=Merchant Auth

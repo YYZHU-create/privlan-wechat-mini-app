@@ -202,7 +202,10 @@ test("current runbooks distinguish liveness, authenticated readiness, and deploy
   const deployment = fs.readFileSync(path.join(ROOT, "docs/runbooks/production-deployment.md"), "utf8");
   const rollback = fs.readFileSync(path.join(ROOT, "docs/runbooks/production-rollback.md"), "utf8");
   const inputs = fs.readFileSync(path.join(ROOT, "docs/runbooks/production-inputs.md"), "utf8");
-  assert.match(deployment, /B1 — image deployment/);
+  assert.match(deployment, /B1 — deploy to a verified target/);
+  assert.match(deployment, /\*\*Static Web release:\*\*/);
+  assert.match(deployment, /\*\*HTTP server\/image:\*\*/);
+  assert.match(deployment, /\*\*Edge Function:\*\*/);
   assert.match(deployment, /B2 — public `\/ops\/` cutover/);
   assert.match(deployment, /authenticated `GET \/ops\/v1\/health`/);
   assert.match(deployment, /Node\.js 24/);
@@ -210,5 +213,13 @@ test("current runbooks distinguish liveness, authenticated readiness, and deploy
   assert.match(deployment, /migration history checker/i);
   assert.match(deployment, /FULL_SCHEMA_COMPATIBILITY=NOT_VERIFIED/);
   assert.doesNotMatch(deployment, /SCHEMA_COMPATIBILITY=PASS/);
-  for (const name of ["DEDICATED_PRODUCTION_MEOO_PROJECT_ID", "CURRENT_PRODUCTION_IMAGE_DIGEST", "ROLLBACK_ROUTE_TARGET"]) assert.match(inputs, new RegExp(name));
+  for (const name of [
+    "DEDICATED_PRODUCTION_MEOO_PROJECT_ID",
+    "PRODUCTION_SERVICE_ID",
+    "CURRENT_PRODUCTION_RELEASE_IDENTITY",
+    "APPROVED_ROLLBACK_TARGET",
+  ]) assert.match(inputs, new RegExp(name));
+  for (const name of ["CURRENT_SPA_ROUTE_OWNER", "TARGET_SPA_ROUTE_OWNER", "CURRENT_OPS_API_UPSTREAM_OWNER", "TARGET_OPS_API_UPSTREAM_OWNER"]) {
+    assert.match(rollback, new RegExp(name));
+  }
 });

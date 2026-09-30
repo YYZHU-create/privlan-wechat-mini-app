@@ -20,9 +20,11 @@ PRODUCTION_SUPABASE_URL=NOT_VERIFIED
 PRODUCTION_OPS_GATEWAY_PUBLIC_INGRESS=NOT_VERIFIED
 STATIC_FUNCTION_SAME_ORIGIN=NOT_VERIFIED
 FUNCTION_CUSTOM_DOMAIN_SUPPORTED=NOT_VERIFIED
-PRODUCTION_READINESS=BLOCKED
+PRODUCTION_EVIDENCE_LEDGER=docs/runbooks/production-evidence-gates.md
+PRODUCTION_EVIDENCE_AS_OF=2026-09-30
+PRODUCTION_READINESS=GATES_NOT_CLEARED
 STATUS=BLOCKED
-EVIDENCE=Latest migration input; no production mutation performed.
+EVIDENCE=2026-09-30 user-supplied read-only evidence summary is recorded in the ledger; facts were not independently reacquired during the documentation update. No production mutation performed.
 
 ## STAGING
 STAGING_PROJECT_ID=asmhysidbg5g
