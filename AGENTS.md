@@ -31,6 +31,8 @@ Read-only work, explicitly local-only experiments, failed or inconclusive change
 
 For a Meoo release, record the exact source commit SHA and the build-context/artifact digest. The source commit must be verifiable from a GitHub remote ref, and the build input must identify that same source commit. Deploy the candidate to Staging and complete the applicable acceptance before promoting it to Production. Prefer promoting the Staging-accepted artifact itself; if a new artifact is built, record its identity and repeat the required acceptance. A successful application deployment does not establish that a database migration ran; schema changes remain versioned in repository migrations and use the authorized migration procedure.
 
+For future Meoo releases, follow `docs/runbooks/release-provenance.md`: capture the frozen build-context manifest before submission, then retain the exact deployment invocation, observed Release record, and runtime acceptance as separate evidence. A local receipt does not establish a platform-internal Release-to-artifact binding when Meoo does not expose one.
+
 ## Meoo Documentation Evidence
 
 Before Meoo platform integration, connection, deployment, or API work, review the relevant current official documentation. Separate what is `DOCUMENTED`, `PROJECT IMPLEMENTED`, and `RUNTIME VERIFIED`; documentation alone does not prove project configuration or live runtime behavior. Cite the relevant official documentation in findings or implementation notes.
