@@ -12,8 +12,16 @@ Staging uses a separate project and URL and must not be treated as Production ev
 
 ## Release gates
 
-B1 image deployment and B2 public `/ops/` cutover are separately authorized phases. Production rollback restores approved image/route state and does not auto-run inverse database migrations.
+B1 deployment to the verified target mode and B2 public `/ops/` cutover are separately authorized phases. Production rollback restores an approved target/route state and does not auto-run inverse database migrations.
 
 ## Revalidation rule
 
 Historical URLs, ports, release SHAs, image digests, route owners, runtime values, and database identities are evidence only and require current read-only verification before operational use.
+
+## Meoo deployment-unit evidence and current gate
+
+The current Meoo evidence ledger is [production-evidence-gates.md](../../runbooks/production-evidence-gates.md). It separates Meoo's documented deployment modes from the deployment object actually bound to this Production project. Meoo documentation describes static Web releases and HTTP server/image deployments; Edge Functions are managed as separate function objects. This does not prove which mode or upstream currently serves this project's public paths.
+
+Route evidence is recorded by layer: `/ops/` is an SPA/client route, `/ops/v1/*` is an API ingress, and a direct Edge Function URL is a separate ingress. Different request URLs or matching request-ID/audit shapes are behavioral observations, not proof that different handlers or services own the requests. The current `/ops/v1/*` upstream and source identity remain `NOT_VERIFIED`.
+
+`GATES_NOT_CLEARED` is the current Production readiness state in the evidence snapshot. Release-object identity, effective runtime configuration, route ownership, an approved target-specific rollback, and a restore-verified backup remain open. A logical snapshot is a comparison baseline, not a verified backup. No deployment or migration is authorized by this documentation update.
