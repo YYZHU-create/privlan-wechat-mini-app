@@ -18,6 +18,9 @@ function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail
       merchant.status !== "active" || operator.status !== "active" || operator.role !== "super_admin") {
     reject("AUTH_MIGRATION_BUSINESS_IDENTITIES_INVALID");
   }
+  if (operator.email?.trim().toLowerCase() !== "ops-admin@localhost") {
+    reject("AUTH_MIGRATION_OPERATOR_IDENTIFIER_MISMATCH");
+  }
   if (merchant.login_identifier?.trim().toLowerCase() !== targetEmail.trim().toLowerCase()) {
     reject("AUTH_MIGRATION_MERCHANT_IDENTIFIER_MISMATCH");
   }
