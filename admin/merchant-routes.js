@@ -101,6 +101,22 @@ function registerMerchantRoutes(app, getService, options = {}) {
     } catch (error) { return failure(res, error, id); }
   });
 
+  app.post("/auth/register/complete", authLimit, async (req, res) => {
+    const id = requestId("register_complete");
+    try {
+      const service = await serviceOrThrow();
+      const authorization = String(req.get("authorization") || "");
+      const match = authorization.match(/^Bearer ([^\s]+)$/);
+      if (!match) throw new ServiceError(401, "EMAIL_VERIFICATION_REQUIRED", "请先完成邮箱验证");
+      if (typeof service.completeRegistration !== "function") throw new ServiceError(503, "MANAGED_PROVISIONING_NOT_CONFIGURED", "商户开通服务尚未配置");
+      const data = await service.completeRegistration({ accessToken: match[1],
+        storeName: req.body?.storeName, contactName: req.body?.contactName, template: req.body?.template },
+        { requestId: id, ipAddress: req.ip, userAgent: req.get("user-agent") });
+      if (data.alreadyProvisioned === true) return success(res, { alreadyProvisioned: true }, "商户已开通，请登录", 200, id);
+      return success(res, { user: data.user, workspace: data.workspace, subscription: data.subscription }, "商户已开通，请登录", 201, id);
+    } catch (error) { return failure(res, error, id); }
+  });
+
   app.post("/auth/login", authLimit, async (req, res) => {
     const id = requestId("login");
     try {

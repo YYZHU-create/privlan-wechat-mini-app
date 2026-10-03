@@ -102,11 +102,19 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
         throw new ServiceError(400, "REGISTRATION_REJECTED", "注册申请未通过校验");
       }
     }
+    return provisionMerchant({ input, context, login, storeName, template, password });
+  }
+
+  async function provisionMerchant({ input, context, login, storeName, template, password, proof }) {
     return db.transaction(async tx => {
+      if (proof) {
+        const linked = await tx.query("select merchant_user_id from managed_auth_identity_links where project_id=$1 and provider_origin=$2 and surface='merchant' and provider_user_id=$3", [proof.projectId, proof.providerOrigin, proof.providerUserId]);
+        if (linked.rows.length) return { alreadyProvisioned: true };
+      }
       if ((await tx.query("select id from users where login_identifier=$1", [login])).rows.length) throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法注册");
       const tenantId = id(); const userId = id(); const workspaceId = id(); const storeId = id(); const now = new Date();
       await tx.query("insert into tenants(id,name,status) values($1,$2,'trial')", [tenantId, storeName]);
-      await tx.query("insert into users(id,login_identifier,password_hash,display_name) values($1,$2,$3,$4)", [userId, login, hashPassword(password), String(input.contactName || "").trim() || null]);
+      await tx.query("insert into users(id,login_identifier,password_hash,display_name) values($1,$2,$3,$4)", [userId, login, proof ? "!managed-auth" : hashPassword(password), String(input.contactName || "").trim() || null]);
       await tx.query("insert into workspaces(id,tenant_id,name,plan_id) values($1,$2,$3,'TRIAL')", [workspaceId, tenantId, storeName]);
       const publicStoreId = `store_public_${crypto.randomBytes(16).toString("hex")}`;
       await tx.query("insert into stores(id,tenant_id,workspace_id,name,channel_mode,status,public_store_id) values($1,$2,$3,$4,'shared','draft',$5)", [storeId, tenantId, workspaceId, storeName, publicStoreId]);
@@ -116,10 +124,36 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       await tx.query("insert into subscriptions(id,tenant_id,workspace_id,plan_id,status,source,metadata) values($1,$2,$3,'TRIAL','inactive','registration',$4::jsonb)", [subscriptionId, tenantId, workspaceId, json({ trialUsed: false })]);
       await appointmentService.ensureDefaults(tx, { tenantId, workspaceId, storeId }, 60);
       await customerService.ensureDefaults(tx, { tenantId, workspaceId, storeId });
-      const session = await issueSession(tx, { userId, workspaceId, ipAddress: context.ipAddress, userAgent: context.userAgent });
+      if (proof) await tx.query("insert into managed_auth_identity_links(project_id,provider_origin,surface,provider_user_id,merchant_user_id) values($1,$2,'merchant',$3,$4)", [proof.projectId, proof.providerOrigin, proof.providerUserId, userId]);
+      const session = proof ? null : await issueSession(tx, { userId, workspaceId, ipAddress: context.ipAddress, userAgent: context.userAgent });
       await audit(tx, { tenantId, workspaceId, actorType: "merchant", actorId: userId, requestId: context.requestId }, "workspace.register", "workspace", workspaceId, { template });
       return { session, user: { id: userId, login, displayName: String(input.contactName || "") }, workspace: { id: workspaceId, tenantId, storeId, publicStoreId, name: storeName }, subscription: { id: subscriptionId, planId: "TRIAL", status: "inactive", expiresAt: null } };
     });
+  }
+
+  async function completeRegistration(input = {}, context = {}) {
+    if (!managedAuth || typeof managedAuth.verifyRegistration !== "function" || db.kind === "meoo") {
+      throw new ServiceError(503, "MANAGED_PROVISIONING_NOT_CONFIGURED", "商户开通服务尚未配置");
+    }
+    const storeName = String(input.storeName || "").trim();
+    if (storeName.length < 2 || storeName.length > 64) throw new ServiceError(400, "INVALID_STORE_NAME", "店铺名称长度需为 2 至 64 位");
+    const template = ["retail", "service", "restaurant", "education", "studio", "blank"].includes(input.template) ? input.template : "retail";
+    let proof;
+    try { proof = await managedAuth.verifyRegistration(input.accessToken); }
+    catch (error) {
+      if (error?.code === "MANAGED_AUTH_PROVIDER_UNAVAILABLE") throw new ServiceError(503, "AUTH_PROVIDER_UNAVAILABLE", "认证服务暂时不可用");
+      throw new ServiceError(401, "EMAIL_VERIFICATION_REQUIRED", "请先完成邮箱验证");
+    }
+    if (proof?.emailVerified !== true || !proof.projectId || !/^https:\/\/[A-Za-z0-9.-]+(?::[0-9]+)?$/.test(proof.providerOrigin || "") ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proof.providerUserId || "") ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(proof.email || "") || proof.email.length > 64) {
+      throw new ServiceError(401, "INVALID_AUTH_IDENTITY", "认证身份尚未确认");
+    }
+    try { return await provisionMerchant({ input, context, login: normalizeLogin(proof.email), storeName, template, proof }); }
+    catch (error) {
+      if (error?.code === "23505") throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法开通");
+      throw error;
+    }
   }
 
   async function login(input, context = {}) {
@@ -539,7 +573,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   const operatorLaunchService = createOperatorLaunchService({ db, audit, meooRepository: operatorRepository });
   const marketingService = createMarketingService({ db, audit, meooRepository: meooLaunchRepository });
   const workflowIntegrationService = createWorkflowIntegrationService({ db, workflowService, audit, mappings: workflowMappings, autoStart: process.env.NODE_ENV !== "test" && process.env.ATELIER_WORKFLOW_INTEGRATION_WORKER !== "0" });
-  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorAuthConfigured, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, validateOperatorScope, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
+  return { db, appointmentService, customerService, workflowService, workflowIntegrationService, membershipLaunchService, operatorLaunchService, marketingService, recordAudit: audit, register, completeRegistration, login, resolveSession, logout, changePassword, getProfile, updateProfile, setProfileAvatar, verifyCsrf, readConfig, writeConfig, applyBusinessTemplateToConfig, listBusinessTemplates, assertWritable, getSubscription, listAiConnections, createAiConnection, scopedAiConnection, rotateAiSecret, recordAiTest, deleteAiConnection, getAiPolicy, setAiPolicy, generateLicenses, redeemLicense, listLicenses, disableLicense, extendSubscription, ensureOperatorFromEnv, operatorAuthConfigured, operatorLogin, resolveOperatorSession, operatorLogout, operatorHealth, validateOperatorScope, opsBootstrap, ServiceError, encryptSecret, decryptSecret };
 }
 
 module.exports = { createSaasService, ServiceError, makeLicenseCode, maskLicense, sha256 };
