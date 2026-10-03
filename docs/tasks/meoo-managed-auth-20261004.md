@@ -2,7 +2,7 @@
 
 ## Accepted scope
 
-Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Original Operator business identifier: `ops-admin@localhost`; the user subsequently selected `516951336@qq.com` for the new Operator login. Merchant identifier also remains `516951336@qq.com`. One provider subject may have two explicit surface-specific links, preserving separate business accounts and permissions. The user wants to retain an existing password; which original password to use if the two differ is pending. Preserve the original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
+Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Original Operator business identifier: `ops-admin@localhost`; the user subsequently selected `516951336@qq.com` for the new Operator login. Merchant identifier also remains `516951336@qq.com`. One provider subject may have two explicit surface-specific links, preserving separate business accounts and permissions. The user confirmed that both original passwords are the same and selected retaining this password. Preserve the original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
 
 ## Current implementation milestone
 
@@ -25,7 +25,7 @@ Baseline operator compatibility test: 4/4 PASS. Managed-auth and mapping focused
 
 ## Next incomplete work
 
-1. Await the selected original password and confirmation of the password-preserving provisioning procedure. Official Supabase migration documentation supports bcrypt/Argon2 hash imports; existing project code uses scrypt. Direct import of the existing formats is not established. Proposed procedure: local hidden entry of the selected original password, verify against its original account, submit the same password to provider. Both privileged identity links require independent authorization checks, not merely merchant password proof. No such account operation has been executed.
+1. The shared original password choice is confirmed. Await local protected input at actual provisioning time. Official Supabase migration documentation supports bcrypt/Argon2 hash imports; existing project code uses scrypt. Direct import of the existing formats is not established. Proposed procedure: local hidden entry of the selected original password, verify against its original account, submit the same password to provider. Both privileged identity links require independent authorization checks, not merely merchant password proof. No such account operation has been executed.
 2. Identity mapping preparation implemented: migration 017 adds only a separate mapping table, including provider origin/project/surface uniqueness and original business foreign keys. Native and Meoo read repositories retrieve explicit identities and omit password columns. Local synthetic PostgreSQL tests prove mismatched-surface/duplicate/dangling-link rejection and denied anon/authenticated read grants; no remote migration has run.
 3. Wire both login/session/logout/password and merchant registration flows to the provider with HttpOnly session cookies, refresh/revocation, CSRF, existing tenant scopes and explicit operator roles. Handle pending email confirmation without creating duplicate PRIVLAN workspaces.
 4. User enters passwords only in local protected input or provider UI. No passwords or raw hash values enter task records.
@@ -43,3 +43,9 @@ Baseline operator compatibility test: 4/4 PASS. Managed-auth and mapping focused
 ## Recovery
 
 This milestone adds an unused adapter and tests only. Existing runtime route behavior is unchanged. An isolated baseline checkout passes the original compatibility tests. Platform application rollback and database restore are not established by this source recovery check.
+
+## Shared-password preflight milestone
+
+The new managed-auth-migration-preflight module independently checks both original account passwords, active status, administrator role, merchant identifier and provider-account absence. It returns only an immutable identity plan, never the password/hash. Synthetic checks pass 20/20 together with provider and mapping tests. Actual account provisioning and HTTP route replacement remain incomplete. The user requires questions before ambiguous operations.
+
+Admin suite for this milestone: 454 tests, 450 passed, 0 failed, 4 skipped. Root-wide discovery also ran and produced 8 failures in tests/privlan-merchant-login due to missing generated fixture modules with malformed Windows file URLs; that broader test setup is not reported as passing and has not been changed. No remote account or database writes occurred.
