@@ -513,7 +513,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function ensureOperatorFromEnv() {
-    if (operatorRepository) return null;
+    if (managedAuth || operatorRepository) return null;
     const email = normalizeLogin(process.env.ATELIER_OPS_EMAIL || "ops-admin@localhost");
     const password = String(process.env.ATELIER_OPS_PASSWORD || "");
     if (!password) return null;

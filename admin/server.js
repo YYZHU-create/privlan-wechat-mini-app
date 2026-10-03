@@ -12,6 +12,7 @@ const platformStore = require("./platform-store");
 const { callOpenAiCompatible, normalizeBaseUrl } = require("./ai-gateway");
 const { createDatabaseFromEnv } = require("./database");
 const { createSaasService } = require("./saas-service");
+const { readManagedAuthConfig, createManagedAuthRuntime } = require("./managed-auth-runtime");
 const { createSupabaseAdapter, createMeooAuthRepository } = require("./meoo-supabase-adapter");
 const { createMeooAppointmentRepository } = require("./meoo-appointment-repository");
 const { createMeooCustomerRepository, createMeooAppointmentReadRepository } = require("./meoo-center-repositories");
@@ -39,6 +40,7 @@ if (require.main === module) {
 }
 validateProductionEnvironment(process.env);
 const DATABASE_BACKEND = validateDatabaseBackend(process.env);
+const MANAGED_AUTH_CONFIG = readManagedAuthConfig(process.env);
 
 const ROOT = path.resolve(process.env.PRIVLAN_ROOT || path.join(__dirname, ".."));
 const RUNTIME_IDENTITY = resolveRuntimeIdentity({ env: process.env, repoRoot: ROOT });
@@ -114,7 +116,13 @@ const MEDIA_STORAGE_VALIDATION = validateMediaStorageConfig(process.env);
 const mediaService = MEDIA_ASSET_V1_ENABLED && MEDIA_STORAGE_PROVIDER === "meoo" && DATABASE_BACKEND === "meoo"
   ? createMediaService({ provider: createMeooStorageProvider(), repository: createAssetRepository(), lifecycleMutationsEnabled: ASSET_LIFECYCLE_MUTATIONS_ENABLED, lifecycleCanaryConfig: ASSET_LIFECYCLE_CANARY_CONFIG, runtimeEnvironment: process.env.ATELIER_ENVIRONMENT, runtimeProjectId: process.env.MEOO_PROJECT_URL_ID, onEvent: (event, fields) => console.info(event, fields) })
   : null;
-const saasServicePromise = databasePromise.then(database => database ? createSaasService({
+const saasServicePromise = databasePromise.then(async database => {
+  if (!database) {
+    if (MANAGED_AUTH_CONFIG) throw new Error("MANAGED_AUTH_DATABASE_REQUIRED");
+    return null;
+  }
+  const managed = await createManagedAuthRuntime({ env: process.env, db: database });
+  return createSaasService({
   db: database,
   tagRepository: meooAdapter,
   appointmentRepository: meooAdapter ? createMeooAppointmentRepository({ adapter: meooAdapter }) : null,
@@ -125,8 +133,11 @@ const saasServicePromise = databasePromise.then(database => database ? createSaa
   meooLaunchRepository: meooAdapter ? createMeooLaunchV1Repository({ adapter: meooAdapter }) : null,
   authRepository: database?.authRepository || meooAuthRepository,
   configRepository: meooAdapter,
-  operatorRepository: meooOperatorRepository
-}) : null);
+  operatorRepository: meooOperatorRepository,
+  managedAuth: managed?.auth || null,
+  managedAuthRepository: managed?.repository || null
+  });
+});
 const getSaasService = () => saasServicePromise;
 
 app.disable("x-powered-by");
@@ -209,7 +220,7 @@ app.use("/v1", (req, res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/ops", express.static(path.join(__dirname, "ops-public")));
 app.use("/ops/v1", async (req, res, next) => {
-  if (!localHost && !process.env.ATELIER_OPS_PASSWORD) {
+  if (!localHost && !MANAGED_AUTH_CONFIG && !process.env.ATELIER_OPS_PASSWORD) {
     try {
       const service = await getSaasService();
       if (!service || !(await service.operatorAuthConfigured())) return res.status(503).json({ ok: false, code: "OPS_REMOTE_DISABLED", error: "远程运营后台未配置安全密码，已拒绝访问" });

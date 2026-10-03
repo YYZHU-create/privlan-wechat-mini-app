@@ -79,3 +79,21 @@ test('preflight never executes shell configuration', t => {
   fs.writeFileSync(path.join(f.root, '.runtime.env'), 'HOST=$(echo invalid)\n');
   assert.throws(() => preflight(f), /Unsupported/);
 });
+
+test('managed image preflight keeps migration guard and requires provider configuration rather than bootstrap passwords', t => {
+  const f = fixture(t);
+  f.env.ATELIER_AUTH_PROVIDER = 'supabase';
+  f.env.SUPABASE_ANON_KEY = 'synthetic-public';
+  delete f.env.ATELIER_OPS_EMAIL; delete f.env.ATELIER_OPS_PASSWORD;
+  const result = preflight(f);
+  assert.equal(result.autoMigrate, '0');
+  assert.equal(result.runtimeSecretInjection, 'NOT_VERIFIED');
+  delete f.env.SUPABASE_ANON_KEY;
+  assert.throws(() => preflight(f), /MANAGED_AUTH_PUBLIC_KEY_REQUIRED/);
+});
+
+test('service-role credential cannot be included in bundled image environment', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'), 'SUPABASE_SERVICE_ROLE_KEY=synthetic-only\n');
+  assert.throws(() => preflight(f), /must not be bundled/);
+});

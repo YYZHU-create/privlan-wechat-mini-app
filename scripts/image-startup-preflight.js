@@ -14,7 +14,7 @@ function readBundledEnvironment(root) {
     if (!match) throw new Error('Unsupported bundled environment syntax');
     const [, key, raw] = match;
     // Bundled configuration is an image input, not a secret delivery mechanism.
-    if (/SECRET|TOKEN|PASSWORD|PEPPER|MASTER_KEY|OPENID_HASH_KEY|DATABASE_URL|ATELIER_OPS_EMAIL/.test(key)) {
+    if (/SECRET|TOKEN|PASSWORD|PEPPER|MASTER_KEY|OPENID_HASH_KEY|DATABASE_URL|ATELIER_OPS_EMAIL|SERVICE_ROLE|PRIVATE_KEY|CREDENTIAL/.test(key)) {
       throw new Error('Sensitive configuration must not be bundled');
     }
     let value = raw.trim();
