@@ -4,6 +4,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const source = fs.readFileSync(path.resolve(__dirname, "../ops-public/app.js"), "utf8");
+const styles = fs.readFileSync(path.resolve(__dirname, "../ops-public/styles.css"), "utf8");
+
+test("operator body occupies the flexible shell row with or without a banner", () => {
+  assert.match(styles, /\.ops-shell\s*\{[^}]*grid-template-rows:64px auto minmax\(0,1fr\)/);
+  assert.match(styles, /\.ops-body\s*\{[^}]*grid-row:3(?:;|\s)/);
+  assert.match(styles, /\.notice-stack\s*\{[^}]*position:fixed/);
+});
 
 test("operator navigation exposes only PostgreSQL-backed SaaS pages", () => {
   for (const view of ["overview", "tenants", "plans", "licenses", "subscriptions", "audit", "system"]) {

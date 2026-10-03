@@ -53,7 +53,7 @@ input:hover,select:hover,textarea:hover { border-color:#a8ada3; }
 .icon-btn { width:var(--control); padding:0; }.text-btn { min-height:32px; border:0; background:transparent; color:var(--accent); }.text-btn:hover { background:var(--accent-soft); }
 .impersonation-banner { min-height:42px; display:flex; align-items:center; gap:9px; padding:7px 18px; background:#8e492f; color:#fff; font-size:12px; }
 .impersonation-banner span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.impersonation-banner button { min-height:28px; padding:0 10px; border:1px solid rgba(255,255,255,.45); border-radius:4px; background:transparent; color:#fff; cursor:pointer; }
-.ops-body { min-height:0; display:grid; grid-template-columns:220px minmax(0,1fr); }
+.ops-body { grid-row:3; min-height:0; display:grid; grid-template-columns:220px minmax(0,1fr); }
 .ops-sidebar { min-height:0; display:flex; flex-direction:column; padding:14px 10px; background:var(--nav); color:#aeb2aa; }
 .ops-sidebar nav { display:grid; gap:3px; }
 .ops-sidebar nav button { min-height:43px; display:flex; align-items:center; gap:11px; padding:0 12px; border:0; border-radius:5px; background:transparent; color:inherit; cursor:pointer; text-align:left; }
