@@ -999,7 +999,13 @@ createApp({
         const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: auth.login, password: auth.password, storeName: auth.storeName, contactName: auth.contactName, template: auth.template }) });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.message || result.error || "登录失败");
-        auth.password = ""; auth.session = result.data; auth.loading = false;
+        auth.password = ""; auth.loading = false;
+        if (auth.mode === "register" && result.data?.emailVerificationRequired === true) {
+          auth.session = null;
+          auth.notice = "请查收验证邮件，验证邮箱后再完成商户开通。";
+          return;
+        }
+        auth.session = result.data;
         await Promise.all([loadConfig(), loadPlatform(), loadSubscription(), loadProfile(), loadBusinessTemplates()]);
         if (currentView.value === "editor") await loadAppointmentServices();
         loadCart();
