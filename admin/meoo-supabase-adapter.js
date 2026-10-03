@@ -260,7 +260,17 @@ function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleK
   async function recordAudit(input) {
     await request("audit_events", "", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(input) });
   }
-  return { findUserByLogin, findMembership, getProfile, loadSession, createSession, revokeSession, recordAudit };
+  async function revokeUserSessions(userId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+      throw new SupabaseAdapterError("INVALID_USER_ID", "invalid business identity", 400);
+    }
+    const rows = await request("merchant_sessions", `?user_id=eq.${encodeURIComponent(userId)}&revoked_at=is.null&select=id`, {
+      method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ revoked_at: new Date().toISOString() })
+    });
+    if (!Array.isArray(rows)) throw new SupabaseAdapterError("DATABASE_UNAVAILABLE", "database request failed", 503);
+    for (const row of rows) revokedSessionIds.add(String(row.id));
+  }
+  return { findUserByLogin, findMembership, getProfile, loadSession, createSession, revokeSession, revokeUserSessions, recordAudit };
 }
 
 module.exports = { createSupabaseAdapter, createMeooAuthRepository, SupabaseAdapterError };

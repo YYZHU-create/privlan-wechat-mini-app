@@ -57,3 +57,7 @@ Both service login methods accept an injected managedAuth adapter, retain origin
 ## Provider session operations milestone
 
 The managed-auth adapter now implements provider refresh with original-business-identity revalidation, session-local sign-out, and current-password reauthentication before password changes. Temporary proof-session revocation is attempted on update success/rejection; cleanup failure is exposed separately from the password update outcome. These operations are not wired into HTTP cookies or enabled server runtime yet. Seven focused synthetic tests pass. Live account setup, registration, coordinated application logout/revocation and complete managed HTTP middleware remain required.
+
+## Managed password HTTP/service milestone
+
+Merchant password changes now use the injected managed provider and never read/write the original hash in managed mode. Native and Meoo business-session revocation paths preserve the authenticated original identity. If provider update completed but application revocation/audit failed, HTTP reports passwordChanged plus incomplete cleanup instead of claiming the update failed. Shared Operator-session invalidation remains required before cutover. Five focused tests include localhost HTTP behavior. Server activation and actual account operations remain pending.

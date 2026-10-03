@@ -146,8 +146,13 @@ function registerMerchantRoutes(app, getService, options = {}) {
       for (const key of ["userId", "tenantId", "workspaceId", "storeId"]) {
         if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) throw new ServiceError(400, "INVALID_PASSWORD_REQUEST", "修改密码请求包含不允许的字段");
       }
-      await service.changePassword(scope, req.body || {}, { requestId: id });
+      const changed = await service.changePassword(scope, req.body || {}, { requestId: id });
       clearSessionCookies(res);
+      if (changed?.passwordChanged && (changed.sessionsRevoked === false || changed.auditRecorded === false || changed.proofSessionRevoked === false)) {
+        return success(res, { passwordChanged: true, sessionsRevoked: changed.sessionsRevoked === true,
+          auditRecorded: changed.auditRecorded === true, proofSessionRevoked: changed.proofSessionRevoked === true },
+        "密码已更新，部分会话或审计收尾尚未完成，请联系管理员", 200, id);
+      }
       return success(res, null, "密码已更新，请重新登录", 200, id);
     } catch (error) { return failure(res, error, id); }
   });

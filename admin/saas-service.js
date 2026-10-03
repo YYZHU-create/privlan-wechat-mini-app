@@ -173,6 +173,41 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const newPassword = String(input.newPassword || "");
     if (!currentPassword) throw new ServiceError(400, "CURRENT_PASSWORD_REQUIRED", "请输入当前密码");
     if (newPassword.length < 8 || newPassword.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码至少 8 位");
+    if (managedAuth) {
+      if (newPassword === currentPassword) throw new ServiceError(400, "PASSWORD_REUSE_NOT_ALLOWED", "新密码不能与当前密码相同");
+      if (typeof managedAuth.changePassword !== "function" || (authRepository && typeof authRepository.revokeUserSessions !== "function")) {
+        throw new ServiceError(503, "MANAGED_PASSWORD_NOT_CONFIGURED", "密码服务尚未配置");
+      }
+      let changed;
+      try {
+        changed = await managedAuth.changePassword({ email: scope.user?.login, currentPassword, newPassword,
+          surface: "merchant", businessUserId: scope.userId });
+      } catch (error) {
+        if (error?.code === "MANAGED_AUTH_PROVIDER_UNAVAILABLE") throw new ServiceError(503, "AUTH_PROVIDER_UNAVAILABLE", "认证服务暂时不可用");
+        throw new ServiceError(400, "PASSWORD_CHANGE_REJECTED", "密码修改未通过认证校验");
+      }
+      if (changed?.passwordChanged !== true) throw new ServiceError(503, "PASSWORD_CHANGE_NOT_CONFIRMED", "密码修改结果尚未确认");
+      let sessionsRevoked = false;
+      let auditRecorded = false;
+      try {
+        if (authRepository) {
+          await authRepository.revokeUserSessions(scope.userId);
+          sessionsRevoked = true;
+          await authRepository.recordAudit({ id: id(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId,
+            actor_type: "merchant", actor_id: scope.userId, action: "merchant.password_changed", resource_type: "user",
+            resource_id: scope.userId, request_id: context.requestId || id(), metadata: { authentication: "supabase" } });
+          auditRecorded = true;
+        } else {
+          await db.transaction(async tx => {
+            await tx.query("update merchant_sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [scope.userId]);
+            await audit(tx, { tenantId: scope.tenantId, workspaceId: scope.workspaceId, actorType: "merchant", actorId: scope.userId, requestId: context.requestId }, "merchant.password_changed", "user", scope.userId, { authentication: "supabase" });
+          });
+          sessionsRevoked = true;
+          auditRecorded = true;
+        }
+      } catch { /* A completed provider update must not be reported as not executed. */ }
+      return { passwordChanged: true, sessionsRevoked, auditRecorded, proofSessionRevoked: changed.proofSessionRevoked === true };
+    }
     return db.transaction(async tx => {
       const user = (await tx.query("select id,password_hash,status from users where id=$1 for update", [scope.userId])).rows[0];
       if (!user || user.status !== "active") throw new ServiceError(401, "AUTH_REQUIRED", "请先登录");
