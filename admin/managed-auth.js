@@ -34,8 +34,8 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
     catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
     const user = response?.data?.user;
     if (response?.error || !user?.id) throw denied("MANAGED_AUTH_INVALID_SESSION");
-    const link = await resolveIdentityLink({ projectId, surface, providerUserId: user.id });
-    if (!link || link.projectId !== projectId || link.surface !== surface ||
+    const link = await resolveIdentityLink({ projectId, providerOrigin: url.origin, surface, providerUserId: user.id });
+    if (!link || link.projectId !== projectId || link.providerOrigin !== url.origin || link.surface !== surface ||
         link.providerUserId !== user.id || !link.businessUserId) {
       throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
     }

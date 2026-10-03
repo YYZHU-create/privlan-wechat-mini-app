@@ -2,7 +2,7 @@
 
 ## Accepted scope
 
-Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Operator identifier: `ops-admin@localhost`; merchant identifier: `516951336@qq.com`. Preserve the original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
+Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Original Operator business identifier: `ops-admin@localhost`; the user subsequently selected `516951336@qq.com` for the new Operator login. Merchant identifier also remains `516951336@qq.com`. One provider subject may have two explicit surface-specific links, preserving separate business accounts and permissions. The user wants to retain an existing password; which original password to use if the two differ is pending. Preserve the original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
 
 ## Current implementation milestone
 
@@ -21,12 +21,12 @@ In each project the exact operator and merchant have one active original busines
 
 ## Verification
 
-Baseline operator compatibility test: 4/4 PASS. New synthetic managed-auth tests: 9/9 PASS. Full admin suite: 443 tests, 439 PASS, 0 failures, 4 skipped. Syntax and whitespace checks PASS. Synthetic tests do not prove that the live provider accepts `ops-admin@localhost`.
+Baseline operator compatibility test: 4/4 PASS. Managed-auth and mapping focused tests: 14/14 PASS. Full admin suite after additive mapping: 448 tests, 444 PASS, 0 failures, 4 skipped. Syntax, whitespace and migration-manifest checks PASS. Synthetic local tests do not establish live account provisioning or login acceptance.
 
 ## Next incomplete work
 
-1. Verify provider acceptance/provisioning rules for the exact localhost identifier. Its mailbox cannot be used as an email-recovery channel; no substitute identifier is authorized.
-2. Add and locally verify additive provider-to-business identity mapping, native/PostgREST repositories, unique project/surface constraints and server-only access. Preserve business IDs; prevent email-only automatic linking.
+1. Await the selected original password and confirmation of the password-preserving provisioning procedure. Official Supabase migration documentation supports bcrypt/Argon2 hash imports; existing project code uses scrypt. Direct import of the existing formats is not established. Proposed procedure: local hidden entry of the selected original password, verify against its original account, submit the same password to provider. Both privileged identity links require independent authorization checks, not merely merchant password proof. No such account operation has been executed.
+2. Identity mapping preparation implemented: migration 017 adds only a separate mapping table, including provider origin/project/surface uniqueness and original business foreign keys. Native and Meoo read repositories retrieve explicit identities and omit password columns. Local synthetic PostgreSQL tests prove mismatched-surface/duplicate/dangling-link rejection and denied anon/authenticated read grants; no remote migration has run.
 3. Wire both login/session/logout/password and merchant registration flows to the provider with HttpOnly session cookies, refresh/revocation, CSRF, existing tenant scopes and explicit operator roles. Handle pending email confirmation without creating duplicate PRIVLAN workspaces.
 4. User enters passwords only in local protected input or provider UI. No passwords or raw hash values enter task records.
 5. Provision and associate the two provider identities through the reviewed target-specific procedure, then verify Staging fresh login, isolation, sessions and durable business preservation. Remove superseded password authentication after acceptance.
@@ -36,6 +36,8 @@ Baseline operator compatibility test: 4/4 PASS. New synthetic managed-auth tests
 
 - https://supabase.com/docs/reference/javascript/auth-getuser
 - https://supabase.com/docs/reference/javascript/auth-signinwithpassword
+- https://supabase.com/docs/guides/platform/migrating-to-supabase/auth0
+- https://supabase.com/docs/guides/database/postgres/row-level-security
 - https://docs.meoo.com/untitled-page-2
 
 ## Recovery

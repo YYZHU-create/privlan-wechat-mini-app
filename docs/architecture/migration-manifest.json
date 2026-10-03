@@ -80,7 +80,12 @@
       "version": "016_media_upload_attempt_journal",
       "file": "016_media_upload_attempt_journal.sql",
       "sha256": "ebd13e2b246b17b7bffcc2f292890bb4f3e392fe46fa07b23f1a9e8112306d58"
+    },
+    {
+      "version": "017_managed_auth_identity_links",
+      "file": "017_managed_auth_identity_links.sql",
+      "sha256": "1d9b6b01ee7b90a5fab303fc09791f0a861046703cfc271dee96601d74eec133"
     }
   ],
-  "digest": "e0d5bc236b5b2b6ff03594e7fd0afd0e65cbdba03a35404f8a18ae0fd9324f0e"
+  "digest": "1e17a640577eb728b5e36f0fff50a20bb172639a49bcae81cd563b9108ddfdb4"
 }

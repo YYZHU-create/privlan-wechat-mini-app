@@ -43,7 +43,7 @@ test("matching email never auto-links an unprovisioned identity", async () => {
   const { auth } = fixture({ resolveIdentityLink: async () => null });
   await assert.rejects(auth.resolve("synthetic-access", "merchant"), { code: "MANAGED_AUTH_IDENTITY_NOT_LINKED" });
 });
-for (const field of ["projectId", "surface", "providerUserId"]) {
+for (const field of ["projectId", "providerOrigin", "surface", "providerUserId"]) {
   test(`rejects mismatched identity ${field}`, async () => {
     const { auth } = fixture({ resolveIdentityLink: async input => ({ ...input, [field]: "other", businessUserId: "permanent-fixture" }) });
     await assert.rejects(auth.resolve("synthetic-access", "operator"), { code: "MANAGED_AUTH_IDENTITY_NOT_LINKED" });
