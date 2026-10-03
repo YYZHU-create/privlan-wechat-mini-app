@@ -161,7 +161,9 @@ test("Meoo Image Runtime scripts bind the application and exclude local secret c
   assert.match(start, /ATELIER_DB_BACKEND=.*meoo/);
   assert.match(start, /ATELIER_RELEASE_METADATA_PATH=.*runtime-build\.json/);
   assert.doesNotMatch(start, /release-sha|release-branch/);
-  assert.match(start, /unset DATABASE_URL/);
+  assert.doesNotMatch(start, /unset DATABASE_URL/);
+  assert.match(start, /if \[ -n "\$\{DATABASE_URL:-\}" \]; then[\s\S]*ATELIER_DB_BACKEND=native/);
+  assert.match(start, /export ATELIER_AUTO_MIGRATE=0[\s\S]*runtime-bootstrap\.js/);
   assert.match(start, /HOST=.*0\.0\.0\.0/);
   assert.match(start, /PORT=.*9000/);
   assert.match(dockerignore, /^\.env$/m);

@@ -33,6 +33,10 @@ const { RUNTIME_INSTANCE_IDENTITY } = require("./runtime-instance-identity");
 const { respondUnexpectedError } = require("./error-response");
 const { buildPreviewPackage, formatBytes } = require("./preview-package");
 
+require("./application-startup-policy").enforceApplicationMigrationPolicy();
+if (require.main === module) {
+  require("../scripts/runtime-bootstrap").prepareApplicationRuntime();
+}
 validateProductionEnvironment(process.env);
 const DATABASE_BACKEND = validateDatabaseBackend(process.env);
 

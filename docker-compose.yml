@@ -24,6 +24,9 @@ services:
       - "${ATELIER_PORT:-9000}:9000"
     environment:
       NODE_ENV: production
+      ATELIER_RUNTIME_CONFIG_PATH: /app/runtime-config/production.json
+      ATELIER_ENVIRONMENT: production
+      MEOO_PROJECT_URL_ID: g8o5cv1om41o
       PORT: 9000
       PRIVLAN_ADMIN_HOST: 0.0.0.0
       DATABASE_URL: postgresql://atelier_os:${POSTGRES_PASSWORD}@postgres:5432/atelier_os

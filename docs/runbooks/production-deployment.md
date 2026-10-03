@@ -23,7 +23,16 @@ Choose the checks by the verified deployment mode:
 - **HTTP server/image:** verify the project-bound service, immutable image/artifact identity, source/build identity, Node runtime contract (`>=22 <25`), port, and healthcheck path.
 - **Edge Function:** record the exact function name/version and source revision separately from the Web application release. A function listing does not prove that a same-origin `/ops/v1/*` route maps to that function.
 
-Use the committed migration manifest as a compatibility gate. Before any application startup or release, verify the effective `ATELIER_AUTO_MIGRATE=0` setting against the actual target runtime; a project-level variable-name listing is insufficient. The current Production evidence ledger leaves runtime identity, route ownership, and effective configuration `NOT_VERIFIED`, so the deployment gate remains `GATES_NOT_CLEARED`.
+Use the committed migration manifest as a compatibility gate. Ordinary application startup forces `ATELIER_AUTO_MIGRATE=0` after configuration loading and the database factory always uses `migrate: false`. Explicit migration commands are a separate authorized operation. A project-level variable-name listing is insufficient evidence of a running instance's effective state.
+
+The migration protection evidence has two phases, so an old release's inherited value does not create a circular prerequisite for deploying its replacement:
+
+1. **Before deployment:** verify the exact candidate, frozen target configuration and manifest, actual shell/Docker/direct application entrypoints, inherited/file overrides, and zero startup migration SQL in isolated tests. Confirm target database continuity and required schema compatibility. Keep recovery/backup and other applicable release gates intact.
+2. **After deployment:** verify the new runtime's source/config identity and sanitized startup evidence that migrations are disabled before database initialization, then perform health and authenticated acceptance. Report the previous runtime separately; do not describe candidate tests as observations of Production.
+
+Hosted starts require a validated target config. Packaged deployments provide `runtime-config.json`; Docker/Compose/CI may explicitly select `/app/runtime-config/production.json`. Target mismatch, missing hosted config, or simultaneous Meoo backend and native `DATABASE_URL` fail before database initialization. Startup preserves the configured URL and does not substitute another database.
+
+Compare migration history and structural compatibility separately. Production can retain 001–014 when Media V1/lifecycle/Canary are disabled and the candidate's enabled paths are proven compatible; record missing 015/016 rather than declaring the entire manifest matched. Enabling paths that depend on those migrations requires the separate migration gate.
 
 After an authorized B1 deployment, record the identity fields applicable to the verified deployment mode, then run liveness and authenticated readiness checks. A successful `/health` response alone is insufficient.
 

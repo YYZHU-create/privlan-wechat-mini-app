@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { enforceApplicationMigrationPolicy, validateApplicationDatabaseSelection } = require("./application-startup-policy");
 
 const MIGRATIONS_DIR = path.resolve(__dirname, "../platform/migrations");
 
@@ -90,7 +91,9 @@ async function createPortableTestDatabase(options = {}) {
 }
 
 async function createDatabaseFromEnv() {
-  if (process.env.DATABASE_URL) return createPostgresDatabase(process.env.DATABASE_URL, { migrate: process.env.ATELIER_AUTO_MIGRATE === "1" });
+  enforceApplicationMigrationPolicy();
+  validateApplicationDatabaseSelection();
+  if (process.env.DATABASE_URL) return createPostgresDatabase(process.env.DATABASE_URL, { migrate: false });
   if (String(process.env.ATELIER_DB_BACKEND || "native").toLowerCase() === "meoo") {
     const { createMeooAuthRepository } = require("./meoo-supabase-adapter");
     const authRepository = createMeooAuthRepository();

@@ -53,7 +53,7 @@ test("health is a liveness-only endpoint independent of PostgreSQL", async () =>
   const port = await freePort();
   const child = spawn(process.execPath, ["server.js"], {
     cwd: path.resolve(__dirname, ".."), windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NODE_ENV: "production", PORT: String(port), PRIVLAN_ADMIN_HOST: "127.0.0.1", DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:1/atelier", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 8).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "operator-password", ATELIER_APPOINTMENT_GATEWAY_TOKEN: "g".repeat(32), ATELIER_OPENID_HASH_KEY: "o".repeat(32), PRIVLAN_DISABLE_GIT_SYNC: "1" }
+    env: { ...process.env, NODE_ENV: "production", ATELIER_RUNTIME_CONFIG_PATH: path.join(ROOT, "runtime-config/production.json"), ATELIER_ENVIRONMENT: "production", MEOO_PROJECT_URL_ID: "g8o5cv1om41o", ATELIER_DB_BACKEND: "native", PORT: String(port), PRIVLAN_ADMIN_HOST: "127.0.0.1", DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:1/atelier", ATELIER_LICENSE_PEPPER: "p".repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32, 8).toString("base64"), ATELIER_OPS_EMAIL: "ops@example.com", ATELIER_OPS_PASSWORD: "operator-password", ATELIER_APPOINTMENT_GATEWAY_TOKEN: "g".repeat(32), ATELIER_OPENID_HASH_KEY: "o".repeat(32), PRIVLAN_DISABLE_GIT_SYNC: "1" }
   });
   try {
     let response;

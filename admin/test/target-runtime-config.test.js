@@ -143,7 +143,8 @@ test("image entrypoint uses validated bootstrap before starting the server", () 
   const dockerfile = fs.readFileSync(path.resolve(__dirname, "../../Dockerfile"), "utf8");
   assert.match(dockerfile, /CMD\s+\["node",\s*"\/app\/scripts\/runtime-bootstrap\.js"\]/);
   const bootstrapSource = fs.readFileSync(path.resolve(__dirname, "../../scripts/runtime-bootstrap.js"), "utf8");
-  assert.match(bootstrapSource, /bootstrapRuntimeConfig\(\{ root \}\);[\s\S]*require\(path\.join\(root, "admin", "server\.js"\)\)/);
+  assert.match(bootstrapSource, /prepareApplicationRuntime\(\{ root \}\);[\s\S]*require\(path\.join\(root, "admin", "server\.js"\)\)/);
+  assert.match(bootstrapSource, /const result = bootstrapRuntimeConfig\([\s\S]*validateApplicationTarget\(result.config, env\)/);
 });
 
 test("config is authoritative but conflicting process media values fail closed and unrelated secrets stay intact", () => {

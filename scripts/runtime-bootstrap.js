@@ -3,8 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { loadRuntimeConfig } = require("../admin/target-runtime-config");
 const { canaryConfigDigest } = require("../admin/asset-lifecycle-permit");
+const { enforceApplicationMigrationPolicy, validateApplicationTarget, validateApplicationDatabaseSelection } = require("../admin/application-startup-policy");
 
 function bootstrapRuntimeConfig({ root = path.resolve(__dirname, ".."), env = process.env, log = console.log } = {}) {
+  enforceApplicationMigrationPolicy(env);
   const configPath = env.ATELIER_RUNTIME_CONFIG_PATH || path.join(root, "runtime-config.json");
   if (!fs.existsSync(configPath)) {
     env.ATELIER_RUNTIME_CONFIG_FILE_PRESENT = "false";
@@ -32,11 +34,21 @@ function bootstrapRuntimeConfig({ root = path.resolve(__dirname, ".."), env = pr
   }
 }
 
+function prepareApplicationRuntime(options = {}) {
+  const env = options.env || process.env;
+  const result = bootstrapRuntimeConfig({ ...options, env });
+  const target = validateApplicationTarget(result.config, env);
+  validateApplicationDatabaseSelection(env);
+  enforceApplicationMigrationPolicy(env);
+  return { ...result, ...target, autoMigrate: false };
+}
+
 if (require.main === module) {
   const root = path.resolve(__dirname, "..");
-  bootstrapRuntimeConfig({ root });
+  const runtime = prepareApplicationRuntime({ root });
+  console.log(`application-startup autoMigrate=0 environment=${runtime.environment} declaredProject=${runtime.declaredProjectId}`);
   process.chdir(path.join(root, "admin"));
   require(path.join(root, "admin", "server.js"));
 }
 
-module.exports = { bootstrapRuntimeConfig };
+module.exports = { bootstrapRuntimeConfig, prepareApplicationRuntime };

@@ -108,6 +108,9 @@ jobs:
           docker run -d --name "$name" -p "127.0.0.1:${port}:9000" \
             -e HOST=0.0.0.0 \
             -e PORT=9000 \
+            -e ATELIER_RUNTIME_CONFIG_PATH=/app/runtime-config/production.json \
+            -e ATELIER_ENVIRONMENT=production \
+            -e MEOO_PROJECT_URL_ID=g8o5cv1om41o \
             -e ATELIER_DB_BACKEND=native \
             -e DATABASE_URL=postgresql://smoke:smoke@127.0.0.1:1/feeldao_smoke \
             -e ATELIER_LICENSE_PEPPER=pppppppppppppppppppppppppppppppp \
