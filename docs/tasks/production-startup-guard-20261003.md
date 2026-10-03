@@ -35,10 +35,27 @@ Existing official support ticket `00069SJR2Y` was read again on 2026-10-03. Its 
 
 CLI exposes release listing but no restore/activate command on this installed command surface. Current v12 activity alone does not prove an executable rollback. Current Production recoverable artifact and applicable database/files restore-verification evidence remain NOT VERIFIED. Retain the existing Production authorization; these conditions must be satisfied before invoking its single submit.
 
-Staging publication/acceptance: pending this candidate commit and frozen input. Production submit count in this preparation: 0.
+Candidate `8f3732393aeaa204ec35048fc321e69bc12b279e` was committed/pushed and remote SHA verified. GitHub CI run `37105104679` passed Node 22, Node 24.15.0 and Docker smoke.
+
+One Staging image submit completed with CLI exit 0 and v72 SUCCESS/ACTIVE at `2026-10-03T07:09:47.844Z`. Build ID `d9cff7b9cd8b4eed`; frozen context digest `sha256:020b3f48d619edc00fac08d23cacb709f8cabfbdfa775583461a7ad48bb88f7d`. Retry count 0. The CLI used a separate submission copy. Publication completion is distinct from application acceptance.
+
+Browser acceptance failed: session GET HTTP 412, platform code `CAExited`. Previously loaded UI still displayed super_admin, but new requests could not reach a running application. At `2026-10-03T07:16:00.458Z`, the platform response exposed these sanitized startup lines:
+
+```text
+application-startup autoMigrate=0 environment=staging declaredProject=asmhysidbg5g
+Error: 生产环境缺少或错误配置：ATELIER_LICENSE_PEPPER、ATELIER_MASTER_KEY、ATELIER_OPS_EMAIL、ATELIER_OPS_PASSWORD、ATELIER_APPOINTMENT_GATEWAY_TOKEN、ATELIER_OPENID_HASH_KEY
+```
+
+The guard is directly observed effective before database initialization; runtime identity/health/bootstrap acceptance is incomplete. The six names exist in the project Secret list, but valid injection into the image process was not established. The frozen `.runtime.env` has only non-secret target settings, and the checked local `.env` has none of these six settings. Preserve existing encryption keys and account passwords when resolving configuration delivery.
+
+A local-only `scripts/image-startup-preflight.js` now validates complete supplied configuration without opening a server/database or making network requests. Output is sanitized and leaves runtime injection NOT VERIFIED. Four synthetic tests cover valid input, each missing required setting, the Meoo connection credential and a NODE_ENV bypass. Final follow-up full suite: 425 passed, 0 failed, 4 existing skips (429 tests total, pnpm 10.33.3, serial execution). This tool/documentation follow-up is not deployed in v72. Future inputs must use their own exact source commit and complete target-specific configuration delivery evidence.
+
+Both frozen contexts still match their manifests, but are NOT READY for another publication until valid Secret delivery is established. Production remains v12 SUCCESS/ACTIVE in the final readback. Production submit count: 0. No second Staging submit or recovery operation was executed.
+
+Post-publication read-only comparison: users, operator_users, tenants, workspaces, stores, subscriptions and assets retain identical row counts, identity digests and credential-excluded row digests in both projects. This is seven-table continuity, not a whole-database/no-audit-write claim. Staging recoverable count remains 0.
 
 ## Evidence location and continuation
 
-Detailed local evidence is outside the repository at `C:\Users\Administrator\.codex\artifacts\production-startup-guard-20261003` (test logs, schema catalogs/comparison, Docker smoke, baseline/rollback records and release provenance). It contains no credentials. Next: commit/push exact changes, freeze this committed candidate, publish once to Staging after data-continuity prechecks, capture runtime acceptance, then evaluate Production recovery evidence. Missing platform recovery records do not invalidate the completed startup tests.
+Detailed evidence is at `C:\Users\Administrator\.codex\artifacts\production-startup-guard-20261003`. Next: establish existing Staging application Secret delivery to the image process without returning values, validate inputs with the preflight and reconcile v72 before a distinct corrective publication. Production additionally needs its baseline application restore method and applicable database/files restore-verification records. Existing Production authorization remains recorded; execution conditions are not met.
 
 Official references reviewed: <https://docs.meoo.com/meoo-cli>, <https://docs.meoo.com/untitled-page-2>. Documented image deployment does not establish the current instance's runtime configuration or rollback capability.

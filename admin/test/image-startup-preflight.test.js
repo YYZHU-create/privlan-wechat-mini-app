@@ -1,0 +1,56 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { preflight } = require('../../scripts/image-startup-preflight');
+const { TARGETS, canonicalizeRuntimeConfig } = require('../target-runtime-config');
+
+function fixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'feeldao-preflight-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'runtime-config.json'), canonicalizeRuntimeConfig(TARGETS.staging));
+  return { root, env: {
+    NODE_ENV: 'production', ATELIER_ENVIRONMENT: 'staging', MEOO_PROJECT_URL_ID: 'asmhysidbg5g',
+    ATELIER_DB_BACKEND: 'meoo', ATELIER_AUTO_MIGRATE: '1',
+    SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only',
+    ATELIER_LICENSE_PEPPER: 'p'.repeat(32), ATELIER_MASTER_KEY: Buffer.alloc(32).toString('base64'),
+    ATELIER_OPS_EMAIL: 'fixture@example.invalid', ATELIER_OPS_PASSWORD: 'synthetic-password',
+    ATELIER_APPOINTMENT_GATEWAY_TOKEN: 'g'.repeat(32), ATELIER_OPENID_HASH_KEY: 'h'.repeat(32)
+  } };
+}
+
+test('image preflight validates supplied configuration and preserves caller input', t => {
+  const f = fixture(t);
+  const result = preflight(f);
+  assert.equal(result.autoMigrate, '0');
+  assert.equal(result.backend, 'meoo');
+  assert.equal(result.runtimeSecretInjection, 'NOT_VERIFIED');
+  assert.equal(f.env.ATELIER_AUTO_MIGRATE, '1');
+  assert.ok(!JSON.stringify(result).includes(f.env.ATELIER_OPS_PASSWORD));
+});
+
+test('image preflight rejects each absent required application configuration', t => {
+  const f = fixture(t);
+  for (const key of ['ATELIER_LICENSE_PEPPER', 'ATELIER_MASTER_KEY', 'ATELIER_OPS_EMAIL',
+    'ATELIER_OPS_PASSWORD', 'ATELIER_APPOINTMENT_GATEWAY_TOKEN', 'ATELIER_OPENID_HASH_KEY']) {
+    const env = { ...f.env };
+    delete env[key];
+    assert.throws(() => preflight({ root: f.root, env }), /生产环境缺少或错误配置/);
+  }
+});
+
+test('image preflight rejects missing Meoo connection credential', t => {
+  const f = fixture(t);
+  delete f.env.SUPABASE_SERVICE_ROLE_KEY;
+  assert.throws(() => preflight(f), /SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test('hosted image preflight cannot bypass required settings with absent or development NODE_ENV', t => {
+  const f = fixture(t);
+  delete f.env.ATELIER_LICENSE_PEPPER;
+  for (const mode of [undefined, 'development']) {
+    const env = { ...f.env, NODE_ENV: mode };
+    assert.throws(() => preflight({ root: f.root, env }), /生产环境缺少或错误配置/);
+  }
+});
