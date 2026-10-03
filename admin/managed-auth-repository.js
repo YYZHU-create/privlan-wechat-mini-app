@@ -80,7 +80,43 @@ function createMeooManagedAuthRepository({ url, serviceRoleKey, fetchImpl = glob
     const q = principalQuery(surface, businessUserId);
     return read(q.table, new URLSearchParams({ select: q.fields, id: `eq.${q.businessUserId}`, limit: "2" }));
   }
-  return { resolveIdentityLink, loadBusinessPrincipal };
+  async function provisionMerchant({ proof, storeName, contactName, document, template, requestId }) {
+    selection({ ...proof, surface: "merchant" });
+    if (proof.emailVerified !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(proof.email || "") ||
+        proof.email.length > 64 || typeof storeName !== "string" || storeName.length < 2 || storeName.length > 64 ||
+        !document || typeof document !== "object" || Array.isArray(document) ||
+        !["retail", "service", "restaurant", "education", "studio", "blank"].includes(template)) {
+      throw failure("MANAGED_AUTH_INVALID_PROVISIONING");
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(`${origin.origin}/rest/v1/rpc/provision_managed_merchant`, {
+        method: "POST", redirect: "error", cache: "no-store", signal: controller.signal,
+        headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_project: proof.projectId, p_origin: proof.providerOrigin, p_subject: proof.providerUserId,
+          p_email: proof.email, p_store_name: storeName, p_contact: String(contactName || "").slice(0,120),
+          p_document: document, p_template: template, p_request_id: requestId })
+      });
+      if (!response.ok) throw failure(response.status === 409 ? "MANAGED_AUTH_ACCOUNT_EXISTS" : "MANAGED_AUTH_REPOSITORY_UNAVAILABLE");
+      const result = await response.json();
+      if (result?.alreadyProvisioned === true) return { alreadyProvisioned: true };
+      if (!UUID.test(result?.user?.id || "") || result.user.login !== proof.email ||
+          !UUID.test(result?.workspace?.id || "") || !UUID.test(result?.workspace?.tenantId || "") ||
+          !UUID.test(result?.workspace?.storeId || "") || !UUID.test(result?.subscription?.id || "") ||
+          result.subscription.planId !== "TRIAL" || result.subscription.status !== "inactive") {
+        throw failure("MANAGED_AUTH_REPOSITORY_UNAVAILABLE");
+      }
+      return { user: { id: result.user.id, login: result.user.login, displayName: String(result.user.displayName || "") },
+        workspace: { id: result.workspace.id, tenantId: result.workspace.tenantId, storeId: result.workspace.storeId,
+          publicStoreId: result.workspace.publicStoreId, name: result.workspace.name },
+        subscription: { id: result.subscription.id, planId: "TRIAL", status: "inactive", expiresAt: null } };
+    } catch (error) {
+      if (error?.code === "MANAGED_AUTH_ACCOUNT_EXISTS") throw error;
+      throw failure("MANAGED_AUTH_REPOSITORY_UNAVAILABLE");
+    } finally { clearTimeout(timer); }
+  }
+  return { resolveIdentityLink, loadBusinessPrincipal, provisionMerchant };
 }
 
 module.exports = { createManagedAuthRepository, createMeooManagedAuthRepository };

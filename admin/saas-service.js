@@ -31,7 +31,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null, managedAuth = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null, managedAuth = null, managedAuthRepository = null }) {
   if (!db) throw new Error("database is required");
   async function managedLogin(email, password, surface) {
     let result;
@@ -132,7 +132,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
   }
 
   async function completeRegistration(input = {}, context = {}) {
-    if (!managedAuth || typeof managedAuth.verifyRegistration !== "function" || db.kind === "meoo") {
+    if (!managedAuth || typeof managedAuth.verifyRegistration !== "function" || (db.kind === "meoo" && typeof managedAuthRepository?.provisionMerchant !== "function")) {
       throw new ServiceError(503, "MANAGED_PROVISIONING_NOT_CONFIGURED", "商户开通服务尚未配置");
     }
     const storeName = String(input.storeName || "").trim();
@@ -149,9 +149,15 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(proof.email || "") || proof.email.length > 64) {
       throw new ServiceError(401, "INVALID_AUTH_IDENTITY", "认证身份尚未确认");
     }
-    try { return await provisionMerchant({ input, context, login: normalizeLogin(proof.email), storeName, template, proof }); }
+    try {
+      if (db.kind === "meoo") return await managedAuthRepository.provisionMerchant({ proof,
+        storeName, contactName: input.contactName, template, requestId: context.requestId || id(),
+        document: createWorkspaceConfig({ storeName, template }) });
+      return await provisionMerchant({ input, context, login: normalizeLogin(proof.email), storeName, template, proof });
+    }
     catch (error) {
-      if (error?.code === "23505") throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法开通");
+      if (error?.code === "MANAGED_AUTH_REPOSITORY_UNAVAILABLE") throw new ServiceError(503, "AUTH_PROVISIONING_UNAVAILABLE", "商户开通结果尚未确认，请稍后核实");
+      if (["23505", "MANAGED_AUTH_ACCOUNT_EXISTS"].includes(error?.code)) throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法开通");
       throw error;
     }
   }

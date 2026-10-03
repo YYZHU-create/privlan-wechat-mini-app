@@ -90,7 +90,12 @@
       "version": "018_managed_auth_session_provenance",
       "file": "018_managed_auth_session_provenance.sql",
       "sha256": "defdff880c925402c672e919af77e8734ce95d53a9a593ad09503935307dbc4d"
+    },
+    {
+      "version": "019_managed_merchant_provisioning",
+      "file": "019_managed_merchant_provisioning.sql",
+      "sha256": "0ed9a155de4df3a12e7a1cab3ccdf928992577937cca4578bd5f63da82650726"
     }
   ],
-  "digest": "21fba452cd59f40f19b9b159ac5063acdf467ce59f9eb2ed58fca2226e5adad5"
+  "digest": "148f844b229e5b8add75b0c765bc8776d85fd218bcd22f4e853c4f52c4fcfcf2"
 }
