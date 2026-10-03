@@ -16,7 +16,7 @@ function fixture({ providerReject = false, databaseReject = false } = {}) {
     proof.push(request.businessUserId);
     assert.equal(request.email, scope.user.login);
     if (providerReject) throw Object.assign(new Error("private-fixture"), { code: "MANAGED_AUTH_PASSWORD_CHANGE_FAILED" });
-    return { passwordChanged: true, proofSessionRevoked: true };
+    return { passwordChanged: true, proofSessionRevoked: true, affectedBusinessIdentities: [{ surface: "merchant", businessUserId: scope.userId }, { surface: "operator", businessUserId: "original-operator" }] };
   } };
   return { service: createSaasService({ db, managedAuth }), queries, proof };
 }
@@ -26,6 +26,8 @@ test("managed password change never reads or rewrites legacy password hashes", a
   assert.equal(f.queries.some(q => q.sql.includes("password_hash")), false);
   assert.equal(f.queries[0].sql.includes("update merchant_sessions"), true);
   assert.deepEqual(f.proof, [scope.userId]);
+  assert.equal(f.queries[1].sql.includes("update operator_sessions"), true);
+  assert.deepEqual(f.queries[1].params, ["original-operator"]);
   assert.equal(JSON.stringify(f.queries).includes(input.newPassword), false);
 });
 test("completed provider update is preserved when business cleanup fails", async () => {
@@ -76,4 +78,22 @@ test("HTTP reports password success and incomplete cleanup separately", async ()
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("Meoo Operator revocation is scoped to the explicitly linked original identity", async () => {
+  const { createMeooOperatorRepository } = require("../meoo-operator-repository");
+  const calls = [];
+  const operatorId = "00000000-0000-4000-8000-000000000002";
+  const repository = createMeooOperatorRepository({ url: "https://db.example.test", serviceRoleKey: "synthetic-only", fetchImpl: async (url, options) => {
+    calls.push({ url: new URL(url), options });
+    return { ok: true, text: async () => JSON.stringify([]) };
+  } });
+  await repository.revokeUserSessions(operatorId);
+  assert.equal(calls[0].url.pathname, "/rest/v1/operator_sessions");
+  assert.equal(calls[0].url.searchParams.get("operator_id"), `eq.${operatorId}`);
+  assert.equal(calls[0].url.searchParams.get("revoked_at"), "is.null");
+  assert.equal(calls[0].options.method, "PATCH");
+  assert.equal(calls[0].options.redirect, "error");
+  await assert.rejects(repository.revokeUserSessions("invalid"));
+  assert.equal(calls.length, 1);
 });

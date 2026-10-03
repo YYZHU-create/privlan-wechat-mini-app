@@ -61,3 +61,6 @@ The managed-auth adapter now implements provider refresh with original-business-
 ## Managed password HTTP/service milestone
 
 Merchant password changes now use the injected managed provider and never read/write the original hash in managed mode. Native and Meoo business-session revocation paths preserve the authenticated original identity. If provider update completed but application revocation/audit failed, HTTP reports passwordChanged plus incomplete cleanup instead of claiming the update failed. Shared Operator-session invalidation remains required before cutover. Five focused tests include localhost HTTP behavior. Server activation and actual account operations remain pending.
+
+## Shared-password session invalidation milestone
+Managed password changes discover the other surface using the verified provider subject and exact project/origin link before the provider mutation. Missing links add no target; mismatches/outages abort before mutation. Native and Meoo cleanup revoke only the explicitly linked original merchant/operator identities. Partial cleanup remains exposed. Focused checks 15/15 pass; admin full suite 471 total/467 pass/4 skipped before two final focused additions. Actual account setup, registration and server cutover remain pending. No remote writes or deployments.

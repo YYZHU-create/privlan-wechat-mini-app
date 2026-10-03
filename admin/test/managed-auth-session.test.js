@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createManagedAuth } = require("../managed-auth");
-function fixture({ businessUserId = "original-business", updateError = false, logoutError = false } = {}) {
+function fixture({ businessUserId = "original-business", updateError = false, logoutError = false, otherLink = "valid" } = {}) {
   const calls = [];
   const session = { access_token: "synthetic-access", refresh_token: "synthetic-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600 };
   const auth = createManagedAuth({ projectId: "synthetic-project", supabaseUrl: "https://auth.example.test", anonKey: "synthetic-public",
@@ -14,7 +14,7 @@ function fixture({ businessUserId = "original-business", updateError = false, lo
       updateUser: async () => { calls.push("update"); return updateError ? { error: { message: "private-fixture" } } : { data: { user: {} } }; },
       signOut: async options => { calls.push(options.scope); return logoutError ? { error: {} } : { error: null }; }
     } }),
-    resolveIdentityLink: async input => ({ ...input, businessUserId }),
+    resolveIdentityLink: async input => { if (input.surface === "operator" && otherLink === "missing") return null; if (input.surface === "operator" && otherLink === "outage") throw new Error("synthetic-outage"); return { ...input, businessUserId, ...(input.surface === "operator" && otherLink === "mismatch" ? { projectId: "other-project" } : {}) }; },
     loadBusinessPrincipal: async () => ({ id: businessUserId, status: "active" }) });
   return { auth, calls };
 }
@@ -35,7 +35,7 @@ test("logout revokes only this provider session", async () => {
 test("password update reauthenticates and revokes the temporary proof session", async () => {
   const f = fixture();
   const result = await f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" });
-  assert.deepEqual(result, { passwordChanged: true, proofSessionRevoked: true });
+  assert.deepEqual(result, { passwordChanged: true, proofSessionRevoked: true, affectedBusinessIdentities: [{ surface: "merchant", businessUserId: "original-business" }, { surface: "operator", businessUserId: "original-business" }] });
   assert.deepEqual(f.calls, ["password-proof", "update", "local"]);
 });
 test("password proof for another identity cannot update a password", async () => {
@@ -45,10 +45,23 @@ test("password proof for another identity cannot update a password", async () =>
 });
 test("cleanup failure does not misreport an already changed password", async () => {
   const f = fixture({ logoutError: true });
-  assert.deepEqual(await f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" }), { passwordChanged: true, proofSessionRevoked: false });
+  assert.deepEqual(await f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" }), { passwordChanged: true, proofSessionRevoked: false, affectedBusinessIdentities: [{ surface: "merchant", businessUserId: "original-business" }, { surface: "operator", businessUserId: "original-business" }] });
 });
 test("password update rejection preserves its error while revoking the proof session", async () => {
   const f = fixture({ updateError: true });
   await assert.rejects(f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" }), { code: "MANAGED_AUTH_PASSWORD_CHANGE_FAILED" });
   assert.deepEqual(f.calls, ["password-proof", "update", "local"]);
+});
+
+test("unlinked other surface grants no cross-account revocation target", async () => {
+  const f = fixture({ otherLink: "missing" });
+  const result = await f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" });
+  assert.deepEqual(result.affectedBusinessIdentities, [identity]);
+});
+test("other link mismatch or lookup outage blocks the provider password mutation", async () => {
+  for (const otherLink of ["mismatch", "outage"]) {
+    const f = fixture({ otherLink });
+    await assert.rejects(f.auth.changePassword({ ...identity, email: "merchant@example.test", currentPassword: "old-synthetic", newPassword: "new-synthetic" }));
+    assert.deepEqual(f.calls, ["password-proof", "local"]);
+  }
 });

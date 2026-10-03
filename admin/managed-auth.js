@@ -44,7 +44,7 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
       throw denied("MANAGED_AUTH_BUSINESS_ACCOUNT_INACTIVE");
     }
     // Provider email and user_metadata never grant a role or tenant membership.
-    return { surface, businessUserId: principal.id, principal };
+    return { surface, businessUserId: principal.id, principal, providerUserId: user.id };
   }
 
   async function login({ email, password, surface }) {
@@ -114,8 +114,20 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
     const verified = await login({ email, password: currentPassword, surface });
     const scopedClient = await authenticatedClient({ ...verified.session, surface, businessUserId: verified.identity.businessUserId });
     let proofSessionRevoked = false;
+    const affectedBusinessIdentities = [{ surface, businessUserId }];
     try {
       if (verified.identity.businessUserId !== businessUserId) throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+      // Read the other explicit link before changing the shared provider password.
+      // Inactive linked principals still need their outstanding sessions revoked.
+      const otherSurface = surface === "merchant" ? "operator" : "merchant";
+      const other = await resolveIdentityLink({ projectId, providerOrigin: url.origin,
+        surface: otherSurface, providerUserId: verified.identity.providerUserId });
+      if (other) {
+        if (other.projectId !== projectId || other.providerOrigin !== url.origin ||
+            other.surface !== otherSurface || other.providerUserId !== verified.identity.providerUserId ||
+            !other.businessUserId) throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+        affectedBusinessIdentities.push({ surface: otherSurface, businessUserId: other.businessUserId });
+      }
       let response;
       try { response = await scopedClient.auth.updateUser({ password: newPassword, current_password: currentPassword }); }
       catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
@@ -125,7 +137,7 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
       try { proofSessionRevoked = !(await scopedClient.auth.signOut({ scope: "local" }))?.error; }
       catch { proofSessionRevoked = false; }
     }
-    return { passwordChanged: true, proofSessionRevoked };
+    return { passwordChanged: true, proofSessionRevoked, affectedBusinessIdentities };
   }
   return { login, resolve, refresh, logout, changePassword };
 }

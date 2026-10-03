@@ -175,7 +175,8 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     if (newPassword.length < 8 || newPassword.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码至少 8 位");
     if (managedAuth) {
       if (newPassword === currentPassword) throw new ServiceError(400, "PASSWORD_REUSE_NOT_ALLOWED", "新密码不能与当前密码相同");
-      if (typeof managedAuth.changePassword !== "function" || (authRepository && typeof authRepository.revokeUserSessions !== "function")) {
+      if (typeof managedAuth.changePassword !== "function" || (authRepository &&
+          (typeof authRepository.revokeUserSessions !== "function" || typeof operatorRepository?.revokeUserSessions !== "function"))) {
         throw new ServiceError(503, "MANAGED_PASSWORD_NOT_CONFIGURED", "密码服务尚未配置");
       }
       let changed;
@@ -190,8 +191,15 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       let sessionsRevoked = false;
       let auditRecorded = false;
       try {
+        const affected = changed.affectedBusinessIdentities;
+        if (!Array.isArray(affected) || affected.length < 1 || affected.length > 2 ||
+            !affected.some(item => item.surface === "merchant" && item.businessUserId === scope.userId) ||
+            affected.some(item => !item.businessUserId || !["merchant", "operator"].includes(item.surface)) ||
+            new Set(affected.map(item => item.surface)).size !== affected.length) throw new Error("Invalid managed identity plan");
+        const operator = affected.find(item => item.surface === "operator");
         if (authRepository) {
           await authRepository.revokeUserSessions(scope.userId);
+          if (operator) await operatorRepository.revokeUserSessions(operator.businessUserId);
           sessionsRevoked = true;
           await authRepository.recordAudit({ id: id(), tenant_id: scope.tenantId, workspace_id: scope.workspaceId,
             actor_type: "merchant", actor_id: scope.userId, action: "merchant.password_changed", resource_type: "user",
@@ -200,6 +208,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
         } else {
           await db.transaction(async tx => {
             await tx.query("update merchant_sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [scope.userId]);
+            if (operator) await tx.query("update operator_sessions set revoked_at=now() where operator_id=$1 and revoked_at is null", [operator.businessUserId]);
             await audit(tx, { tenantId: scope.tenantId, workspaceId: scope.workspaceId, actorType: "merchant", actorId: scope.userId, requestId: context.requestId }, "merchant.password_changed", "user", scope.userId, { authentication: "supabase" });
           });
           sessionsRevoked = true;
