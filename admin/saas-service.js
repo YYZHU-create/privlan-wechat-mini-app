@@ -96,7 +96,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
         if (result?.emailVerificationRequired !== true) throw new Error("Unconfirmed registration state");
         return { emailVerificationRequired: true };
       } catch (error) {
-        if (["MANAGED_AUTH_PROVIDER_UNAVAILABLE", "MANAGED_AUTH_EMAIL_CONFIRMATION_NOT_REQUIRED"].includes(error?.code)) {
+        if (["MANAGED_AUTH_PROVIDER_UNAVAILABLE", "MANAGED_AUTH_EMAIL_CONFIRMATION_NOT_REQUIRED", "MANAGED_AUTH_REGISTRATION_NOT_CONFIGURED"].includes(error?.code)) {
           throw new ServiceError(503, "AUTH_REGISTRATION_UNAVAILABLE", "注册服务暂时不可用");
         }
         throw new ServiceError(400, "REGISTRATION_REJECTED", "注册申请未通过校验");

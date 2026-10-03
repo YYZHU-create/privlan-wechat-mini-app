@@ -6,11 +6,11 @@ const { createSaasService } = require("../saas-service");
 process.env.NODE_ENV = "test";
 function fixture({ signupError, session = null, user = { id: "subject", email: "merchant@example.test", email_confirmed_at: "2026-01-01T00:00:00Z" } } = {}) {
   const calls = [];
-  const auth = createManagedAuth({ projectId: "fixture-project", supabaseUrl: "https://auth.example.test", anonKey: "synthetic",
+  const auth = createManagedAuth({ projectId: "fixture-project", supabaseUrl: "https://auth.example.test", anonKey: "synthetic", applicationOrigin: "https://merchant.example.test",
     resolveIdentityLink: async () => { throw new Error("Registration must not grant an existing role"); },
     loadBusinessPrincipal: async () => { throw new Error("No business account before confirmation"); },
     createClient: () => ({ auth: {
-      signUp: async input => { calls.push(Object.keys(input)); return { data: { user: { id: "opaque" }, session }, error: signupError }; },
+      signUp: async input => { assert.equal(input.options.emailRedirectTo, "https://merchant.example.test/auth/confirmation"); calls.push(Object.keys(input)); return { data: { user: { id: "opaque" }, session }, error: signupError }; },
       signOut: async () => { calls.push("cleanup"); return {}; },
       getUser: async () => ({ data: { user } })
     } }) });
@@ -19,7 +19,7 @@ function fixture({ signupError, session = null, user = { id: "subject", email: "
 test("registration sends only credentials and returns no identity, session or role", async () => {
   const f = fixture();
   assert.deepEqual(await f.auth.beginRegistration({ email: "merchant@example.test", password: "synthetic-password", role: "super_admin" }), { emailVerificationRequired: true });
-  assert.deepEqual(f.calls, [["email", "password"]]);
+  assert.deepEqual(f.calls, [["email", "password", "options"]]);
 });
 test("existing-account registration reply has the same public result", async () => {
   const f = fixture({ signupError: { code: "user_already_exists", message: "private" } });
@@ -28,7 +28,7 @@ test("existing-account registration reply has the same public result", async () 
 test("unexpected automatic confirmation cannot create an application session", async () => {
   const f = fixture({ session: { access_token: "private" } });
   await assert.rejects(f.auth.beginRegistration({ email: "merchant@example.test", password: "synthetic-password" }), { code: "MANAGED_AUTH_EMAIL_CONFIRMATION_NOT_REQUIRED" });
-  assert.deepEqual(f.calls, [["email", "password"], "cleanup"]);
+  assert.deepEqual(f.calls, [["email", "password", "options"], "cleanup"]);
 });
 test("registration verification uses the provider result, not user metadata", async () => {
   const f = fixture();

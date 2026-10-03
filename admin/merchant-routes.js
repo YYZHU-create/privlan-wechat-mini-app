@@ -53,6 +53,11 @@ function createRateLimiter({ windowMs, limit, key: keyForRequest }) {
 
 function registerMerchantRoutes(app, getService, options = {}) {
   const registration = { mediaUploadRouteRegistered: false };
+  app.get("/auth/confirmation", (req, res) => {
+    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
+    return res.sendFile(path.join(__dirname, "public", "auth-confirmation.html"));
+  });
   const authLimit = createRateLimiter({ windowMs: 60_000, limit: 12 });
   const redeemLimit = createRateLimiter({ windowMs: 60_000, limit: 10 });
   const changePasswordLimit = createRateLimiter({

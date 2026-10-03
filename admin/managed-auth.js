@@ -8,7 +8,7 @@ function denied(code) {
   return error;
 }
 
-function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
+function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient, applicationOrigin,
   resolveIdentityLink, loadBusinessPrincipal }) {
   if (!projectId || !supabaseUrl || !anonKey ||
       typeof resolveIdentityLink !== "function" ||
@@ -30,9 +30,17 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
         typeof password !== "string" || password.length < 8 || password.length > 128) {
       throw denied("MANAGED_AUTH_INVALID_REGISTRATION");
     }
+    let callback;
+    try {
+      const origin = new URL(applicationOrigin);
+      if (origin.protocol !== "https:" || origin.username || origin.password ||
+          origin.pathname !== "/" || origin.search || origin.hash) throw new Error();
+      callback = new URL("/auth/confirmation", origin).href;
+    } catch { throw denied("MANAGED_AUTH_REGISTRATION_NOT_CONFIGURED"); }
     const scopedClient = client();
     let response;
-    try { response = await scopedClient.auth.signUp({ email: normalizedEmail, password }); }
+    try { response = await scopedClient.auth.signUp({ email: normalizedEmail, password,
+      options: { emailRedirectTo: callback } }); }
     catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
     // Existing-account replies remain indistinguishable from a confirmation request.
     if (response?.error && response.error.code !== "user_already_exists") {

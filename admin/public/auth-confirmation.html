@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'">
+  <title>完成商户开通 · Feeldao OS</title>
+  <script src="/auth-confirmation.js"></script>
+  <link rel="stylesheet" href="/auth-confirmation.css">
+</head>
+<body>
+  <main>
+    <p class="brand">FEELDAO OS</p>
+    <h1>完成商户开通</h1>
+    <p id="confirmation-status" role="status" aria-live="polite">正在检查验证链接…</p>
+    <form id="confirmation-form" hidden>
+      <label for="store-name">商户名称</label>
+      <input id="store-name" name="storeName" required minlength="2" maxlength="64" autocomplete="organization">
+      <label for="contact-name">联系人</label>
+      <input id="contact-name" name="contactName" maxlength="120" autocomplete="name">
+      <label for="template">初始模板</label>
+      <select id="template" name="template"><option value="retail">零售</option><option value="service">服务预约</option><option value="restaurant">餐饮</option><option value="education">教育</option><option value="studio">工作室</option><option value="blank">空白</option></select>
+      <button id="complete-button" type="submit">确认开通商户</button>
+    </form>
+    <a href="/">返回登录</a>
+  </main>
+</body>
+</html>

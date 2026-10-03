@@ -1,0 +1,12 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #20251f; background: #f4f5f1; }
+body { margin: 0; padding: 48px 20px; }
+main { box-sizing: border-box; max-width: 480px; margin: 0 auto; padding: 32px; background: white; border: 1px solid #dce1d8; border-radius: 12px; }
+.brand { color: #8a6d39; letter-spacing: .16em; font-size: 12px; }
+h1 { font-size: 26px; }
+label { display: block; margin: 18px 0 8px; }
+input, select, button { box-sizing: border-box; width: 100%; padding: 12px; font: inherit; border: 1px solid #b7c0b2; border-radius: 6px; }
+button { margin: 24px 0; background: #20251f; color: white; cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }
+a { display: inline-block; margin-top: 16px; color: #355445; }
+:focus-visible { outline: 3px solid #a48950; outline-offset: 3px; }
+[hidden] { display: none !important; }
