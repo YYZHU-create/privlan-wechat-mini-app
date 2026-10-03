@@ -24,6 +24,44 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
     persistSession: false, autoRefreshToken: false, detectSessionInUrl: false
   } });
 
+  async function beginRegistration({ email, password }) {
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254 ||
+        typeof password !== "string" || password.length < 8 || password.length > 128) {
+      throw denied("MANAGED_AUTH_INVALID_REGISTRATION");
+    }
+    const scopedClient = client();
+    let response;
+    try { response = await scopedClient.auth.signUp({ email: normalizedEmail, password }); }
+    catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+    // Existing-account replies remain indistinguishable from a confirmation request.
+    if (response?.error && response.error.code !== "user_already_exists") {
+      throw denied("MANAGED_AUTH_REGISTRATION_REJECTED");
+    }
+    if (response?.data?.session) {
+      try { await scopedClient.auth.signOut({ scope: "local" }); } catch { /* No application session was issued. */ }
+      throw denied("MANAGED_AUTH_EMAIL_CONFIRMATION_NOT_REQUIRED");
+    }
+    if (!response?.error && !response?.data?.user) throw denied("MANAGED_AUTH_REGISTRATION_REJECTED");
+    return { emailVerificationRequired: true };
+  }
+
+  async function verifyRegistration(accessToken) {
+    if (typeof accessToken !== "string" || !accessToken) throw denied("MANAGED_AUTH_INVALID_SESSION");
+    let response;
+    try { response = await client().auth.getUser(accessToken); }
+    catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+    const user = response?.data?.user;
+    if (response?.error || !user?.id) throw denied("MANAGED_AUTH_INVALID_SESSION");
+    if (!user.email_confirmed_at || !Number.isFinite(Date.parse(user.email_confirmed_at)) ||
+        typeof user.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+      throw denied("MANAGED_AUTH_EMAIL_NOT_VERIFIED");
+    }
+    // Private provisioning proof; no role, business ID or client metadata is trusted.
+    return { projectId, providerOrigin: url.origin, providerUserId: user.id,
+      email: user.email.trim().toLowerCase(), emailVerified: true };
+  }
+
   async function resolve(accessToken, surface) {
     if (!["merchant", "operator"].includes(surface) ||
         typeof accessToken !== "string" || !accessToken) {
@@ -139,7 +177,7 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
     }
     return { passwordChanged: true, proofSessionRevoked, affectedBusinessIdentities };
   }
-  return { login, resolve, refresh, logout, changePassword };
+  return { login, resolve, refresh, logout, changePassword, beginRegistration, verifyRegistration };
 }
 
 module.exports = { createManagedAuth };

@@ -89,6 +89,19 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     if (!/^[\p{L}\p{N}_.@+-]{3,64}$/u.test(login)) throw new ServiceError(400, "INVALID_LOGIN", "登录账号格式不正确");
     if (password.length < 8 || password.length > 128) throw new ServiceError(400, "INVALID_PASSWORD", "密码长度需为 8 至 128 位");
     if (storeName.length < 2 || storeName.length > 64) throw new ServiceError(400, "INVALID_STORE_NAME", "店铺名称长度需为 2 至 64 位");
+    if (managedAuth) {
+      if (typeof managedAuth.beginRegistration !== "function") throw new ServiceError(503, "MANAGED_REGISTRATION_NOT_CONFIGURED", "注册服务尚未配置");
+      try {
+        const result = await managedAuth.beginRegistration({ email: login, password });
+        if (result?.emailVerificationRequired !== true) throw new Error("Unconfirmed registration state");
+        return { emailVerificationRequired: true };
+      } catch (error) {
+        if (["MANAGED_AUTH_PROVIDER_UNAVAILABLE", "MANAGED_AUTH_EMAIL_CONFIRMATION_NOT_REQUIRED"].includes(error?.code)) {
+          throw new ServiceError(503, "AUTH_REGISTRATION_UNAVAILABLE", "注册服务暂时不可用");
+        }
+        throw new ServiceError(400, "REGISTRATION_REJECTED", "注册申请未通过校验");
+      }
+    }
     return db.transaction(async tx => {
       if ((await tx.query("select id from users where login_identifier=$1", [login])).rows.length) throw new ServiceError(409, "ACCOUNT_EXISTS", "该账号暂时无法注册");
       const tenantId = id(); const userId = id(); const workspaceId = id(); const storeId = id(); const now = new Date();

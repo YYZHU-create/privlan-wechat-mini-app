@@ -93,6 +93,9 @@ function registerMerchantRoutes(app, getService, options = {}) {
     try {
       const service = await serviceOrThrow();
       const data = await service.register(req.body || {}, { requestId: id, ipAddress: req.ip, userAgent: req.get("user-agent") });
+      if (data.emailVerificationRequired === true) {
+        return success(res, { emailVerificationRequired: true }, "请先完成邮箱验证，再开通商户", 202, id);
+      }
       setSessionCookies(res, data.session);
       return success(res, { user: data.user, workspace: data.workspace, subscription: data.subscription }, "工作区已创建", 201, id);
     } catch (error) { return failure(res, error, id); }
