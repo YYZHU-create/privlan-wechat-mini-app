@@ -31,8 +31,26 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null, managedAuth = null }) {
   if (!db) throw new Error("database is required");
+  async function managedLogin(email, password, surface) {
+    let result;
+    try { result = await managedAuth.login({ email, password: String(password || ""), surface }); }
+    catch (error) {
+      if (error?.code === "MANAGED_AUTH_PROVIDER_UNAVAILABLE" || error?.code === "MANAGED_AUTH_REPOSITORY_UNAVAILABLE") {
+        throw new ServiceError(503, "AUTH_PROVIDER_UNAVAILABLE", "认证服务暂时不可用");
+      }
+      throw new ServiceError(401, surface === "operator" ? "OPS_INVALID_CREDENTIALS" : "INVALID_CREDENTIALS", "账号或密码不正确");
+    }
+    const expiresAt = new Date(Number(result?.session?.expiresAt) * 1000);
+    const identity = result?.identity;
+    if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date() ||
+        identity?.surface !== surface || !identity.businessUserId ||
+        identity.principal?.id !== identity.businessUserId || identity.principal?.status !== "active") {
+      throw new ServiceError(401, "INVALID_AUTH_IDENTITY", "登录身份无效");
+    }
+    return { identity, expiresAt };
+  }
   const customerService = createCustomerService({ db, tagRepository, customerRepository, customerWriteRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository, appointmentWriteRepository });
   const licenseHash = code => {
@@ -45,10 +63,10 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`, [id(), scope?.tenantId || null, scope?.workspaceId || null, scope?.actorType || "system", scope?.actorId || "system", action, resourceType, resourceId || null, scope?.requestId || id(), json(metadata)]);
   }
 
-  async function issueSession(tx, { userId, workspaceId, ipAddress, userAgent }) {
+  async function issueSession(tx, { userId, workspaceId, ipAddress, userAgent, providerExpiresAt }) {
     const token = crypto.randomBytes(32).toString("base64url");
     const csrfToken = crypto.randomBytes(24).toString("base64url");
-    const expiresAt = addHours(new Date(), 24 * 7);
+    const expiresAt = providerExpiresAt || addHours(new Date(), 24 * 7);
     const sessionInput = { id: id(), user_id: userId, workspace_id: workspaceId, token_hash: sha256(token), csrf_token_hash: sha256(csrfToken), ip_address: ipAddress || null, user_agent: userAgent || null, expires_at: expiresAt.toISOString() };
     if (authRepository) {
       await authRepository.createSession(sessionInput);
@@ -89,8 +107,9 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
 
   async function login(input, context = {}) {
     const login = normalizeLogin(input.login);
-    const user = authRepository ? await authRepository.findUserByLogin(login) : (await db.query("select id,login_identifier,password_hash,display_name,status from users where login_identifier=$1", [login])).rows[0];
-    if (!user || user.status !== "active" || !verifyPassword(String(input.password || ""), user.password_hash)) {
+    const providerResult = managedAuth ? await managedLogin(login, input.password, "merchant") : null;
+    const user = providerResult ? providerResult.identity.principal : authRepository ? await authRepository.findUserByLogin(login) : (await db.query("select id,login_identifier,password_hash,display_name,status from users where login_identifier=$1", [login])).rows[0];
+    if (!user || user.status !== "active" || (!managedAuth && !verifyPassword(String(input.password || ""), user.password_hash))) {
       if (authRepository) await authRepository.recordAudit({ id: id(), actor_type: "merchant", actor_id: login || "unknown", action: "merchant.login_failed", resource_type: "merchant_session", request_id: context.requestId || id(), metadata: { ip: context.ipAddress || null } });
       else await db.transaction(tx => audit(tx, { actorType: "merchant", actorId: login || "unknown", requestId: context.requestId }, "merchant.login_failed", "merchant_session", null, { ip: context.ipAddress || null }));
       throw new ServiceError(401, "INVALID_CREDENTIALS", "账号或密码不正确");
@@ -98,12 +117,12 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const membership = authRepository ? await authRepository.findMembership(user.id) : (await db.query("select workspace_id from memberships where user_id=$1 order by created_at limit 1", [user.id])).rows[0];
     if (!membership) throw new ServiceError(403, "WORKSPACE_ACCESS_DENIED", "账号没有可访问的工作区");
     if (authRepository) {
-      const session = await issueSession(null, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent });
+      const session = await issueSession(null, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt });
       await authRepository.recordAudit({ id: id(), tenant_id: membership.tenant_id || null, workspace_id: membership.workspace_id, actor_type: "merchant", actor_id: user.id, action: "merchant.login", resource_type: "merchant_session", request_id: context.requestId || id(), metadata: {} });
       return { session, user: publicUser(user) };
     }
     return db.transaction(async tx => {
-      const session = await issueSession(tx, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent });
+      const session = await issueSession(tx, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt });
       await audit(tx, { actorType: "merchant", actorId: user.id, workspaceId: membership.workspace_id, requestId: context.requestId }, "merchant.login", "merchant_session", null);
       return { session, user: publicUser(user) };
     });
@@ -406,6 +425,23 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const row = (await db.query("select count(*)::int count from operator_users where status='active'")).rows[0]; return Number(row?.count || 0) > 0;
   }
   async function operatorLogin(emailValue, password, context = {}) {
+    if (managedAuth) {
+      const result = await managedLogin(normalizeLogin(emailValue), password, "operator");
+      const user = result.identity.principal;
+      const token = crypto.randomBytes(32).toString("base64url");
+      const expiresAt = new Date(Math.min(result.expiresAt.getTime(), addHours(new Date(), 8).getTime()));
+      const sessionId = id();
+      if (operatorRepository) {
+        await operatorRepository.createSession({ id: sessionId, operator_id: user.id, token_hash: sha256(token), expires_at: expiresAt.toISOString() });
+        await operatorRepository.audit({ id: id(), tenant_id: null, workspace_id: null, actor_type: "operator", actor_id: user.id, action: "operator.login", resource_type: "operator_session", resource_id: sessionId, request_id: context.requestId || id(), metadata: { authentication: "supabase" } });
+      } else {
+        await db.transaction(async tx => {
+          await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)", [sessionId, user.id, sha256(token), expiresAt]);
+          await audit(tx, { actorType: "operator", actorId: user.id, requestId: context.requestId }, "operator.login", "operator_session", sessionId, { authentication: "supabase" });
+        });
+      }
+      return { token, expiresAt, user: { userId: user.id, email: normalizeLogin(emailValue), name: user.display_name, role: user.role } };
+    }
     if (operatorRepository) {
       const email = normalizeLogin(emailValue); const user = await operatorRepository.findOperatorByEmail(email);
       if (!user || user.status !== "active" || !verifyOperatorPassword(String(password || ""), user.password_hash)) throw new ServiceError(401, "OPS_INVALID_CREDENTIALS", "邮箱或密码不正确");
