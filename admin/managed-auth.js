@@ -67,7 +67,67 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient,
       expiresAt: session.expires_at
     } };
   }
-  return { login, resolve };
+  async function refresh({ refreshToken, surface, businessUserId }) {
+    if (!refreshToken || !businessUserId || !["merchant", "operator"].includes(surface)) {
+      throw denied("MANAGED_AUTH_INVALID_SESSION");
+    }
+    let response;
+    try { response = await client().auth.refreshSession({ refresh_token: refreshToken }); }
+    catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+    const session = response?.data?.session;
+    if (response?.error || !session?.access_token || !session?.refresh_token) {
+      throw denied("MANAGED_AUTH_INVALID_SESSION");
+    }
+    const identity = await resolve(session.access_token, surface);
+    if (identity.businessUserId !== businessUserId) throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+    return { identity, session: { accessToken: session.access_token,
+      refreshToken: session.refresh_token, expiresAt: session.expires_at } };
+  }
+
+  async function authenticatedClient({ accessToken, refreshToken, surface, businessUserId }) {
+    const identity = await resolve(accessToken, surface);
+    if (!businessUserId || identity.businessUserId !== businessUserId || !refreshToken) {
+      throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+    }
+    const scopedClient = client();
+    let response;
+    try { response = await scopedClient.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }); }
+    catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+    if (response?.error || !response?.data?.session?.access_token) throw denied("MANAGED_AUTH_INVALID_SESSION");
+    const actual = await resolve(response.data.session.access_token, surface);
+    if (actual.businessUserId !== businessUserId) throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+    return scopedClient;
+  }
+
+  async function logout(input) {
+    const scopedClient = await authenticatedClient(input);
+    let response;
+    try { response = await scopedClient.auth.signOut({ scope: "local" }); }
+    catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+    if (response?.error) throw denied("MANAGED_AUTH_LOGOUT_FAILED");
+    return { signedOut: true };
+  }
+
+  async function changePassword({ email, currentPassword, newPassword, surface, businessUserId }) {
+    if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 128 ||
+        newPassword === currentPassword || !businessUserId) throw denied("MANAGED_AUTH_INVALID_PASSWORD");
+    const verified = await login({ email, password: currentPassword, surface });
+    const scopedClient = await authenticatedClient({ ...verified.session, surface, businessUserId: verified.identity.businessUserId });
+    let proofSessionRevoked = false;
+    try {
+      if (verified.identity.businessUserId !== businessUserId) throw denied("MANAGED_AUTH_IDENTITY_NOT_LINKED");
+      let response;
+      try { response = await scopedClient.auth.updateUser({ password: newPassword, current_password: currentPassword }); }
+      catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
+      if (response?.error) throw denied("MANAGED_AUTH_PASSWORD_CHANGE_FAILED");
+    } finally {
+      // Attempt cleanup on success and rejection, without replacing the first error.
+      try { proofSessionRevoked = !(await scopedClient.auth.signOut({ scope: "local" }))?.error; }
+      catch { proofSessionRevoked = false; }
+    }
+    return { passwordChanged: true, proofSessionRevoked };
+  }
+  return { login, resolve, refresh, logout, changePassword };
 }
 
 module.exports = { createManagedAuth };

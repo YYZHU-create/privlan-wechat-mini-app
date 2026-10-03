@@ -53,3 +53,7 @@ Admin suite for this milestone: 454 tests, 450 passed, 0 failed, 4 skipped. Root
 ## Login service integration milestone
 
 Both service login methods accept an injected managedAuth adapter, retain original business IDs and issue only opaque application cookies through existing HTTP handlers. Managed rejection never falls back to local password verification, provider outage maps to 503, and application session expiry is bounded by provider expiry. Provider tokens are neither persisted nor returned by business login results. This is not yet enabled by server wiring. Managed password changes, registration, provider refresh/logout coordination and retirement of original-session acceptance remain incomplete and are required before remote cutover. The retained old verifier is currently for the unchanged live release and migration proof, not the requested final architecture.
+
+## Provider session operations milestone
+
+The managed-auth adapter now implements provider refresh with original-business-identity revalidation, session-local sign-out, and current-password reauthentication before password changes. Temporary proof-session revocation is attempted on update success/rejection; cleanup failure is exposed separately from the password update outcome. These operations are not wired into HTTP cookies or enabled server runtime yet. Seven focused synthetic tests pass. Live account setup, registration, coordinated application logout/revocation and complete managed HTTP middleware remain required.
