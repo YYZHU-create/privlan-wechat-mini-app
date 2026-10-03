@@ -59,3 +59,24 @@ Post-publication read-only comparison: users, operator_users, tenants, workspace
 Detailed evidence is at `C:\Users\Administrator\.codex\artifacts\production-startup-guard-20261003`. Next: establish existing Staging application Secret delivery to the image process without returning values, validate inputs with the preflight and reconcile v72 before a distinct corrective publication. Production additionally needs its baseline application restore method and applicable database/files restore-verification records. Existing Production authorization remains recorded; execution conditions are not met.
 
 Official references reviewed: <https://docs.meoo.com/meoo-cli>, <https://docs.meoo.com/untitled-page-2>. Documented image deployment does not establish the current instance's runtime configuration or rollback capability.
+
+## Configuration delivery continuation — 2026-10-03
+
+Current branch/remote before this follow-up: e2bcb55732b1800cfea7363e4141c10c7f622c7b. Read-only release queries confirm Staging v72 SUCCESS/ACTIVE and Production v12 SUCCESS/ACTIVE. The original v72 startup evidence remains a failure: six settings missing or invalid; it does not distinguish each variable's absent/empty/format condition.
+
+| Source | Scope established | Remaining limitation |
+| --- | --- | --- |
+| v71 | Historical ce90 acceptance; release history retained | Exact old launch input and effective Secret binding not recovered |
+| v72 frozen input | .runtime.env contains non-secret target settings only; startup guard observed 0 | Six application settings not established in target process |
+| Cloud Secret list | All six names present, existing version timestamps retained | Returned value representations are opaque; not original usable values; format NOT VERIFIED |
+| Corrected preflight | Models supported static bundled .runtime.env overrides, rejects bundled sensitive settings and executable shell syntax | Local inputs only; actual target injection remains NOT VERIFIED |
+
+Do not interpret opaque Secret-list representations as invalid email/master key or as values that may be re-submitted. An initial format interpretation was discarded after all list entries exhibited the same opaque representation. No value or fingerprint is retained in the diagnostic report.
+
+A real preflight defect was reproduced: the previous preflight accepted valid inherited settings while the bundled file assigned an empty password. The correction blocks that input before startup. It preserves the migration protection and existing database selection; production validation was not weakened. Synthetic tests do not establish original Secret delivery.
+
+The platform cloud UI exposes a name list with creation/deletion controls, not a verified binding control for the new image. Current documented image auto-injection covers platform-managed connection credentials; arbitrary application Secret injection is not established. No Secret was changed and no corrective image was submitted.
+
+Existing support ticket 00069SJR2Y was read again: no concrete baseline reactivation/retained artifact procedure or restore-verification record was added. Latest visible reply (2026-10-03 15:21 local) asks whether further help is needed. Database metadata and uploaded file restore coverage remain separately NOT VERIFIED. Existing seven-table continuity and schema evidence are historical evidence tied to 8f/e2; no new live acceptance is claimed.
+
+Next required external evidence: formally reuse the six existing Staging Secret versions in the image process, with names/binding object/presence/format only; identify an executable current Production baseline recovery target and applicable database/uploaded-file restore records. New Staging submit count 0; Production submit count 0. Authorization retained.

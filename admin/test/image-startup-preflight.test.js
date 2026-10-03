@@ -54,3 +54,28 @@ test('hosted image preflight cannot bypass required settings with absent or deve
     assert.throws(() => preflight({ root: f.root, env }), /生产环境缺少或错误配置/);
   }
 });
+
+test('bundled sensitive overrides are rejected before configuration validation', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'), 'ATELIER_OPS_PASSWORD=\n');
+  assert.throws(() => preflight(f), /must not be bundled/);
+});
+
+test('bundled target overrides participate in local validation', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'), 'MEOO_PROJECT_URL_ID=g8o5cv1om41o\n');
+  assert.throws(() => preflight(f));
+});
+
+test('generated runtime config path and final migration guard are supported', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'),
+    'ATELIER_RUNTIME_CONFIG_PATH="$ROOT/runtime-config.json"\nATELIER_AUTO_MIGRATE=1\n');
+  assert.equal(preflight(f).autoMigrate, '0');
+});
+
+test('preflight never executes shell configuration', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'), 'HOST=$(echo invalid)\n');
+  assert.throws(() => preflight(f), /Unsupported/);
+});
