@@ -85,7 +85,12 @@
       "version": "017_managed_auth_identity_links",
       "file": "017_managed_auth_identity_links.sql",
       "sha256": "1d9b6b01ee7b90a5fab303fc09791f0a861046703cfc271dee96601d74eec133"
+    },
+    {
+      "version": "018_managed_auth_session_provenance",
+      "file": "018_managed_auth_session_provenance.sql",
+      "sha256": "defdff880c925402c672e919af77e8734ce95d53a9a593ad09503935307dbc4d"
     }
   ],
-  "digest": "1e17a640577eb728b5e36f0fff50a20bb172639a49bcae81cd563b9108ddfdb4"
+  "digest": "21fba452cd59f40f19b9b159ac5063acdf467ce59f9eb2ed58fca2226e5adad5"
 }

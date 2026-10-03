@@ -35,6 +35,8 @@ test("both login surfaces use provider authentication and original IDs, without 
   assert.deepEqual(f.requests.map(r => r.surface), ["merchant", "operator"]);
   assert.equal(f.sessions[0].workspace_id, "original-workspace");
   assert.equal(f.sessions[1].operator_id, "original-operator");
+  assert.equal(f.sessions[0].auth_provider, "supabase");
+  assert.equal(f.sessions[1].auth_provider, "supabase");
   assert.equal(new Date(f.sessions[0].expires_at).getTime(), f.expiresAt * 1000);
   assert.equal(new Date(f.sessions[1].expires_at).getTime(), f.expiresAt * 1000);
   assert.equal(JSON.stringify([merchant, operator, f.sessions, f.audits]).includes("provider-secret-fixture"), false);

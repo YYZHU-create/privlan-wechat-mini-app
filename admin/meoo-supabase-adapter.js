@@ -233,8 +233,8 @@ function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleK
     const user = users?.[0]; const membership = memberships?.[0];
     return user && membership ? { ...user, role: membership.role } : null;
   }
-  async function loadSession(tokenHash) {
-    const sessions = await request("merchant_sessions", `?select=id,user_id,workspace_id,csrf_token_hash,expires_at,revoked_at&token_hash=eq.${encodeURIComponent(tokenHash)}&revoked_at=is.null&limit=1`);
+  async function loadSession(tokenHash, { managed = false } = {}) {
+    const sessions = await request("merchant_sessions", `?select=id,user_id,workspace_id,csrf_token_hash,expires_at,revoked_at${managed ? ",auth_provider" : ""}&token_hash=eq.${encodeURIComponent(tokenHash)}&revoked_at=is.null&limit=1`);
     const session = Array.isArray(sessions) ? sessions[0] : null;
     if (!session || revokedSessionIds.has(session.id) || session.revoked_at || (session.expires_at && new Date(session.expires_at) <= new Date())) return null;
     const [users, memberships, workspaces, stores, subscriptions] = await Promise.all([
@@ -246,7 +246,7 @@ function createMeooAuthRepository({ url = process.env.SUPABASE_URL, serviceRoleK
     ]);
     const user = users?.[0]; const membership = memberships?.[0]; const workspace = workspaces?.[0]; const store = stores?.[0]; const subscription = subscriptions?.[0];
     if (!user || !membership || !workspace || !store || membership.tenant_id !== workspace.tenant_id || store.tenant_id !== workspace.tenant_id) return null;
-    return { session_id: session.id, user_id: user.id, workspace_id: workspace.id, csrf_token_hash: session.csrf_token_hash, expires_at: session.expires_at, login_identifier: user.login_identifier, display_name: user.display_name, avatar_url: user.avatar_url, user_status: user.status, tenant_id: workspace.tenant_id, workspace_name: workspace.name, plan_id: workspace.plan_id, store_id: store.id, store_name: store.name, public_store_id: store.public_store_id, role: membership.role, subscription_id: subscription?.id || null, subscription_status: subscription?.status || null, subscription_plan_id: subscription?.plan_id || null, started_at: subscription?.started_at || null, subscription_expires_at: subscription?.expires_at || null };
+    return { ...(managed ? { auth_provider: session.auth_provider } : {}), session_id: session.id, user_id: user.id, workspace_id: workspace.id, csrf_token_hash: session.csrf_token_hash, expires_at: session.expires_at, login_identifier: user.login_identifier, display_name: user.display_name, avatar_url: user.avatar_url, user_status: user.status, tenant_id: workspace.tenant_id, workspace_name: workspace.name, plan_id: workspace.plan_id, store_id: store.id, store_name: store.name, public_store_id: store.public_store_id, role: membership.role, subscription_id: subscription?.id || null, subscription_status: subscription?.status || null, subscription_plan_id: subscription?.plan_id || null, started_at: subscription?.started_at || null, subscription_expires_at: subscription?.expires_at || null };
   }
   async function createSession(input) {
     const rows = await request("merchant_sessions", "", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(input) });
