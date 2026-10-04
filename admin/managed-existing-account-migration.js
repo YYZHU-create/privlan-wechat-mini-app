@@ -124,7 +124,7 @@ function createFileMigrationJournal(filename) {
 }
 
 async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail, password,
-  repository, providerAdmin, journal, resumeLinksOnly = false }) {
+  operatorPassword = password, repository, providerAdmin, journal, resumeLinksOnly = false }) {
   if (!["asmhysidbg5g", "g8o5cv1om41o"].includes(projectId) ||
       repository?.projectId !== projectId || !repository?.verifyTarget || providerAdmin?.providerOrigin !== providerOrigin ||
       !providerAdmin?.createUser || !providerAdmin?.getUserById ||
@@ -138,7 +138,7 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
     await repository.verifyTarget();
     const original = await repository.loadOriginalAccounts(email);
     if (!UUID.test(original.merchant?.id || "") || !UUID.test(original.operator?.id || "")) throw failure("AUTH_MIGRATION_BUSINESS_IDENTITIES_INVALID");
-    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, ...original,
+    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, operatorPassword, ...original,
       providerAccountExists: resumeLinksOnly ? false : await repository.providerAccountExists(email) });
     const record = { phase: "PREPARED", providerSubmitCount: 0, identityLinkCount: 0, projectId, providerOrigin,
       merchantId: original.merchant.id, operatorId: original.operator.id };
@@ -155,7 +155,7 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
       record.phase = "SUBMITTING"; record.providerSubmitCount = 1;
       await journal.write(record);
       let response;
-      try { response = await providerAdmin.createUser({ email, password, email_confirm: true, user_metadata: { username } }); }
+      try { response = await providerAdmin.createUser({ email, password: operatorPassword, email_confirm: true, user_metadata: { username } }); }
       catch {
         record.phase = "CREATE_OUTCOME_UNKNOWN"; await journal.write(record);
         throw failure("AUTH_MIGRATION_PROVIDER_OUTCOME_UNKNOWN");

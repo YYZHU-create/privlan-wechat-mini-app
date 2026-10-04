@@ -23,7 +23,7 @@ async function fixture(t, extra = {}) {
   const providerAdmin = { providerOrigin,
     createUser: async input => {
       submits++; assert.deepEqual(Object.keys(input).sort(), input.user_metadata ? ["email", "email_confirm", "password", "user_metadata"] : ["email", "email_confirm", "password"]);
-      assert.equal(input.password, password); assert.equal(input.email_confirm, true);
+      assert.equal(input.password, extra.providerPassword || password); assert.equal(input.email_confirm, true);
       if (extra.beforeCreate) await extra.beforeCreate(db);
       await db.query("insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)", [subject, email, input.user_metadata || null]);
       if (extra.unknownOutcome) throw new Error("private provider detail");
@@ -79,6 +79,14 @@ test("existing provider email is never silently claimed or overwritten", async t
   const f = await fixture(t); await f.db.query("insert into auth.users(id,email) values($1,$2)", [subject, email]);
   await assert.rejects(migrateExistingAccounts(f.input), { code: "AUTH_MIGRATION_PROVIDER_ACCOUNT_NOT_CLEAR" });
   assert.equal(f.submits(), 0); assert.equal((await f.db.query("select * from managed_auth_identity_links")).rows.length, 0);
+});
+test("separate original passwords create the provider account with the verified operator password", async t => {
+  const operatorPassword = "new-operator-synthetic-password";
+  const f = await fixture(t, { providerPassword: operatorPassword });
+  await f.db.query("update operator_users set password_hash=$1 where id=$2", [hashPassword(operatorPassword), operatorId]);
+  const result = await migrateExistingAccounts({ ...f.input, operatorPassword });
+  assert.equal(result.phase, "COMPLETED"); assert.equal(f.submits(), 1);
+  assert.equal(result.identityLinkCount, 2);
 });
 test("unknown create outcome consumes the single submit and allows no automatic recreation", async t => {
   const f = await fixture(t, { unknownOutcome: true });

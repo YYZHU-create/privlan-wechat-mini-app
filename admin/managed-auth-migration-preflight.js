@@ -6,10 +6,10 @@ function reject(code) { const error = new Error(code); error.code = code; throw 
 // Inputs are private server/local data. Return only the authorized identity plan.
 // No provider writes, password export or email-only identity association occurs.
 function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail,
-  password, merchant, operator, providerAccountExists }) {
+  password, operatorPassword = password, merchant, operator, providerAccountExists }) {
   if (!projectId || typeof projectId !== "string" || !providerOrigin ||
       typeof targetEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail) ||
-      typeof password !== "string" || !password) reject("AUTH_MIGRATION_INPUT_REQUIRED");
+      typeof password !== "string" || !password || typeof operatorPassword !== "string" || !operatorPassword) reject("AUTH_MIGRATION_INPUT_REQUIRED");
   let origin;
   try { origin = new URL(providerOrigin); } catch { reject("AUTH_MIGRATION_INVALID_PROVIDER"); }
   if (origin.protocol !== "https:" || origin.origin !== providerOrigin) reject("AUTH_MIGRATION_INVALID_PROVIDER");
@@ -29,7 +29,7 @@ function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail
   let merchantVerified = false;
   try { merchantVerified = verifyPassword(password, merchant.password_hash); } catch { /* generic rejection */ }
   if (!merchantVerified) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
-  if (!verifyOperatorPassword(password, operator.password_hash)) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
+  if (!verifyOperatorPassword(operatorPassword, operator.password_hash)) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
   return Object.freeze({ projectId, providerOrigin, email: targetEmail.trim().toLowerCase(),
     identities: Object.freeze([
       Object.freeze({ surface: "merchant", businessUserId: merchant.id }),

@@ -25,6 +25,13 @@ test("merchant password cannot authorize a different operator password", () => {
   const source = input(); source.operator.password_hash = hashPassword("different-synthetic");
   assert.throws(() => verifyExistingAccountMigration(source), { code: "AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID" });
 });
+test("separate passwords independently prove the two original identities", () => {
+  const source = input(); source.operatorPassword = "separate-operator-synthetic";
+  source.operator.password_hash = hashPassword(source.operatorPassword);
+  assert.equal(verifyExistingAccountMigration(source).originalPasswordsVerified, true);
+  assert.throws(() => verifyExistingAccountMigration({ ...source, password: "wrong-merchant" }), { code: "AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID" });
+  assert.throws(() => verifyExistingAccountMigration({ ...source, operatorPassword: "wrong-operator" }), { code: "AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID" });
+});
 test("wrong original password is rejected before any provisioning", () => {
   assert.throws(() => verifyExistingAccountMigration({ ...input(), password: "wrong-synthetic" }), { code: "AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID" });
 });
