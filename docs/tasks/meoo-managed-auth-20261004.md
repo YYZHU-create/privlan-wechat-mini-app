@@ -2,22 +2,22 @@
 
 ## Accepted scope
 
-Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Original Operator business identifier: `ops-admin@localhost`; the user subsequently selected `516951336@qq.com` for the new Operator login. Merchant identifier also remains `516951336@qq.com`. One provider subject may have two explicit surface-specific links, preserving separate business accounts and permissions. The user confirmed that both original passwords are the same and selected retaining this password. Preserve the original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
+Replace both Merchant and Operator password authentication with Meoo Cloud / Supabase Auth. Original Operator business identifier: `ops-admin@localhost`; the user selected `516951336@qq.com` for the new shared provider login. One provider subject has two explicit surface-specific links, preserving separate business accounts and permissions. Following an authorized Staging operator-password reset, the user selected that new operator password for provider login; merchant and operator original credentials are independently verified. Preserve original business users, PRIVLAN tenant/workspace, memberships, permissions, subscriptions and media. Provider identities must be explicitly linked to permanent business identities; email equality and provider user_metadata grant no business authority.
 
 ## Current implementation milestone
 
 Branch: `codex/meoo-managed-auth`. Source base: `945c22a18e06b85e03fb135c756f8baadce12e9e`.
 
-`admin/managed-auth.js` and the managed runtime factory are wired into the actual Express service constructor for both login surfaces. Email-first registration, callback and transactional new-merchant provisioning are locally tested. Explicit activation requires target/configuration/schema readiness. Provider sessions remain private server data. Real account migration and target-runtime acceptance remain pending; dated milestones below record code-specific evidence.
+`admin/managed-auth.js` and the managed runtime factory are wired into the actual Express service constructor for both login surfaces. Email-first registration, callback and transactional new-merchant provisioning are locally tested. Staging017–021 and the shared provider account/two exact links are verified complete. Target-runtime managed activation and fresh login acceptance remain pending; dated milestones below record code-specific evidence.
 
-The old live routes remain until the replacement can pass acceptance. Final requested architecture is managed authentication, not permanent dual password verifiers. No provider account creation, migration, remote configuration change or deployment has occurred in this milestone.
+Final requested architecture is managed authentication for both surfaces. Ordinary startup enforces autoMigrate=0. Current Staging active release72 still returns HTTP412; its old login page is not evidence of working replacement authentication. Historical milestones below retain their original verification scope.
 
 ## Read-only account observations
 
 Staging `asmhysidbg5g`: database `ra_supabase_z1ota9ew3gblan`, observed `2026-10-04 03:02:22.497774+08`.
 Production `g8o5cv1om41o`: database `ra_supabase_74z0ong0wmvmwj`, observed `2026-10-04 03:03:05.591899+08`.
 
-In each project the exact operator and merchant have one active original business record each, and zero matching auth.users records. Source: project-selected local Meoo CLI read-only count query. This establishes account existence only, not full business-data preservation or provider login acceptance.
+These initial observations predate the authorized Staging account creation recorded below. They establish original account existence only and are not the current Staging provider-account state.
 
 ## Verification
 
@@ -148,3 +148,6 @@ On2026-10-05 user authorized Staging-only account migration. First preflight ret
 
 ## Staging account and exact identity links completed
 At2026-10-04T19:57:06.046Z (2026-10-05 03:57:06 Asia/Shanghai), independent read-only query confirms the journal provider subject exists in Staging auth.users with confirmed email; exactly one merchant link and one operator link match the original recorded business IDs, project and provider origin. RESUME_RESULT/JOURNAL both COMPLETED, total provider creations1, identity links2, resume new-account creations0. Original identity preservation applies to the exact linked IDs; this readback does not establish every business column or live login/cutover. Secret values not saved. Evidence account-migration/RESUME_RESULT.json and LINKS_READBACK.json in existing artifact root. Next: verify Staging managed-auth runtime configuration/delivery and separately authorized application cutover, then fresh Merchant/Operator login, permissions and fixed-seven-day session acceptance. Production unchanged; account migration is complete, live auth cutover remains unverified.
+
+## Staging cutover preparation current
+2026-10-05 fresh audit confirms active v72 SUCCESS but GET /health412; managed017–021 applied, exact account links previously verified. Prepared secret-free frozen candidate a4be5d27713a1a643e9ca77a5c614aad0a5dee85 with304-file context digest11f4b771dbfe21e8c4ef5fbedfae36f97a82d1f57d0547e583b144062b8a4dd6. Newly executed focused startup/auth/session tests30/30 PASS; CI37230659379 dispatched on that SHA. App secrets required by production-mode runtime are absent from the inspected local root.env; this does not establish live secret values or their global absence. Asked user whether to add a dedicated Staging Edge Function to deliver existing four app secrets to a service-role-authenticated Node process, without secret source/image storage or overwriting existing functions. Decision pending; submit count0. Evidence staging-cutover/REPORT.md and PRE_DEPLOY_AUDIT.json under existing artifact root.
