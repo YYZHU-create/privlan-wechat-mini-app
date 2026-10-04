@@ -60,6 +60,7 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
       const state = open(r);
       let identity;
       if (Number(state.expiresAt) * 1000 <= now() + 30000) {
+        if (locked.markRefreshStarted) await locked.markRefreshStarted();
         const result = await managedAuth.refresh({ refreshToken: state.refreshToken, surface, businessUserId });
         verifyIdentity(result?.identity, r);
         if (now() >= r.deadline) return null;

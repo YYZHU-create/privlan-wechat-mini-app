@@ -100,7 +100,12 @@
       "version": "020_managed_auth_session_state",
       "file": "020_managed_auth_session_state.sql",
       "sha256": "f515145bca13d2a0401d559c69b4d8187918944843c9526826521ba24d8d621e"
+    },
+    {
+      "version": "021_managed_auth_session_rpc",
+      "file": "021_managed_auth_session_rpc.sql",
+      "sha256": "de4741aac80b0d3f94dce8e3202ee49cd13a1efde34cbb07a30fe10d67c92f31"
     }
   ],
-  "digest": "fb44c5557409b916c408d0b6f71df6fe46c5bce6f2030399c3d9595bf3af3ba4"
+  "digest": "62e30f696f8dabd76f7c2ec9c553eb010a4f5dd1e40c3300883e522870ba88c7"
 }
