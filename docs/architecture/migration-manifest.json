@@ -95,7 +95,12 @@
       "version": "019_managed_merchant_provisioning",
       "file": "019_managed_merchant_provisioning.sql",
       "sha256": "0ed9a155de4df3a12e7a1cab3ccdf928992577937cca4578bd5f63da82650726"
+    },
+    {
+      "version": "020_managed_auth_session_state",
+      "file": "020_managed_auth_session_state.sql",
+      "sha256": "f515145bca13d2a0401d559c69b4d8187918944843c9526826521ba24d8d621e"
     }
   ],
-  "digest": "148f844b229e5b8add75b0c765bc8776d85fd218bcd22f4e853c4f52c4fcfcf2"
+  "digest": "fb44c5557409b916c408d0b6f71df6fe46c5bce6f2030399c3d9595bf3af3ba4"
 }
