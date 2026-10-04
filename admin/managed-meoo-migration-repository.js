@@ -10,7 +10,11 @@ function literal(value) {
 function createMeooMigrationRepository({ projectId, expectedDatabase, queryOnce }) {
   if (typeof queryOnce !== "function") throw fail("AUTH_MIGRATION_QUERY_TRANSPORT_REQUIRED");
   async function query(sql, parameters = []) {
-    const statement = sql.replace(/\$(\d+)/g, (_, index) => literal(parameters[Number(index) - 1]));
+    // Fully constructed DO bodies already contain escaped data, including
+    // legacy hashes whose segments may start with digits after a dollar sign.
+    const statement = parameters.length
+      ? sql.replace(/\$(\d+)/g, (_, index) => literal(parameters[Number(index) - 1]))
+      : sql;
     try {
       const rows = await queryOnce({ projectId, sql: statement });
       if (!Array.isArray(rows)) throw new Error();

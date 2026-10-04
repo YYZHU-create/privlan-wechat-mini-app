@@ -31,6 +31,15 @@ test("Meoo single-statement transaction links both original identities and readb
   await f.repository.commitIdentityLinks({ plan: f.plan, providerUserId: f.subject, original: f.original });
   assert.equal((await f.db.query("select count(*)::int n from managed_auth_identity_links")).rows[0].n, 2);
 });
+test("dollar-digit legacy hash data is not expanded as a SQL placeholder", async t => {
+  const f = await fixture(t);
+  const syntheticHash = "$scrypt$N=16384,r=8,p=1$123synthetic-salt$456synthetic-key";
+  await f.db.query("update operator_users set password_hash=$1 where id=$2", [syntheticHash, f.original.operator.id]);
+  f.original.operator.password_hash = syntheticHash;
+  assert.deepEqual(await f.repository.commitIdentityLinks({ plan: f.plan, providerUserId: f.subject, original: f.original }), { identityLinkCount: 2 });
+  assert.equal(f.writes(), 1);
+  assert.equal((await f.db.query("select password_hash from operator_users where id=$1", [f.original.operator.id])).rows[0].password_hash, syntheticHash);
+});
 test("changed proof and late insert failure leave no partial mapping", async t => {
   const f = await fixture(t);
   await f.db.exec("create function deny_operator_link() returns trigger language plpgsql as $$ begin if new.surface='operator' then raise exception 'synthetic failure'; end if; return new; end $$; create trigger deny_link before insert on managed_auth_identity_links for each row execute function deny_operator_link();");
