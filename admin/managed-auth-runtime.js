@@ -2,7 +2,10 @@
 const { createManagedAuth } = require("./managed-auth");
 const { createManagedAuthRepository, createMeooManagedAuthRepository } = require("./managed-auth-repository");
 
-const REQUIRED_MIGRATIONS = ["017_managed_auth_identity_links", "018_managed_auth_session_provenance", "019_managed_merchant_provisioning"];
+const REQUIRED_MIGRATIONS = ["017_managed_auth_identity_links", "018_managed_auth_session_provenance", "019_managed_merchant_provisioning", "020_managed_auth_session_state", "021_managed_auth_session_rpc"];
+const { createManagedSessionLifetime } = require("./managed-session-lifetime");
+const { createManagedSessionStateRepository } = require("./managed-session-state-repository");
+const { createMeooSessionStateRepository } = require("./managed-meoo-session-state-repository");
 const TARGETS = { asmhysidbg5g: "staging", g8o5cv1om41o: "production" };
 function failure(code) { const error = new Error(code); error.code = code; return error; }
 function readManagedAuthConfig(env = process.env) {
@@ -31,15 +34,19 @@ function readManagedAuthConfig(env = process.env) {
     if (payload.role === "service_role") throw failure("MANAGED_AUTH_PUBLIC_KEY_REQUIRED");
   } catch (error) { if (error.code === "MANAGED_AUTH_PUBLIC_KEY_REQUIRED") throw error; }
   if (backend === "meoo" && !serviceRoleKey) throw failure("MANAGED_AUTH_REPOSITORY_NOT_CONFIGURED");
+  const encodedKey = String(env.ATELIER_MASTER_KEY || "");
+  const sessionKey = Buffer.from(encodedKey, "base64");
+  if (sessionKey.length !== 32 || sessionKey.toString("base64") !== encodedKey) throw failure("MANAGED_SESSION_ATELIER_MASTER_KEY_REQUIRED");
   // Private config: never serialize this object into health/runtime responses.
   return { projectId, environment: TARGETS[projectId], backend, supabaseUrl: provider.origin,
-    anonKey, serviceRoleKey, applicationOrigin: `https://${projectId}.meoo.pub` };
+    anonKey, serviceRoleKey, sessionKey, applicationOrigin: `https://${projectId}.meoo.pub` };
 }
 
 async function verifyManagedAuthSchema({ config, db, fetchImpl = globalThis.fetch }) {
   const probes = [
     ["managed_auth_identity_links", "project_id,provider_origin,surface,provider_user_id,merchant_user_id,operator_user_id"],
-    ["merchant_sessions", "auth_provider"], ["operator_sessions", "auth_provider"]
+    ["merchant_sessions", "auth_provider"], ["operator_sessions", "auth_provider"],
+    ["managed_auth_session_state", "session_id,project_id,provider_origin,surface,provider_user_id,business_user_id,issued_at_ms,deadline_ms,encrypted_state,lease_token,lease_until,rotation_pending,revoked"]
   ];
   try {
     let versions;
@@ -54,7 +61,7 @@ async function verifyManagedAuthSchema({ config, db, fetchImpl = globalThis.fetc
         if (!Array.isArray(rows)) throw new Error();
         return rows;
       }
-      versions = await read("schema_migrations", { select: "version", version: `in.(${REQUIRED_MIGRATIONS.join(",")})`, limit: "4" });
+      versions = await read("schema_migrations", { select: "version", version: `in.(${REQUIRED_MIGRATIONS.join(",")})`, limit: String(REQUIRED_MIGRATIONS.length + 1) });
       for (const [table, select] of probes) {
         if ((await read(table, { select, limit: "0" })).length !== 0) throw new Error();
       }
@@ -77,6 +84,11 @@ async function createManagedAuthRuntime({ env = process.env, db, fetchImpl, crea
     : createManagedAuthRepository({ db });
   const auth = createManagedAuth({ ...config, createClient,
     resolveIdentityLink: repository.resolveIdentityLink, loadBusinessPrincipal: repository.loadBusinessPrincipal });
-  return { auth, repository };
+  const stateRepository = config.backend === "meoo"
+    ? createMeooSessionStateRepository({ projectId: config.projectId, providerOrigin: config.supabaseUrl, serviceRoleKey: config.serviceRoleKey, fetchImpl })
+    : createManagedSessionStateRepository({ db, projectId: config.projectId, providerOrigin: config.supabaseUrl });
+  const sessions = createManagedSessionLifetime({ projectId: config.projectId, providerOrigin: config.supabaseUrl,
+    key: config.sessionKey, repository: stateRepository, managedAuth: auth });
+  return { auth, repository, sessions };
 }
 module.exports = { readManagedAuthConfig, verifyManagedAuthSchema, createManagedAuthRuntime, REQUIRED_MIGRATIONS };

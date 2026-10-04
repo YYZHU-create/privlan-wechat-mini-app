@@ -7,7 +7,7 @@ process.env.NODE_ENV = "test";
 function environment(extra = {}) {
   return { ATELIER_AUTH_PROVIDER: "supabase", MEOO_PROJECT_URL_ID: "asmhysidbg5g", ATELIER_ENVIRONMENT: "staging",
     ATELIER_RUNTIME_CONFIG_LOAD_STATUS: "LOADED_VALIDATED", ATELIER_AUTO_MIGRATE: "0", ATELIER_DB_BACKEND: "native",
-    SUPABASE_URL: "https://provider.example.test", SUPABASE_ANON_KEY: "synthetic-public", ...extra };
+    ATELIER_MASTER_KEY: Buffer.alloc(32, 1).toString("base64"), SUPABASE_URL: "https://provider.example.test", SUPABASE_ANON_KEY: "synthetic-public", ...extra };
 }
 test("legacy startup constructs no managed provider or schema queries", async () => {
   assert.equal(readManagedAuthConfig({}), null);
@@ -106,10 +106,10 @@ test("managed Production configuration replaces only obsolete password bootstrap
 });
 test("native startup verifies migrations and columns with SELECT only; missing schema never falls back", async () => {
   const queries = [];
-  const db = { kind: "postgres", query: async sql => { queries.push(sql); return { rows: sql.includes("schema_migrations") ? REQUIRED_MIGRATIONS.map(version => ({ version })) : [] }; } };
+  const db = { kind: "postgres", transaction: async callback => callback(db), query: async sql => { queries.push(sql); return { rows: sql.includes("schema_migrations") ? REQUIRED_MIGRATIONS.map(version => ({ version })) : [] }; } };
   const runtime = await createManagedAuthRuntime({ env: environment(), db, createClient: () => { throw new Error("No provider request during startup"); } });
-  assert.ok(runtime.auth && runtime.repository);
-  assert.equal(queries.length, 4); assert.ok(queries.every(q => q.startsWith("select ")));
+  assert.ok(runtime.auth && runtime.repository && runtime.sessions);
+  assert.equal(queries.length, 5); assert.ok(queries.every(q => q.startsWith("select ")));
   await assert.rejects(createManagedAuthRuntime({ env: environment(), db: { kind: "postgres", query: async () => ({ rows: [] }) } }), { code: "MANAGED_AUTH_SCHEMA_NOT_READY" });
   await assert.rejects(createManagedAuthRuntime({ env: environment(), db: { kind: "meoo" } }), { code: "MANAGED_AUTH_DATABASE_SELECTION_INVALID" });
 });
@@ -122,7 +122,7 @@ test("Meoo startup uses bounded server-only schema GETs and no migration or prov
   };
   const runtime = await createManagedAuthRuntime({ env, db: { kind: "meoo" }, fetchImpl, createClient: () => ({}) });
   assert.equal(typeof runtime.repository.provisionMerchant, "function");
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   for (const { url, options } of calls) {
     assert.equal(url.origin, "https://provider.example.test"); assert.equal(options.method, "GET");
     assert.equal(options.redirect, "error"); assert.equal(options.headers.Authorization, "Bearer synthetic-server");
@@ -174,5 +174,21 @@ test("native factory and HTTP routes accept both explicit original identities us
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await db.close(); fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+
+test("managed session runtime requires existing canonical master key before any database query", async()=>{
+  for(const key of ["",Buffer.alloc(31).toString("base64"),Buffer.alloc(33).toString("base64"),"not-base64",Buffer.alloc(32).toString("base64")+"!"]){
+    let reads=0;
+    await assert.rejects(createManagedAuthRuntime({env:environment({ATELIER_MASTER_KEY:key}),db:{kind:"postgres",query:async()=>{reads++;}}}),{code:"MANAGED_SESSION_ATELIER_MASTER_KEY_REQUIRED"});
+    assert.equal(reads,0);
+  }
+});
+test("managed startup rejects missing session state migration or columns rather than issuing an incomplete session",async()=>{
+  const env=environment({ATELIER_DB_BACKEND:"meoo",SUPABASE_SERVICE_ROLE_KEY:"synthetic-server"});
+  for(const failure of ["migration","columns"]){
+    const fetchImpl=async url=>({ok:!(failure==="columns"&&url.includes("managed_auth_session_state")),json:async()=>url.includes("schema_migrations")?REQUIRED_MIGRATIONS.filter(v=>failure!=="migration"||!v.startsWith("021_")).map(version=>({version})):[]});
+    await assert.rejects(createManagedAuthRuntime({env,db:{kind:"meoo"},fetchImpl}),{code:"MANAGED_AUTH_SCHEMA_NOT_READY"});
   }
 });
