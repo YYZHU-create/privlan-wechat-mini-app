@@ -38,7 +38,7 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
       throw failure("MANAGED_SESSION_IDENTITY_CHANGED");
     }
   }
-  async function issue({ sessionId, surface, businessUserId, providerResult }) {
+  async function issue({ sessionId, surface, businessUserId, providerResult, transaction }) {
     if (!sessionId || !businessUserId || !["merchant", "operator"].includes(surface) || !providerResult?.identity?.providerUserId) {
       throw failure("MANAGED_SESSION_IDENTITY_CHANGED");
     }
@@ -47,7 +47,7 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
       providerUserId: providerResult.identity.providerUserId, issuedAt, deadline: issuedAt + FIXED_LIFETIME_MS };
     verifyIdentity(providerResult.identity, row);
     row.encryptedState = seal(row, providerResult.session);
-    await repository.insert(row);
+    await repository.insert(row, transaction);
     return { expiresAt: new Date(row.deadline) };
   }
   async function resolve({ sessionId, surface, businessUserId }) {

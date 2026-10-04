@@ -55,3 +55,23 @@ test("wrong binding and duplicate state cannot change existing provider row",asy
   await assert.rejects(f.coordinator.issue({...f.request,providerResult:{identity:f.identity,session:f.session()}}));
   assert.deepEqual((await f.db.query("select * from managed_auth_session_state")).rows,before);
 });
+
+
+test("login caller transaction owns application session and encrypted state atomically", {timeout:15000}, async t=>{
+  const f=await fixture(t);
+  await f.db.query("delete from merchant_sessions where id=$1",[sessionId]);
+  const originalTransaction=f.db.transaction.bind(f.db);let nestedCalls=0;
+  const repository=createManagedSessionStateRepository({db:{query:f.db.query.bind(f.db),transaction:()=>{nestedCalls++;throw new Error("nested transaction");}},projectId,providerOrigin});
+  const coordinator=createManagedSessionLifetime({...f.config,repository});
+  async function login(tx){
+    await tx.query("insert into merchant_sessions(id,user_id,workspace_id,token_hash,csrf_token_hash,expires_at,auth_provider) values($1,$2,$3,'joined-token','joined-csrf',now()+interval '7 days','supabase')",[sessionId,f.original.user.id,f.original.workspace.id]);
+    await coordinator.issue({...f.request,providerResult:{identity:f.identity,session:f.session()},transaction:tx});
+  }
+  await assert.rejects(originalTransaction(async tx=>{await login(tx);throw new Error("later login failure");}),/later login failure/);
+  assert.equal((await f.db.query("select * from merchant_sessions where id=$1",[sessionId])).rows.length,0);
+  assert.equal((await f.db.query("select * from managed_auth_session_state where session_id=$1",[sessionId])).rows.length,0);
+  await originalTransaction(login);
+  assert.equal(nestedCalls,0);
+  assert.equal((await f.db.query("select * from managed_auth_session_state where session_id=$1",[sessionId])).rows.length,1);
+  assert.equal((await f.coordinator.resolve(f.request)).identity.businessUserId,f.original.user.id);
+});

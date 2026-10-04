@@ -8,11 +8,11 @@ function selection(surface) {
 }
 function createManagedSessionStateRepository({ db, projectId, providerOrigin }) {
   if (!db?.query || !db?.transaction || !["asmhysidbg5g", "g8o5cv1om41o"].includes(projectId)) throw failure("MANAGED_SESSION_STORE_NOT_CONFIGURED");
-  async function insert(r) {
+  async function insert(r, transaction) {
     const s = selection(r.surface);
     if (r.projectId !== projectId || r.providerOrigin !== providerOrigin || !UUID.test(r.sessionId) ||
         !UUID.test(r.businessUserId) || !UUID.test(r.providerUserId)) throw failure("MANAGED_SESSION_BINDING_INVALID");
-    await db.transaction(async tx => {
+    const write = async tx => {
       const proof = await tx.query(`select s.id from ${s.table} s join managed_auth_identity_links l
         on l.${s.link}=s.${s.owner} and l.project_id=$2 and l.provider_origin=$3 and l.surface=$4 and l.provider_user_id=$5
         where s.id=$1 and s.${s.owner}=$6 and s.auth_provider='supabase' and s.revoked_at is null and s.expires_at>now() for update of s`,
@@ -22,7 +22,11 @@ function createManagedSessionStateRepository({ db, projectId, providerOrigin }) 
         merchant_session_id,operator_session_id,issued_at_ms,deadline_ms,encrypted_state) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [r.sessionId,projectId,providerOrigin,r.surface,r.providerUserId,r.businessUserId,
         r.surface === "merchant" ? r.sessionId : null,r.surface === "operator" ? r.sessionId : null,r.issuedAt,r.deadline,r.encryptedState]);
-    });
+    };
+    if (transaction) {
+      if (typeof transaction.query !== "function") throw failure("MANAGED_SESSION_STORE_NOT_CONFIGURED");
+      await write(transaction);
+    } else await db.transaction(write);
   }
   async function withLockedSession(input, callback) {
     const s = selection(input.surface);
