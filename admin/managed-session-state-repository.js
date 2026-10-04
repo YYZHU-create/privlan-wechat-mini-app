@@ -6,7 +6,7 @@ function selection(surface) {
   if (surface === "operator") return { table: "operator_sessions", owner: "operator_id", link: "operator_user_id" };
   throw failure("MANAGED_SESSION_BINDING_INVALID");
 }
-function createManagedSessionStateRepository({ db, projectId, providerOrigin }) {
+function createManagedSessionStateRepository({ db, projectId, providerOrigin, runWithTransaction = (_tx, fn) => fn() }) {
   if (!db?.query || !db?.transaction || !["asmhysidbg5g", "g8o5cv1om41o"].includes(projectId)) throw failure("MANAGED_SESSION_STORE_NOT_CONFIGURED");
   async function insert(r, transaction) {
     const s = selection(r.surface);
@@ -40,10 +40,10 @@ function createManagedSessionStateRepository({ db, projectId, providerOrigin }) 
       const v = rows[0];
       const row = { sessionId:v.session_id,projectId:v.project_id,providerOrigin:v.provider_origin,surface:v.surface,
         providerUserId:v.provider_user_id,businessUserId:v.business_user_id,issuedAt:Number(v.issued_at_ms),deadline:Number(v.deadline_ms),encryptedState:v.encrypted_state };
-      return callback({ row, updateEncryptedState: async encrypted => {
+      return runWithTransaction(tx, () => callback({ row, updateEncryptedState: async encrypted => {
         const result = await tx.query("update managed_auth_session_state set encrypted_state=$2 where session_id=$1 returning session_id", [row.sessionId,encrypted]);
         if (result.rows.length !== 1) throw failure("MANAGED_SESSION_STORE_WRITE_NOT_CONFIRMED");
-      } });
+      } }));
     });
   }
   return { insert, withLockedSession };

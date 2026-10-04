@@ -31,7 +31,7 @@ function makeLicenseCode() {
 
 function maskLicense(code) { return `${code.slice(0, 3)}****-****-${code.slice(-4)}`; }
 
-function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null, managedAuth = null, managedAuthRepository = null }) {
+function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEPPER || "", workflowMappings = DEFAULT_WORKFLOW_MAPPINGS, tagRepository = null, appointmentRepository = null, appointmentReadRepository = null, customerRepository = null, customerWriteRepository = null, appointmentWriteRepository = null, authRepository = null, configRepository = null, meooLaunchRepository = null, operatorRepository = null, managedAuth = null, managedAuthRepository = null, managedSessions = null }) {
   if (!db) throw new Error("database is required");
   async function managedLogin(email, password, surface) {
     let result;
@@ -49,7 +49,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
         identity.principal?.id !== identity.businessUserId || identity.principal?.status !== "active") {
       throw new ServiceError(401, "INVALID_AUTH_IDENTITY", "登录身份无效");
     }
-    return { identity, expiresAt };
+    return { identity, expiresAt, session: result.session };
   }
   const customerService = createCustomerService({ db, tagRepository, customerRepository, customerWriteRepository });
   const appointmentService = createAppointmentService({ db, customerService, appointmentRepository, appointmentReadRepository, appointmentWriteRepository });
@@ -63,10 +63,10 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`, [id(), scope?.tenantId || null, scope?.workspaceId || null, scope?.actorType || "system", scope?.actorId || "system", action, resourceType, resourceId || null, scope?.requestId || id(), json(metadata)]);
   }
 
-  async function issueSession(tx, { userId, workspaceId, ipAddress, userAgent, providerExpiresAt }) {
+  async function issueSession(tx, { userId, workspaceId, ipAddress, userAgent, providerExpiresAt, providerResult }) {
     const token = crypto.randomBytes(32).toString("base64url");
     const csrfToken = crypto.randomBytes(24).toString("base64url");
-    const expiresAt = providerExpiresAt ? new Date(Math.min(providerExpiresAt.getTime(), addHours(new Date(), 24 * 7).getTime())) : addHours(new Date(), 24 * 7);
+    const expiresAt = managedSessions ? addHours(new Date(), 24 * 7) : providerExpiresAt ? new Date(Math.min(providerExpiresAt.getTime(), addHours(new Date(), 24 * 7).getTime())) : addHours(new Date(), 24 * 7);
     const sessionInput = { id: id(), user_id: userId, workspace_id: workspaceId, token_hash: sha256(token), csrf_token_hash: sha256(csrfToken), ip_address: ipAddress || null, user_agent: userAgent || null, expires_at: expiresAt.toISOString() };
     if (managedAuth) {
       if (!providerExpiresAt) throw new ServiceError(503, "INVALID_AUTH_IDENTITY", "认证会话尚未确认");
@@ -74,10 +74,15 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     }
     if (authRepository) {
       await authRepository.createSession(sessionInput);
+      if (managedSessions) {
+        try { await managedSessions.issue({ sessionId: sessionInput.id, surface: "merchant", businessUserId: userId, providerResult }); }
+        catch { await authRepository.revokeSession(sessionInput.id); throw new ServiceError(503, "AUTH_SESSION_STORE_UNAVAILABLE", "登录会话暂时不可用"); }
+      }
       return { token, csrfToken, expiresAt };
     }
     await tx.query(`insert into merchant_sessions(id,user_id,workspace_id,token_hash,csrf_token_hash,ip_address,user_agent,expires_at${managedAuth ? ",auth_provider" : ""})
       values($1,$2,$3,$4,$5,$6,$7,$8${managedAuth ? ",$9" : ""})`, [sessionInput.id, userId, workspaceId, sessionInput.token_hash, sessionInput.csrf_token_hash, ipAddress || null, userAgent || null, expiresAt, ...(managedAuth ? ["supabase"] : [])]);
+    if (managedSessions) await managedSessions.issue({ sessionId: sessionInput.id, surface: "merchant", businessUserId: userId, providerResult, transaction: tx });
     return { token, csrfToken, expiresAt };
   }
 
@@ -174,18 +179,18 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     const membership = authRepository ? await authRepository.findMembership(user.id) : (await db.query("select workspace_id from memberships where user_id=$1 order by created_at limit 1", [user.id])).rows[0];
     if (!membership) throw new ServiceError(403, "WORKSPACE_ACCESS_DENIED", "账号没有可访问的工作区");
     if (authRepository) {
-      const session = await issueSession(null, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt });
+      const session = await issueSession(null, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt, providerResult });
       await authRepository.recordAudit({ id: id(), tenant_id: membership.tenant_id || null, workspace_id: membership.workspace_id, actor_type: "merchant", actor_id: user.id, action: "merchant.login", resource_type: "merchant_session", request_id: context.requestId || id(), metadata: {} });
       return { session, user: publicUser(user) };
     }
     return db.transaction(async tx => {
-      const session = await issueSession(tx, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt });
+      const session = await issueSession(tx, { userId: user.id, workspaceId: membership.workspace_id, ipAddress: context.ipAddress, userAgent: context.userAgent, providerExpiresAt: providerResult?.expiresAt, providerResult });
       await audit(tx, { actorType: "merchant", actorId: user.id, workspaceId: membership.workspace_id, requestId: context.requestId }, "merchant.login", "merchant_session", null);
       return { session, user: publicUser(user) };
     });
   }
 
-  async function resolveSession(token) {
+  async function resolveStoredSession(token) {
     if (!token) return null;
     if (authRepository) {
       const row = await authRepository.loadSession(sha256(token), { managed: Boolean(managedAuth) });
@@ -210,6 +215,21 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       subscription: { id: row.subscription_id, planId: row.subscription_plan_id || row.plan_id, status: expired ? "expired" : row.subscription_status, startedAt: row.started_at, expiresAt: row.expires_at }
     };
   }
+
+  async function verifyManagedSession(session, surface) {
+    if (!session || !managedSessions) return session;
+    let verified;
+    try { verified = await managedSessions.resolve({ sessionId: session.sessionId, surface, businessUserId: session.userId }); }
+    catch (error) {
+      if (["MANAGED_SESSION_IDENTITY_CHANGED", "MANAGED_SESSION_STATE_NOT_VERIFIED"].includes(error?.code)) return null;
+      throw new ServiceError(503, "AUTH_SESSION_UNAVAILABLE", "认证会话暂时不可用");
+    }
+    if (!verified) return null;
+    if (surface === "operator") return { ...session, role: verified.identity.principal.role, name: verified.identity.principal.display_name };
+    return session;
+  }
+  async function resolveSession(token) { return verifyManagedSession(await resolveStoredSession(token), "merchant"); }
+  async function resolveOperatorSession(token) { return verifyManagedSession(await resolveStoredOperatorSession(token), "operator"); }
 
   async function logout(sessionId, context = {}) {
     if (!sessionId) return;
@@ -530,14 +550,19 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
       const result = await managedLogin(normalizeLogin(emailValue), password, "operator");
       const user = result.identity.principal;
       const token = crypto.randomBytes(32).toString("base64url");
-      const expiresAt = new Date(Math.min(result.expiresAt.getTime(), addHours(new Date(), 8).getTime()));
+      const expiresAt = managedSessions ? addHours(new Date(), 24 * 7) : new Date(Math.min(result.expiresAt.getTime(), addHours(new Date(), 8).getTime()));
       const sessionId = id();
       if (operatorRepository) {
         await operatorRepository.createSession({ id: sessionId, operator_id: user.id, token_hash: sha256(token), expires_at: expiresAt.toISOString(), auth_provider: "supabase" });
+        if (managedSessions) {
+          try { await managedSessions.issue({ sessionId, surface: "operator", businessUserId: user.id, providerResult: result }); }
+          catch { await operatorRepository.revokeSession(sessionId); throw new ServiceError(503, "AUTH_SESSION_STORE_UNAVAILABLE", "登录会话暂时不可用"); }
+        }
         await operatorRepository.audit({ id: id(), tenant_id: null, workspace_id: null, actor_type: "operator", actor_id: user.id, action: "operator.login", resource_type: "operator_session", resource_id: sessionId, request_id: context.requestId || id(), metadata: { authentication: "supabase" } });
       } else {
         await db.transaction(async tx => {
           await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at,auth_provider) values($1,$2,$3,$4,$5)", [sessionId, user.id, sha256(token), expiresAt, "supabase"]);
+          if (managedSessions) await managedSessions.issue({ sessionId, surface: "operator", businessUserId: user.id, providerResult: result, transaction: tx });
           await audit(tx, { actorType: "operator", actorId: user.id, requestId: context.requestId }, "operator.login", "operator_session", sessionId, { authentication: "supabase" });
         });
       }
@@ -558,7 +583,7 @@ function createSaasService({ db, licensePepper = process.env.ATELIER_LICENSE_PEP
     await db.transaction(async tx => { await tx.query("insert into operator_sessions(id,operator_id,token_hash,expires_at) values($1,$2,$3,$4)",[sessionId,user.id,sha256(token),expiresAt]); await audit(tx,{actorType:"operator",actorId:user.id,requestId:context.requestId},"operator.login","operator_session",sessionId,{ip:context.ipAddress||null}); });
     return {token,expiresAt,user:{userId:user.id,email:user.email,name:user.display_name,role:user.role}};
   }
-  async function resolveOperatorSession(token) { if (!token) return null; if (operatorRepository) return operatorRepository.resolveSession(sha256(token), { managed: Boolean(managedAuth) }).then(s=>s && (!managedAuth || s.auth_provider === "supabase") ? {token,sessionId:s.session_id,id:s.user_id,userId:s.user_id,email:s.email,name:s.display_name,role:s.role} : null); const row=(await db.query(`select ${managedAuth ? "s.auth_provider," : ""}s.id session_id,u.id user_id,u.email,u.display_name,u.role from operator_sessions s join operator_users u on u.id=s.operator_id where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`,[sha256(token)])).rows[0]; return row && (!managedAuth || row.auth_provider === "supabase") ?{token,sessionId:row.session_id,id:row.user_id,userId:row.user_id,email:row.email,name:row.display_name,role:row.role}:null; }
+  async function resolveStoredOperatorSession(token) { if (!token) return null; if (operatorRepository) return operatorRepository.resolveSession(sha256(token), { managed: Boolean(managedAuth) }).then(s=>s && (!managedAuth || s.auth_provider === "supabase") ? {token,sessionId:s.session_id,id:s.user_id,userId:s.user_id,email:s.email,name:s.display_name,role:s.role} : null); const row=(await db.query(`select ${managedAuth ? "s.auth_provider," : ""}s.id session_id,u.id user_id,u.email,u.display_name,u.role from operator_sessions s join operator_users u on u.id=s.operator_id where s.token_hash=$1 and s.revoked_at is null and s.expires_at>now() and u.status='active' limit 1`,[sha256(token)])).rows[0]; return row && (!managedAuth || row.auth_provider === "supabase") ?{token,sessionId:row.session_id,id:row.user_id,userId:row.user_id,email:row.email,name:row.display_name,role:row.role}:null; }
   async function operatorLogout(sessionId) { if (!sessionId) return; if (operatorRepository) return operatorRepository.revokeSession(sessionId); await db.query("update operator_sessions set revoked_at=now() where id=$1",[sessionId]); }
   async function operatorHealth() { if (operatorRepository) return operatorRepository.health(); await db.health(); return {database:"ok",databaseKind:db.kind,checkedAt:new Date().toISOString()}; }
   async function validateOperatorScope(tenantId, workspaceId) {

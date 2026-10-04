@@ -135,7 +135,8 @@ const saasServicePromise = databasePromise.then(async database => {
   configRepository: meooAdapter,
   operatorRepository: meooOperatorRepository,
   managedAuth: managed?.auth || null,
-  managedAuthRepository: managed?.repository || null
+  managedSessions: managed?.sessions || null,
+    managedAuthRepository: managed?.repository || null
   });
 });
 const getSaasService = () => saasServicePromise;

@@ -155,7 +155,7 @@ test("native factory and HTTP routes accept both explicit original identities us
       getUser: async () => ({ data: { user: { id: subject, email: "merchant@example.test" } } })
     } });
     const runtime = await createManagedAuthRuntime({ env: environment(), db, createClient });
-    const service = createSaasService({ db, managedAuth: runtime.auth, managedAuthRepository: runtime.repository });
+    const service = createSaasService({ db, managedAuth: runtime.auth, managedSessions: runtime.sessions, managedAuthRepository: runtime.repository });
     const app = express(); app.use(express.json());
     registerMerchantRoutes(app, async () => service, { dataRoot: directory }); registerOpsAuthRoutes(app, async () => service);
     server = http.createServer(app); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -165,6 +165,18 @@ test("native factory and HTTP routes accept both explicit original identities us
       assert.equal(response.status, 200);
       const payload = await response.text(); assert.doesNotMatch(payload, /synthetic-access|synthetic-refresh/);
       assert.ok(response.headers.getSetCookie().some(cookie => /HttpOnly/i.test(cookie)));
+      const cookie = response.headers.getSetCookie().find(value => /HttpOnly/i.test(value));
+      const token = cookie.split(";")[0].split("=").slice(1).join("=");
+      const operator = route.startsWith("/ops/");
+      const resolved = await (operator ? service.resolveOperatorSession(token) : service.resolveSession(token));
+      assert.ok(resolved);
+      const state = (await db.query("select deadline_ms,issued_at_ms,encrypted_state from managed_auth_session_state where session_id=$1",[resolved.sessionId])).rows[0];
+      assert.equal(Number(state.deadline_ms)-Number(state.issued_at_ms),604800000);
+      assert.doesNotMatch(state.encrypted_state,/synthetic-access|synthetic-refresh/);
+      const appSession = (await db.query(operator ? "select expires_at from operator_sessions where id=$1" : "select expires_at from merchant_sessions where id=$1",[resolved.sessionId])).rows[0];
+      assert.ok(new Date(appSession.expires_at).getTime()-Date.now()>604790000);
+      await (operator ? service.operatorLogout(resolved.sessionId) : service.logout(resolved.sessionId));
+      assert.equal(await (operator ? service.resolveOperatorSession(token) : service.resolveSession(token)),null);
     }
     const sessions = (await db.query("select auth_provider from merchant_sessions where auth_provider='supabase' union all select auth_provider from operator_sessions where auth_provider='supabase'")).rows;
     assert.equal(sessions.length, 2);

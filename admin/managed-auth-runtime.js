@@ -79,14 +79,17 @@ async function createManagedAuthRuntime({ env = process.env, db, fetchImpl, crea
   if (!config) return null;
   if (!db || (db.kind === "meoo") !== (config.backend === "meoo")) throw failure("MANAGED_AUTH_DATABASE_SELECTION_INVALID");
   await verifyManagedAuthSchema({ config, db, fetchImpl });
+  const context = new (require("node:async_hooks").AsyncLocalStorage)();
+  const identityDb = { query: (...args) => (context.getStore() || db).query(...args) };
   const repository = config.backend === "meoo"
     ? createMeooManagedAuthRepository({ url: config.supabaseUrl, serviceRoleKey: config.serviceRoleKey, fetchImpl })
-    : createManagedAuthRepository({ db });
+    : createManagedAuthRepository({ db: identityDb });
   const auth = createManagedAuth({ ...config, createClient,
     resolveIdentityLink: repository.resolveIdentityLink, loadBusinessPrincipal: repository.loadBusinessPrincipal });
   const stateRepository = config.backend === "meoo"
     ? createMeooSessionStateRepository({ projectId: config.projectId, providerOrigin: config.supabaseUrl, serviceRoleKey: config.serviceRoleKey, fetchImpl })
-    : createManagedSessionStateRepository({ db, projectId: config.projectId, providerOrigin: config.supabaseUrl });
+    : createManagedSessionStateRepository({ db, projectId: config.projectId, providerOrigin: config.supabaseUrl,
+        runWithTransaction: (tx, fn) => context.run(tx, fn) });
   const sessions = createManagedSessionLifetime({ projectId: config.projectId, providerOrigin: config.supabaseUrl,
     key: config.sessionKey, repository: stateRepository, managedAuth: auth });
   return { auth, repository, sessions };
