@@ -1,4 +1,5 @@
 "use strict";
+const { randomUUID } = require("node:crypto");
 
 // Authentication proves a provider identity. Business authorization remains
 // attached to an explicitly provisioned, pre-existing business identity.
@@ -40,7 +41,8 @@ function createManagedAuth({ projectId, supabaseUrl, anonKey, createClient, appl
     const scopedClient = client();
     let response;
     try { response = await scopedClient.auth.signUp({ email: normalizedEmail, password,
-      options: { emailRedirectTo: callback } }); }
+      // Provider profile label only; roles and business scope never come from metadata.
+      options: { emailRedirectTo: callback, data: { username: `managed_${randomUUID().replace(/-/g, "")}` } } }); }
     catch { throw denied("MANAGED_AUTH_PROVIDER_UNAVAILABLE"); }
     // Existing-account replies remain indistinguishable from a confirmation request.
     if (response?.error && response.error.code !== "user_already_exists") {

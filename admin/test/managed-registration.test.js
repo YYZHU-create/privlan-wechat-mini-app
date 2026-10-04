@@ -10,7 +10,10 @@ function fixture({ signupError, session = null, user = { id: "subject", email: "
     resolveIdentityLink: async () => { throw new Error("Registration must not grant an existing role"); },
     loadBusinessPrincipal: async () => { throw new Error("No business account before confirmation"); },
     createClient: () => ({ auth: {
-      signUp: async input => { assert.equal(input.options.emailRedirectTo, "https://merchant.example.test/auth/confirmation"); calls.push(Object.keys(input)); return { data: { user: { id: "opaque" }, session }, error: signupError }; },
+      signUp: async input => { assert.equal(input.options.emailRedirectTo, "https://merchant.example.test/auth/confirmation");
+        assert.deepEqual(Object.keys(input.options.data), ["username"]);
+        assert.match(input.options.data.username, /^managed_[0-9a-f]{32}$/);
+        calls.push(Object.keys(input)); return { data: { user: { id: "opaque" }, session }, error: signupError }; },
       signOut: async () => { calls.push("cleanup"); return {}; },
       getUser: async () => ({ data: { user } })
     } }) });
