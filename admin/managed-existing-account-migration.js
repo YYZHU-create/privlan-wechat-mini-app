@@ -56,7 +56,11 @@ function createNativeMigrationRepository({ db, projectId, expectedDatabase }) {
       return { identityLinkCount: 2 };
     });
   }
-  return { projectId, verifyTarget, loadOriginalAccounts, providerAccountExists, assertLinksAvailable, commitIdentityLinks };
+  async function assertProviderProfileAvailable(username) {
+    const rows = (await db.query("select id from profiles where username=$1 limit 1", [username])).rows;
+    if (rows.length) throw failure("AUTH_MIGRATION_PROFILE_USERNAME_NOT_CLEAR");
+  }
+  return { projectId, verifyTarget, loadOriginalAccounts, providerAccountExists, assertLinksAvailable, assertProviderProfileAvailable, commitIdentityLinks };
 }
 
 function createMigrationProviderAdmin({ providerOrigin, serviceRoleKey, createClient, fetchImpl = globalThis.fetch }) {
@@ -142,11 +146,16 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
     let subject = prior?.providerUserId;
     if (!resumeLinksOnly) {
       await repository.assertLinksAvailable(plan);
+      // The verified provider trigger requires username. This profile label is
+      // not an authorization claim or a replacement for either business ID.
+      const username = `managed_${original.merchant.id.toLowerCase().replace(/-/g, "")}`;
+      if (typeof repository.assertProviderProfileAvailable !== "function") throw failure("AUTH_MIGRATION_PROFILE_PREFLIGHT_REQUIRED");
+      await repository.assertProviderProfileAvailable(username);
       await journal.write(record);
       record.phase = "SUBMITTING"; record.providerSubmitCount = 1;
       await journal.write(record);
       let response;
-      try { response = await providerAdmin.createUser({ email, password, email_confirm: true }); }
+      try { response = await providerAdmin.createUser({ email, password, email_confirm: true, user_metadata: { username } }); }
       catch {
         record.phase = "CREATE_OUTCOME_UNKNOWN"; await journal.write(record);
         throw failure("AUTH_MIGRATION_PROVIDER_OUTCOME_UNKNOWN");

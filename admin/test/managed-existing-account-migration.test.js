@@ -15,16 +15,17 @@ async function fixture(t, extra = {}) {
   const filename = path.join(directory, "journal.json"), journal = createFileMigrationJournal(filename);
   const original = await createSaasService({ db }).register({ login: email, password, storeName: "Original Store" });
   await db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,'ops-admin@localhost','Original Operator',$2,'super_admin','active')", [operatorId, hashPassword(password)]);
-  await db.exec("create schema auth; create table auth.users(id uuid primary key,email text unique);");
+  await db.exec("create schema auth; create table auth.users(id uuid primary key,email text unique,raw_user_meta_data jsonb); create table profiles(id uuid primary key,username text unique not null);");
+  if (extra.strictProfile) await db.exec("create function handle_new_user() returns trigger language plpgsql as $$ begin insert into profiles(id,username) values(NEW.id,NEW.raw_user_meta_data->>'username') on conflict(id) do nothing; return NEW; end $$; create trigger on_auth_user_created after insert on auth.users for each row execute function handle_new_user();");
   const databaseName = (await db.query("select current_database() name")).rows[0].name;
   const repository = createNativeMigrationRepository({ db, projectId, expectedDatabase: databaseName });
   let submits = 0, reads = 0;
   const providerAdmin = { providerOrigin,
     createUser: async input => {
-      submits++; assert.deepEqual(Object.keys(input).sort(), ["email", "email_confirm", "password"]);
+      submits++; assert.deepEqual(Object.keys(input).sort(), input.user_metadata ? ["email", "email_confirm", "password", "user_metadata"] : ["email", "email_confirm", "password"]);
       assert.equal(input.password, password); assert.equal(input.email_confirm, true);
       if (extra.beforeCreate) await extra.beforeCreate(db);
-      await db.query("insert into auth.users(id,email) values($1,$2)", [subject, email]);
+      await db.query("insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)", [subject, email, input.user_metadata || null]);
       if (extra.unknownOutcome) throw new Error("private provider detail");
       return { data: { user: { id: subject, email } } };
     },
@@ -53,6 +54,20 @@ test("one provider user links both original business accounts without changing s
   assert.equal(f.submits(), 1); assert.equal(f.reads(), 1);
   await assert.rejects(migrateExistingAccounts(f.input), { code: "AUTH_MIGRATION_SUBMIT_ALREADY_CONSUMED" });
   assert.equal(f.submits(), 1);
+});
+test("live-style profile trigger receives a non-sensitive username and preserves business identities", async t => {
+  const f = await fixture(t, { strictProfile: true }); const before = await businessSnapshot(f.db);
+  await migrateExistingAccounts(f.input);
+  assert.deepEqual((await f.db.query("select id,username from profiles")).rows,
+    [{ id: subject, username: `managed_${f.original.user.id.toLowerCase().replace(/-/g, "")}` }]);
+  assert.deepEqual(await businessSnapshot(f.db), before);
+  assert.equal(f.submits(), 1);
+});
+test("profile username collision stops before journal latch and provider creation", async t => {
+  const f = await fixture(t, { strictProfile: true });
+  await f.db.query("insert into profiles(id,username) values($1,$2)", [operatorId, `managed_${f.original.user.id.toLowerCase().replace(/-/g, "")}`]);
+  await assert.rejects(migrateExistingAccounts(f.input), { code: "AUTH_MIGRATION_PROFILE_USERNAME_NOT_CLEAR" });
+  assert.equal(f.submits(), 0); assert.equal(await f.journal.read(), null);
 });
 test("independent operator password mismatch aborts before latch or provider submission", async t => {
   const f = await fixture(t);
