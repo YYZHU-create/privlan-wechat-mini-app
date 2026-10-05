@@ -13,7 +13,7 @@ function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "feeldao-startup-policy-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const directory of ["scripts", "admin"]) fs.mkdirSync(path.join(root, directory));
-  for (const file of ["scripts/runtime-bootstrap.js", "scripts/start.sh", "admin/target-runtime-config.js", "admin/asset-lifecycle-permit.js", "admin/application-startup-policy.js"]) {
+  for (const file of ["scripts/runtime-bootstrap.js", "scripts/start.sh", "admin/target-runtime-config.js", "admin/asset-lifecycle-permit.js", "admin/application-startup-policy.js", "admin/runtime-secret-bridge.js"]) {
     fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(ROOT, file), "utf8").replace(/\r\n/g, "\n"));
   }
   fs.writeFileSync(path.join(root, "runtime-config.json"), JSON.stringify(TARGETS.production));

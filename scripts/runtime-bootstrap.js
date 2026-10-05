@@ -43,12 +43,21 @@ function prepareApplicationRuntime(options = {}) {
   return { ...result, ...target, autoMigrate: false };
 }
 
-if (require.main === module) {
+async function startApplication() {
   const root = path.resolve(__dirname, "..");
   const runtime = prepareApplicationRuntime({ root });
+  const { loadRuntimeSecrets } = require('../admin/runtime-secret-bridge');
+  const bridge = await loadRuntimeSecrets();
+  enforceApplicationMigrationPolicy(process.env);
+  console.log(`runtime-secret-delivery mode=${bridge.delivery} count=${bridge.count}`);
   console.log(`application-startup autoMigrate=0 environment=${runtime.environment} declaredProject=${runtime.declaredProjectId}`);
   process.chdir(path.join(root, "admin"));
   require(path.join(root, "admin", "server.js"));
 }
+
+if (require.main === module) startApplication().catch(() => {
+  console.error('APPLICATION_STARTUP_FAILED');
+  process.exitCode = 1;
+});
 
 module.exports = { bootstrapRuntimeConfig, prepareApplicationRuntime };
