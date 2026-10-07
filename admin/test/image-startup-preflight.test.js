@@ -6,6 +6,16 @@ const path = require('node:path');
 const { preflight } = require('../../scripts/image-startup-preflight');
 const { TARGETS, canonicalizeRuntimeConfig } = require('../target-runtime-config');
 
+test('bundled bridge mode accepts only its non-sensitive staging enum', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.runtime.env'), 'ATELIER_RUNTIME_SECRET_BRIDGE=staging\n');
+  assert.equal(preflight(f).autoMigrate, '0');
+  for (const value of ['unexpected', 'staging-secret-value', '']) {
+    fs.writeFileSync(path.join(f.root, '.runtime.env'), `ATELIER_RUNTIME_SECRET_BRIDGE=${value}\n`);
+    assert.throws(() => preflight(f), /must not be bundled/);
+  }
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'feeldao-preflight-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
