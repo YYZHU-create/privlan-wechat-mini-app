@@ -55,7 +55,7 @@ binding and database identity through approved read-only access.
 
 ## Location and custody — selected location, protection pending
 
-User selected `D:\FeeldaoRecovery` for primary backup custody and local isolated restore testing. The independent encrypted copy location remains undecided. Encryption, ACLs and retention have not been verified or activated. No backup directory or test database is created by this preparation.
+User selected `D:\FeeldaoRecovery` for primary backup custody and local isolated restore testing. User subsequently selected D-only local backups for this phase. No independent copy is configured; same-disk loss risk remains and this does not automatically clear publication recovery gates. Encryption, ACLs and retention have not been verified or activated. No backup directory or test database is created by this preparation.
 
 Use an owner-restricted directory on a non-system encrypted volume or removable
 encrypted disk: `<APPROVED_ENCRYPTED_VOLUME>:\FeeldaoRecovery\production\<UTC>`.
@@ -134,3 +134,6 @@ bindings. Application deployment and migration retain their own project gates.
 
 Reference: https://docs.meoo.com/meoo-cli documents image runtime and warns that
 container-local storage is nonpersistent; it does not establish actual backup.
+
+## 2026-10-08 local tool execution
+D:\FeeldaoRecovery created with inheritance disabled; current owner, SYSTEM and Administrators only. Child test directory inherits this restricted ACL. Docker29.8.0 available; cached postgres:17-alpine used in a dedicated network-none container. Synthetic source/restore databases successfully exercised pg_dump custom format and pg_restore with exit0, exact fixture ID/data comparison true. Container stopped, retained for inspection. This is local synthetic tooling proof, not Production backup/restore. Actual Production cloud response binds the target app but does not contain a native PostgreSQL connection URI; no credentials/data exported. BitLocker/encrypted archive remains NOT_VERIFIED before sensitive data collection.
