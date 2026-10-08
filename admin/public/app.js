@@ -717,6 +717,7 @@ createApp({
         savedSnapshot.value = JSON.stringify(cfg.value);
         history.value = [savedSnapshot.value];
         historyIndex.value = 0;
+        saveMode.value = "saved";
         loadSystemFonts();
       } catch (error) {
         loadError.value = error.message || "无法读取配置";
@@ -2894,7 +2895,7 @@ createApp({
     checkMerchantSession();
 
     return {
-      cfg, loading, loadError, auth, account, accountMenu, changePassword, merchantDisplayName, merchantInitial, merchantStoreName, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
+      cfg, loading, loadError, loadConfig, auth, account, accountMenu, changePassword, merchantDisplayName, merchantInitial, merchantStoreName, currentView, currentPage, currentPageMeta, pageDefinitions, selectedId, inspectorTab, device, zoom, saveMode, sidebarCollapsed, mobileSidebarOpen, leftPanelOpen, rightPanelOpen,
       media, mediaFolders, mediaFolderId, mediaMoveTarget, mediaLoading, mediaError, mediaQuery, mediaUsageFilter, mediaTypeFilter, mediaSort, mediaTrash, mediaTrashOpen, helpOpen, selectedMedia, mediaSelectionMode, selectedMediaNames, mediaDeleting, mediaUploads, selectedMediaCount, allFilteredMediaSelected, selectedSlideIndex, selectedHeroSlide, mediaPickerItems, mediaKindLabel, centerTabStyle, serviceBotStyle, serviceBotDrag,
       hotspotEditMode, selectedHotspotId, hotspotOwner, currentHotspots, selectedHotspot,
       mediaPickerOpen, mediaPickerMode, productMediaTarget, tabBarMediaTarget, tabBarCrop, tabBarCropCanvas, tabBarCropPreviewCanvas, fontUploading, systemFonts, systemFontsLoading, fontPresets, fontOptions, hasStyleOverrides, productQuery, productCategory, categoryQuery,
@@ -3009,7 +3010,7 @@ createApp({
           <div v-if="loading" class="empty-state"><iconify-icon class="icon" icon="ph:circle-notch"></iconify-icon><div>正在载入编辑器…</div></div>
           <div v-else-if="loadError" class="empty-state">
             <iconify-icon class="icon" icon="ph:warning-circle"></iconify-icon><h3>无法载入配置</h3><p>{{ loadError }}</p>
-            <button class="btn" @click="location.reload()">重新加载</button>
+            <button class="btn" :disabled="loading" @click="loadConfig">重新加载</button>
           </div>
 
           <section v-else-if="currentView === 'overview'" class="management atelier-overview">
