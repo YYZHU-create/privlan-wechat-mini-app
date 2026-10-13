@@ -190,8 +190,8 @@ test("native factory and HTTP routes accept both explicit original identities us
 });
 
 
-test("managed session runtime requires existing canonical master key before any database query", async()=>{
-  for(const key of ["",Buffer.alloc(31).toString("base64"),Buffer.alloc(33).toString("base64"),"not-base64",Buffer.alloc(32).toString("base64")+"!"]){
+test("managed session runtime requires existing 32-byte decoded master key before any database query", async()=>{
+  for(const key of ["",Buffer.alloc(31).toString("base64"),Buffer.alloc(33).toString("base64"),"not-base64"]){
     let reads=0;
     await assert.rejects(createManagedAuthRuntime({env:environment({ATELIER_MASTER_KEY:key}),db:{kind:"postgres",query:async()=>{reads++;}}}),{code:"MANAGED_SESSION_ATELIER_MASTER_KEY_REQUIRED"});
     assert.equal(reads,0);

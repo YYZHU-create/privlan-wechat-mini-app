@@ -36,7 +36,8 @@ function readManagedAuthConfig(env = process.env) {
   if (backend === "meoo" && !serviceRoleKey) throw failure("MANAGED_AUTH_REPOSITORY_NOT_CONFIGURED");
   const encodedKey = String(env.ATELIER_MASTER_KEY || "");
   const sessionKey = Buffer.from(encodedKey, "base64");
-  if (sessionKey.length !== 32 || sessionKey.toString("base64") !== encodedKey) throw failure("MANAGED_SESSION_ATELIER_MASTER_KEY_REQUIRED");
+  // Preserve the existing key text and bytes; match the bridge and encryption consumers.
+  if (sessionKey.length !== 32) throw failure("MANAGED_SESSION_ATELIER_MASTER_KEY_REQUIRED");
   // Private config: never serialize this object into health/runtime responses.
   return { projectId, environment: TARGETS[projectId], backend, supabaseUrl: provider.origin,
     anonKey, serviceRoleKey, sessionKey, applicationOrigin: `https://${projectId}.meoo.pub` };
