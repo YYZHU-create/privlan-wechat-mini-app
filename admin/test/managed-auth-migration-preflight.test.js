@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { hashPassword } = require("../platform-store");
-const { verifyExistingAccountMigration } = require("../managed-auth-migration-preflight");
+const { verifyExistingAccountMigration } = require(process.env.MIGRATION_PREFLIGHT_TEST_MODULE || "../managed-auth-migration-preflight");
 const password = "synthetic-test-only";
 const salt = Buffer.alloc(16, 7);
 const legacy = `$scrypt$N=16384,r=8,p=1$${salt.toString("base64url")}$${crypto.scryptSync(password, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString("base64url")}`;
@@ -11,6 +11,23 @@ function input() { return { projectId: "synthetic-staging", providerOrigin: "htt
   providerAccountExists: false,
   merchant: { id: "original-merchant", login_identifier: "merchant@example.test", status: "active", password_hash: hashPassword(password) },
   operator: { id: "original-operator", email: "ops-admin@localhost", status: "active", role: "super_admin", password_hash: legacy } }; }
+
+test('explicit Production same-email owner mapping preserves both identities and original role', () => {
+  const source = input(); source.projectId = 'g8o5cv1om41o'; source.operatorMapping = 'same-email-owner';
+  source.operator.email = source.targetEmail; source.operator.role = 'owner';
+  const before = JSON.stringify(source.operator);
+  assert.equal(verifyExistingAccountMigration(source).identities[1].businessUserId, source.operator.id);
+  assert.equal(JSON.stringify(source.operator), before);
+  assert.throws(() => verifyExistingAccountMigration({ ...source, operatorPassword: 'wrong' }), { code: 'AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID' });
+});
+
+test('owner mapping cannot silently replace legacy mode, cross environment or elevate roles', () => {
+  const source = input(); source.projectId = 'g8o5cv1om41o'; source.operator.email = source.targetEmail; source.operator.role = 'owner';
+  assert.throws(() => verifyExistingAccountMigration(source));
+  for (const patch of [{projectId:'asmhysidbg5g'}, {operatorMapping:'typo'}, {operator:{...source.operator,role:'super_admin'}}, {operator:{...source.operator,email:'other@example.test'}}]) {
+    assert.throws(() => verifyExistingAccountMigration({ ...source, operatorMapping:'same-email-owner', ...patch }));
+  }
+});
 
 test("same original password proves both formats while preserving separate business identities", () => {
   const source = input(); const result = verifyExistingAccountMigration(source);

@@ -41,6 +41,22 @@ async function businessSnapshot(db) {
   }
   return result;
 }
+
+test('explicit Production owner migration links the same-email owner, preserving the separate super-admin', async t => {
+  const ownerPassword = 'separate-owner-synthetic';
+  const f = await fixture(t, { providerPassword: ownerPassword });
+  const ownerId = '00000000-0000-4000-8000-000000000005';
+  await f.db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'Original Owner',$3,'owner','active')", [ownerId,email,hashPassword(ownerPassword)]);
+  const before = await businessSnapshot(f.db);
+  const databaseName = (await f.db.query('select current_database() name')).rows[0].name;
+  const productionRepository = createNativeMigrationRepository({db:f.db,projectId:'g8o5cv1om41o',expectedDatabase:databaseName});
+  const result = await migrateExistingAccounts({...f.input,projectId:'g8o5cv1om41o',repository:productionRepository,operatorMapping:'same-email-owner',operatorPassword:ownerPassword});
+  assert.equal(result.originalBusinessIdentitiesPreserved,true);
+  assert.deepEqual(await businessSnapshot(f.db),before);
+  const links=(await f.db.query("select operator_user_id from managed_auth_identity_links where surface='operator'")).rows;
+  assert.deepEqual(links,[{operator_user_id:ownerId}]);
+  assert.equal(f.submits(),1);
+});
 test("one provider user links both original business accounts without changing seven business tables", async t => {
   const f = await fixture(t); const before = await businessSnapshot(f.db);
   const result = await migrateExistingAccounts(f.input);

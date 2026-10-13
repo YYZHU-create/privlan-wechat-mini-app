@@ -1,6 +1,6 @@
 "use strict";
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
-const { verifyExistingAccountMigration } = require("./managed-auth-migration-preflight");
+const { verifyExistingAccountMigration, resolveMigrationOperator } = require("./managed-auth-migration-preflight");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function failure(code) { const error = new Error(code); error.code = code; return error; }
 
@@ -11,9 +11,10 @@ function createNativeMigrationRepository({ db, projectId, expectedDatabase }) {
     const rows = (await db.query("select current_database() database_name")).rows;
     if (rows.length !== 1 || rows[0].database_name !== expectedDatabase) throw failure("AUTH_MIGRATION_DATABASE_IDENTITY_MISMATCH");
   }
-  async function loadOriginalAccounts(email) {
+  async function loadOriginalAccounts(email, operatorMapping) {
+    const expectedOperator = resolveMigrationOperator({ projectId, targetEmail: email, operatorMapping });
     const merchant = (await db.query("select id,login_identifier,status,password_hash from users where lower(login_identifier)=$1", [email])).rows;
-    const operator = (await db.query("select id,email,status,role,password_hash from operator_users where lower(email)='ops-admin@localhost'")).rows;
+    const operator = (await db.query("select id,email,status,role,password_hash from operator_users where lower(email)=$1", [expectedOperator.email])).rows;
     if (merchant.length !== 1 || operator.length !== 1) throw failure("AUTH_MIGRATION_ORIGINAL_ACCOUNT_NOT_UNIQUE");
     return { merchant: merchant[0], operator: operator[0] };
   }
@@ -124,7 +125,7 @@ function createFileMigrationJournal(filename) {
 }
 
 async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail, password,
-  operatorPassword = password, repository, providerAdmin, journal, resumeLinksOnly = false }) {
+  operatorPassword = password, repository, providerAdmin, journal, resumeLinksOnly = false, operatorMapping }) {
   if (!["asmhysidbg5g", "g8o5cv1om41o"].includes(projectId) ||
       repository?.projectId !== projectId || !repository?.verifyTarget || providerAdmin?.providerOrigin !== providerOrigin ||
       !providerAdmin?.createUser || !providerAdmin?.getUserById ||
@@ -136,9 +137,9 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
     if (resumeLinksOnly && (!prior || !["PROVIDER_CREATED", "LINKING", "LINKS_PENDING_RECONCILIATION"].includes(prior.phase) ||
         prior.providerSubmitCount !== 1 || !UUID.test(prior.providerUserId || ""))) throw failure("AUTH_MIGRATION_RESUME_NOT_VERIFIED");
     await repository.verifyTarget();
-    const original = await repository.loadOriginalAccounts(email);
+    const original = await repository.loadOriginalAccounts(email, operatorMapping);
     if (!UUID.test(original.merchant?.id || "") || !UUID.test(original.operator?.id || "")) throw failure("AUTH_MIGRATION_BUSINESS_IDENTITIES_INVALID");
-    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, operatorPassword, ...original,
+    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, operatorPassword, operatorMapping, ...original,
       providerAccountExists: resumeLinksOnly ? false : await repository.providerAccountExists(email) });
     const record = { phase: "PREPARED", providerSubmitCount: 0, identityLinkCount: 0, projectId, providerOrigin,
       merchantId: original.merchant.id, operatorId: original.operator.id };

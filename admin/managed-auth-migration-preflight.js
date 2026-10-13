@@ -3,10 +3,17 @@ const { verifyPassword, verifyOperatorPassword } = require("./platform-store");
 
 function reject(code) { const error = new Error(code); error.code = code; throw error; }
 
+function resolveMigrationOperator({ projectId, targetEmail, operatorMapping = 'legacy-super-admin' }) {
+  if (operatorMapping === 'legacy-super-admin') return { email: 'ops-admin@localhost', role: 'super_admin' };
+  if (operatorMapping !== 'same-email-owner' || projectId !== 'g8o5cv1om41o' ||
+      typeof targetEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail.trim())) reject('AUTH_MIGRATION_OPERATOR_MAPPING_INVALID');
+  return { email: targetEmail.trim().toLowerCase(), role: 'owner' };
+}
+
 // Inputs are private server/local data. Return only the authorized identity plan.
 // No provider writes, password export or email-only identity association occurs.
 function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail,
-  password, operatorPassword = password, merchant, operator, providerAccountExists }) {
+  password, operatorPassword = password, merchant, operator, providerAccountExists, operatorMapping }) {
   if (!projectId || typeof projectId !== "string" || !providerOrigin ||
       typeof targetEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail) ||
       typeof password !== "string" || !password || typeof operatorPassword !== "string" || !operatorPassword) reject("AUTH_MIGRATION_INPUT_REQUIRED");
@@ -14,11 +21,12 @@ function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail
   try { origin = new URL(providerOrigin); } catch { reject("AUTH_MIGRATION_INVALID_PROVIDER"); }
   if (origin.protocol !== "https:" || origin.origin !== providerOrigin) reject("AUTH_MIGRATION_INVALID_PROVIDER");
   if (providerAccountExists !== false) reject("AUTH_MIGRATION_PROVIDER_ACCOUNT_NOT_CLEAR");
+  const expectedOperator = resolveMigrationOperator({ projectId, targetEmail, operatorMapping });
   if (!merchant?.id || !operator?.id || merchant.id === operator.id ||
-      merchant.status !== "active" || operator.status !== "active" || operator.role !== "super_admin") {
+      merchant.status !== "active" || operator.status !== "active" || operator.role !== expectedOperator.role) {
     reject("AUTH_MIGRATION_BUSINESS_IDENTITIES_INVALID");
   }
-  if (operator.email?.trim().toLowerCase() !== "ops-admin@localhost") {
+  if (operator.email?.trim().toLowerCase() !== expectedOperator.email) {
     reject("AUTH_MIGRATION_OPERATOR_IDENTIFIER_MISMATCH");
   }
   if (merchant.login_identifier?.trim().toLowerCase() !== targetEmail.trim().toLowerCase()) {
@@ -37,4 +45,4 @@ function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail
     ]), originalPasswordsVerified: true });
 }
 
-module.exports = { verifyExistingAccountMigration };
+module.exports = { verifyExistingAccountMigration, resolveMigrationOperator };
