@@ -13,7 +13,8 @@ function resolveMigrationOperator({ projectId, targetEmail, operatorMapping = 'l
 // Inputs are private server/local data. Return only the authorized identity plan.
 // No provider writes, password export or email-only identity association occurs.
 function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail,
-  password, operatorPassword = password, merchant, operator, providerAccountExists, operatorMapping }) {
+  password, operatorPassword = password, merchant, operator, providerAccountExists, operatorMapping,
+  credentialPolicy = 'original-passwords', newPassword, identityAuthorization }) {
   if (!projectId || typeof projectId !== "string" || !providerOrigin ||
       typeof targetEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail) ||
       typeof password !== "string" || !password || typeof operatorPassword !== "string" || !operatorPassword) reject("AUTH_MIGRATION_INPUT_REQUIRED");
@@ -37,12 +38,27 @@ function verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail
   let merchantVerified = false;
   try { merchantVerified = verifyPassword(password, merchant.password_hash); } catch { /* generic rejection */ }
   if (!merchantVerified) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
-  if (!verifyOperatorPassword(operatorPassword, operator.password_hash)) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
+  let operatorProof = 'original-password';
+  if (credentialPolicy === 'authorized-new-password') {
+    const approval = identityAuthorization;
+    if (projectId !== 'g8o5cv1om41o' || operatorMapping !== 'same-email-owner' ||
+        typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 128 ||
+        !approval || typeof approval.reference !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(approval.reference) ||
+        approval.projectId !== projectId || approval.providerOrigin !== providerOrigin ||
+        approval.email !== targetEmail.trim().toLowerCase() || approval.merchantId !== merchant.id ||
+        approval.operatorId !== operator.id || approval.operatorRole !== 'owner' ||
+        approval.permitOperatorLinkWithoutOriginalPassword !== true) reject('AUTH_MIGRATION_IDENTITY_AUTHORIZATION_REQUIRED');
+    operatorProof = 'explicit-identity-authorization';
+  } else {
+    if (credentialPolicy !== 'original-passwords') reject('AUTH_MIGRATION_CREDENTIAL_POLICY_INVALID');
+    if (!verifyOperatorPassword(operatorPassword, operator.password_hash)) reject("AUTH_MIGRATION_ORIGINAL_PASSWORD_INVALID");
+  }
   return Object.freeze({ projectId, providerOrigin, email: targetEmail.trim().toLowerCase(),
     identities: Object.freeze([
       Object.freeze({ surface: "merchant", businessUserId: merchant.id }),
       Object.freeze({ surface: "operator", businessUserId: operator.id })
-    ]), originalPasswordsVerified: true });
+    ]), originalPasswordsVerified: operatorProof === 'original-password',
+    ...(operatorProof === 'explicit-identity-authorization' ? { operatorProof, authorizationReference: identityAuthorization.reference } : {}) });
 }
 
 module.exports = { verifyExistingAccountMigration, resolveMigrationOperator };

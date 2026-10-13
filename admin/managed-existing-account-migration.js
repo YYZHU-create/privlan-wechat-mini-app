@@ -88,10 +88,13 @@ function createFileMigrationJournal(filename) {
   if (!path.isAbsolute(filename)) throw failure("AUTH_MIGRATION_JOURNAL_PATH_REQUIRED");
   const lock = `${filename}.lock`;
   function validate(record) {
-    const allowed = ["phase", "providerSubmitCount", "identityLinkCount", "projectId", "providerOrigin", "merchantId", "operatorId", "providerUserId"];
+    const allowed = ["phase", "providerSubmitCount", "identityLinkCount", "projectId", "providerOrigin", "merchantId", "operatorId", "providerUserId", "credentialPolicy", "authorizationReference"];
     const phases = ["PREPARED", "SUBMITTING", "CREATE_OUTCOME_UNKNOWN", "PROVIDER_CREATED", "LINKING", "LINKS_PENDING_RECONCILIATION", "COMPLETED"];
     let origin; try { origin = new URL(record?.providerOrigin); } catch { throw failure("AUTH_MIGRATION_JOURNAL_INVALID"); }
     if (!record || Object.keys(record).some(key => !allowed.includes(key)) || !phases.includes(record.phase) ||
+        (record.credentialPolicy !== undefined && (record.credentialPolicy !== 'authorized-new-password' || record.projectId !== 'g8o5cv1om41o' ||
+          typeof record.authorizationReference !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(record.authorizationReference))) ||
+        (record.credentialPolicy === undefined && record.authorizationReference !== undefined) ||
         !["asmhysidbg5g", "g8o5cv1om41o"].includes(record.projectId) || origin.protocol !== "https:" || origin.origin !== record.providerOrigin ||
         !UUID.test(record.merchantId || "") || !UUID.test(record.operatorId || "") || record.merchantId === record.operatorId ||
         record.providerSubmitCount !== (record.phase === "PREPARED" ? 0 : 1) ||
@@ -125,7 +128,8 @@ function createFileMigrationJournal(filename) {
 }
 
 async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail, password,
-  operatorPassword = password, repository, providerAdmin, journal, resumeLinksOnly = false, operatorMapping }) {
+  operatorPassword = password, repository, providerAdmin, journal, resumeLinksOnly = false, operatorMapping,
+  credentialPolicy = 'original-passwords', newPassword, identityAuthorization }) {
   if (!["asmhysidbg5g", "g8o5cv1om41o"].includes(projectId) ||
       repository?.projectId !== projectId || !repository?.verifyTarget || providerAdmin?.providerOrigin !== providerOrigin ||
       !providerAdmin?.createUser || !providerAdmin?.getUserById ||
@@ -139,10 +143,14 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
     await repository.verifyTarget();
     const original = await repository.loadOriginalAccounts(email, operatorMapping);
     if (!UUID.test(original.merchant?.id || "") || !UUID.test(original.operator?.id || "")) throw failure("AUTH_MIGRATION_BUSINESS_IDENTITIES_INVALID");
-    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, operatorPassword, operatorMapping, ...original,
+    const plan = verifyExistingAccountMigration({ projectId, providerOrigin, targetEmail: email, password, operatorPassword, operatorMapping,
+      credentialPolicy, newPassword, identityAuthorization, ...original,
       providerAccountExists: resumeLinksOnly ? false : await repository.providerAccountExists(email) });
     const record = { phase: "PREPARED", providerSubmitCount: 0, identityLinkCount: 0, projectId, providerOrigin,
-      merchantId: original.merchant.id, operatorId: original.operator.id };
+      merchantId: original.merchant.id, operatorId: original.operator.id,
+      ...(credentialPolicy === 'authorized-new-password' ? { credentialPolicy, authorizationReference: plan.authorizationReference } : {}) };
+    if (prior && (prior.credentialPolicy || 'original-passwords') !== credentialPolicy) throw failure('AUTH_MIGRATION_RESUME_BINDING_MISMATCH');
+    if (prior && credentialPolicy === 'authorized-new-password' && prior.authorizationReference !== plan.authorizationReference) throw failure('AUTH_MIGRATION_RESUME_BINDING_MISMATCH');
     if (prior && ["projectId", "providerOrigin", "merchantId", "operatorId"].some(key => prior[key] !== record[key])) throw failure("AUTH_MIGRATION_RESUME_BINDING_MISMATCH");
     let subject = prior?.providerUserId;
     if (!resumeLinksOnly) {
@@ -156,7 +164,7 @@ async function migrateExistingAccounts({ projectId, providerOrigin, targetEmail,
       record.phase = "SUBMITTING"; record.providerSubmitCount = 1;
       await journal.write(record);
       let response;
-      try { response = await providerAdmin.createUser({ email, password: operatorPassword, email_confirm: true, user_metadata: { username } }); }
+      try { response = await providerAdmin.createUser({ email, password: credentialPolicy === 'authorized-new-password' ? newPassword : operatorPassword, email_confirm: true, user_metadata: { username } }); }
       catch {
         record.phase = "CREATE_OUTCOME_UNKNOWN"; await journal.write(record);
         throw failure("AUTH_MIGRATION_PROVIDER_OUTCOME_UNKNOWN");

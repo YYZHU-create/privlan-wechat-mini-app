@@ -12,6 +12,17 @@ function input() { return { projectId: "synthetic-staging", providerOrigin: "htt
   merchant: { id: "original-merchant", login_identifier: "merchant@example.test", status: "active", password_hash: hashPassword(password) },
   operator: { id: "original-operator", email: "ops-admin@localhost", status: "active", role: "super_admin", password_hash: legacy } }; }
 
+test('new-password authorization is exact and never claims both original passwords verified', () => {
+  const source = input(); Object.assign(source,{projectId:'g8o5cv1om41o',operatorMapping:'same-email-owner',credentialPolicy:'authorized-new-password',newPassword:'new-synthetic-password'});
+  Object.assign(source.operator,{email:source.targetEmail,role:'owner',password_hash:hashPassword('unknown-original')});
+  source.identityAuthorization={reference:'explicit-human-approval',projectId:source.projectId,providerOrigin:source.providerOrigin,email:source.targetEmail,merchantId:source.merchant.id,operatorId:source.operator.id,operatorRole:'owner',permitOperatorLinkWithoutOriginalPassword:true};
+  const result=verifyExistingAccountMigration(source);
+  assert.equal(result.originalPasswordsVerified,false);
+  assert.equal(result.operatorProof,'explicit-identity-authorization');
+  assert.equal(JSON.stringify(result).includes(source.newPassword),false);
+  for(const patch of [{password:'wrong'},{credentialPolicy:'typo'},{projectId:'asmhysidbg5g'},{providerAccountExists:true},{identityAuthorization:{...source.identityAuthorization,merchantId:'other'}},{identityAuthorization:{...source.identityAuthorization,operatorRole:'super_admin'}},{identityAuthorization:{...source.identityAuthorization,providerOrigin:'https://other.test'}}]) assert.throws(()=>verifyExistingAccountMigration({...source,...patch}));
+});
+
 test('explicit Production same-email owner mapping preserves both identities and original role', () => {
   const source = input(); source.projectId = 'g8o5cv1om41o'; source.operatorMapping = 'same-email-owner';
   source.operator.email = source.targetEmail; source.operator.role = 'owner';

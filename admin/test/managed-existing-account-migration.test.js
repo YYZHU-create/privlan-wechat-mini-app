@@ -42,6 +42,30 @@ async function businessSnapshot(db) {
   return result;
 }
 
+test('authorized new-password Production path preserves legacy credentials and exact owner identity', async t => {
+  const newPassword = 'new-auth-only-synthetic';
+  const f = await fixture(t, { providerPassword: newPassword });
+  const ownerId = '00000000-0000-4000-8000-000000000005';
+  await f.db.query("insert into operator_users(id,email,display_name,password_hash,role,status) values($1,$2,'Original Owner',$3,'owner','active')", [ownerId,email,hashPassword('unknown-original-owner')]);
+  const before = await businessSnapshot(f.db);
+  const databaseName = (await f.db.query('select current_database() name')).rows[0].name;
+  const repository = createNativeMigrationRepository({db:f.db,projectId:'g8o5cv1om41o',expectedDatabase:databaseName});
+  const identityAuthorization = { reference:'human-confirmation-synthetic', projectId:'g8o5cv1om41o', providerOrigin, email,
+    merchantId:null, operatorId:ownerId, operatorRole:'owner', permitOperatorLinkWithoutOriginalPassword:true };
+  // Locate the original merchant through the repository rather than fixture response shape.
+  identityAuthorization.merchantId = (await repository.loadOriginalAccounts(email,'same-email-owner')).merchant.id;
+  const input = {...f.input,projectId:'g8o5cv1om41o',repository,operatorMapping:'same-email-owner',credentialPolicy:'authorized-new-password',newPassword,identityAuthorization};
+  for (const patch of [{identityAuthorization:undefined},{identityAuthorization:{...identityAuthorization,operatorId:operatorId}},{identityAuthorization:{...identityAuthorization,permitOperatorLinkWithoutOriginalPassword:false}},{newPassword:''}]) {
+    await assert.rejects(migrateExistingAccounts({...input,...patch}));
+    assert.equal(f.submits(),0);
+  }
+  const result = await migrateExistingAccounts(input);
+  assert.equal(result.identityLinkCount,2);
+  assert.equal(f.submits(),1);
+  assert.deepEqual(await businessSnapshot(f.db),before);
+  assert.equal(JSON.stringify(await f.journal.read()).includes(newPassword),false);
+});
+
 test('explicit Production owner migration links the same-email owner, preserving the separate super-admin', async t => {
   const ownerPassword = 'separate-owner-synthetic';
   const f = await fixture(t, { providerPassword: ownerPassword });
