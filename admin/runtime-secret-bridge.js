@@ -3,7 +3,8 @@ const NAMES = Object.freeze(['ATELIER_LICENSE_PEPPER', 'ATELIER_MASTER_KEY', 'AT
 function validateSecrets(secrets) {
   if (!secrets || Object.keys(secrets).length !== NAMES.length || NAMES.some(name => typeof secrets[name] !== 'string')) throw new Error('SECRET_BRIDGE_INVALID_FIELDS');
   const key = secrets.ATELIER_MASTER_KEY;
-  if (secrets.ATELIER_LICENSE_PEPPER.length < 32 || secrets.ATELIER_APPOINTMENT_GATEWAY_TOKEN.length < 32 || Buffer.byteLength(secrets.ATELIER_OPENID_HASH_KEY) < 32 || Buffer.from(key, 'base64').length !== 32 || Buffer.from(key, 'base64').toString('base64') !== key) throw new Error('SECRET_BRIDGE_INVALID_FORMAT');
+  // Match getMasterKey()/validBase64Key(): retain existing text and decoded key bytes.
+  if (secrets.ATELIER_LICENSE_PEPPER.length < 32 || secrets.ATELIER_APPOINTMENT_GATEWAY_TOKEN.length < 32 || Buffer.byteLength(secrets.ATELIER_OPENID_HASH_KEY) < 32 || Buffer.from(key, 'base64').length !== 32) throw new Error('SECRET_BRIDGE_INVALID_FORMAT');
 }
 async function loadRuntimeSecrets({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
   const mode = env.ATELIER_RUNTIME_SECRET_BRIDGE;
