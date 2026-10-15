@@ -69,3 +69,20 @@ test("same-process page burst shares one in-flight proof without competing for i
  assert.equal(calls,1);assert.equal(f.actions.filter(a=>a==='claim').length,1);assert.equal(f.actions.filter(a=>a==='release').length,1);
  const row=(await f.db.query('select lease_token,revoked from managed_auth_session_state')).rows[0];assert.equal(row.lease_token,null);assert.equal(row.revoked,false);
 });
+
+test("independent runtime coordinators expose temporary contention and recover after release",async t=>{
+ const f=await fixture(t);let entered,release,calls=0;
+ const started=new Promise(r=>{entered=r}),gate=new Promise(r=>{release=r});
+ f.managedAuth.resolve=async()=>{calls++;if(calls===1){entered();await gate;}return {surface:'merchant',businessUserId:f.request.businessUserId,providerUserId:subject,principal:{id:f.request.businessUserId,status:'active'}};};
+ const other=createManagedSessionLifetime(f.config);
+ const first=f.coordinator.resolve(f.request);await started;
+ try{
+   await assert.rejects(other.resolve(f.request),{code:'MANAGED_SESSION_STORE_UNAVAILABLE'});
+   assert.equal(calls,1,'contender must not bypass the lease to validate provider state');
+ }finally{release();}
+ assert.ok(await first);
+ assert.ok(await other.resolve(f.request),'a later request can recover after the owner releases');
+ assert.equal(calls,2);assert.equal(f.refreshes(),0);
+ const row=(await f.db.query('select lease_token,rotation_pending,revoked from managed_auth_session_state')).rows[0];
+ assert.equal(row.lease_token,null);assert.equal(row.rotation_pending,false);assert.equal(row.revoked,false);
+});
