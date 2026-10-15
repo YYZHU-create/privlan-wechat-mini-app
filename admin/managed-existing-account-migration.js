@@ -58,6 +58,15 @@ function createNativeMigrationRepository({ db, projectId, expectedDatabase }) {
     });
   }
   async function assertProviderProfileAvailable(username) {
+    const catalog = (await db.query(`select to_regclass('public.profiles') is not null as profiles_exists,
+      (select count(*)::int from pg_trigger where tgrelid=to_regclass('auth.users')
+       and not tgisinternal and tgenabled <> 'D') as auth_user_triggers`)).rows;
+    if (catalog.length !== 1 || typeof catalog[0].profiles_exists !== 'boolean' ||
+        !Number.isInteger(catalog[0].auth_user_triggers)) throw failure('AUTH_MIGRATION_PROVIDER_PROFILE_SCHEMA_NOT_VERIFIED');
+    if (!catalog[0].profiles_exists) {
+      if (catalog[0].auth_user_triggers !== 0) throw failure('AUTH_MIGRATION_PROVIDER_PROFILE_SCHEMA_NOT_VERIFIED');
+      return { profileCheck: 'NOT_APPLICABLE_NO_PROFILES_OR_CUSTOM_AUTH_TRIGGER' };
+    }
     const rows = (await db.query("select id from profiles where username=$1 limit 1", [username])).rows;
     if (rows.length) throw failure("AUTH_MIGRATION_PROFILE_USERNAME_NOT_CLEAR");
   }

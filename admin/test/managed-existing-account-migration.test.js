@@ -210,3 +210,17 @@ test("installed provider SDK uses one bounded non-redirecting create call and do
   const response = await admin.createUser({ email, password, email_confirm: true });
   assert.ok(response.error); assert.equal(calls, 1);
 });
+
+test('profile-less provider without custom Auth triggers needs no invented profiles table', async t => {
+  const f = await fixture(t);
+  await f.db.exec('drop table profiles');
+  const result = await f.input.repository.assertProviderProfileAvailable('managed_synthetic');
+  assert.equal(result.profileCheck, 'NOT_APPLICABLE_NO_PROFILES_OR_CUSTOM_AUTH_TRIGGER');
+});
+
+test('missing-profile provider with an enabled custom Auth trigger stops before account creation', async t => {
+  const f = await fixture(t);
+  await f.db.exec('drop table profiles; create function public.synthetic_auth_hook() returns trigger language plpgsql as $$ begin return NEW; end $$; create trigger synthetic_auth_hook after insert on auth.users for each row execute function public.synthetic_auth_hook();');
+  await assert.rejects(() => f.input.repository.assertProviderProfileAvailable('managed_synthetic'), { code: 'AUTH_MIGRATION_PROVIDER_PROFILE_SCHEMA_NOT_VERIFIED' });
+  assert.equal(f.submits(), 0);
+});
