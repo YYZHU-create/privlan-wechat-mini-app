@@ -36,7 +36,7 @@ for (const surface of ["merchant", "operator"]) test(`${surface} keeps exactly s
 test("simultaneous requests use rotated state only once under repository lock", async () => {
   const f = fixture(); await f.coordinator.issue({ ...f.request, providerResult: { identity: f.identity, session: f.session() } });
   f.advance(3600000); await Promise.all([f.coordinator.resolve(f.request), f.coordinator.resolve(f.request)]);
-  assert.deepEqual(f.counts(), { refreshes: 1, resolves: 1 });
+  assert.deepEqual(f.counts(), { refreshes: 1, resolves: 0 });
 });
 test("encrypted state cannot be moved to another surface or business identity", async () => {
   const f = fixture(); await f.coordinator.issue({ ...f.request, providerResult: { identity: f.identity, session: f.session() } });
@@ -67,4 +67,26 @@ test("revoked sessions never reach provider", async () => {
   const f = fixture(); await f.coordinator.issue({ ...f.request, providerResult: { identity: f.identity, session: f.session() } });
   f.row().revoked = true; assert.equal(await f.coordinator.resolve(f.request), null);
   assert.deepEqual(f.counts(), { refreshes: 0, resolves: 0 });
+});
+
+test("completed session proofs are not cached between requests", async () => {
+  const f=fixture();await f.coordinator.issue({...f.request,providerResult:{identity:f.identity,session:f.session()}});
+  await f.coordinator.resolve(f.request);await f.coordinator.resolve(f.request);
+  assert.deepEqual(f.counts(),{refreshes:0,resolves:2});
+});
+
+test("failed shared proof is released and the next request validates again", async () => {
+  const f=fixture();await f.coordinator.issue({...f.request,providerResult:{identity:f.identity,session:f.session()}});
+  const original=f.managedAuth.resolve;let calls=0;
+  f.managedAuth.resolve=async()=>{calls++;if(calls===1)throw Object.assign(Error('unavailable'),{code:'MANAGED_AUTH_PROVIDER_UNAVAILABLE'});return original();};
+  const results=await Promise.allSettled([f.coordinator.resolve(f.request),f.coordinator.resolve(f.request)]);
+  assert.ok(results.every(r=>r.status==='rejected'&&r.reason.code==='MANAGED_AUTH_PROVIDER_UNAVAILABLE'));
+  assert.equal(calls,1);assert.ok(await f.coordinator.resolve(f.request));assert.equal(calls,2);
+});
+
+test("overlapping requests for different business bindings never share proof", async () => {
+  const f=fixture();await f.coordinator.issue({...f.request,providerResult:{identity:f.identity,session:f.session()}});
+  const results=await Promise.allSettled([f.coordinator.resolve(f.request),f.coordinator.resolve({...f.request,businessUserId:'another-business'})]);
+  assert.equal(results[0].status,'fulfilled');assert.equal(results[1].status,'rejected');
+  assert.equal(results[1].reason.code,'MANAGED_SESSION_STATE_NOT_VERIFIED');
 });

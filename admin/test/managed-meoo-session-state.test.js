@@ -57,3 +57,15 @@ test("transport timeout is one request and never retries or exposes server key",
  let calls=0;const repo=createMeooSessionStateRepository({projectId,providerOrigin,serviceRoleKey:"synthetic-server",fetchImpl:async()=>{calls++;throw new Error("synthetic-server private failure");}});
  await assert.rejects(repo.withLockedSession({projectId,providerOrigin,sessionId,surface:"merchant"},()=>{}),e=>e.code==="MANAGED_SESSION_STORE_UNAVAILABLE"&&!e.message.includes("synthetic-server"));assert.equal(calls,1);
 });
+
+test("same-process page burst shares one in-flight proof without competing for its lease",async t=>{
+ const f=await fixture(t);let started,release,calls=0;
+ const entered=new Promise(r=>{started=r}),gate=new Promise(r=>{release=r});
+ f.managedAuth.resolve=async()=>{calls++;started();await gate;return {surface:'merchant',businessUserId:f.request.businessUserId,providerUserId:subject,principal:{id:f.request.businessUserId,status:'active'}};};
+ const first=f.coordinator.resolve(f.request);await entered;
+ const outcomes=Promise.allSettled([first,...Array.from({length:12},()=>f.coordinator.resolve(f.request))]);
+ await new Promise(r=>setTimeout(r,25));release();
+ const results=await outcomes;assert.equal(results.filter(r=>r.status==='fulfilled'&&r.value).length,13);
+ assert.equal(calls,1);assert.equal(f.actions.filter(a=>a==='claim').length,1);assert.equal(f.actions.filter(a=>a==='release').length,1);
+ const row=(await f.db.query('select lease_token,revoked from managed_auth_session_state')).rows[0];assert.equal(row.lease_token,null);assert.equal(row.revoked,false);
+});

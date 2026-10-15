@@ -14,6 +14,7 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
     throw failure("MANAGED_SESSION_STORE_NOT_CONFIGURED");
   }
   const encryptionKey = Buffer.from(key);
+  const resolving = new Map();
   const binding = r => JSON.stringify([projectId, providerOrigin, r.sessionId, r.surface, r.businessUserId, r.providerUserId, r.issuedAt, r.deadline]);
   function seal(r, session) {
     if (!session?.accessToken || !session?.refreshToken || !Number.isFinite(Number(session.expiresAt)) || Number(session.expiresAt) * 1000 <= now()) {
@@ -50,7 +51,7 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
     await repository.insert(row, transaction);
     return { expiresAt: new Date(row.deadline) };
   }
-  async function resolve({ sessionId, surface, businessUserId }) {
+  async function resolveLocked({ sessionId, surface, businessUserId }) {
     return repository.withLockedSession({ projectId, providerOrigin, sessionId, surface }, async locked => {
       const r = locked?.row;
       if (!r || r.revoked || r.deadline <= now()) return null;
@@ -75,6 +76,15 @@ function createManagedSessionLifetime({ projectId, providerOrigin, key, reposito
       if (now() >= r.deadline) return null;
       return { identity, expiresAt: new Date(r.deadline) };
     });
+  }
+  function resolve(input) {
+    const bindingKey = JSON.stringify([input.sessionId, input.surface, input.businessUserId]);
+    if (resolving.has(bindingKey)) return resolving.get(bindingKey);
+    // Share only overlapping proofs for the exact binding in this coordinator.
+    // The repository lease still fences other processes and token rotation.
+    const pending = resolveLocked(input).finally(() => resolving.delete(bindingKey));
+    resolving.set(bindingKey, pending);
+    return pending;
   }
   return { issue, resolve };
 }
