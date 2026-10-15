@@ -1,3 +1,12 @@
+# Current priority issue — 2026-10-16
+
+ISSUE-PROD-STABILITY-20261016=OPEN_HIGH
+Production v13 exact-source dual login passed, but bounded Merchant concurrent authenticated GETs returned6HTTP503/15 whilepublichealth3/3 andOperator9/9 succeeded. Followups16/16succeeded. Historical early-process-exit502 remains separately open. Rootcause/public503code not established. Inspect cross-instance session/storage/provider behavior and obtain FC exception correlation;local17testsPASS does not close hosted failure. Do not weaken lease fencing or accept cached unverified identities.
+
+Earlier AUTH/Production NOT_VERIFIED claims below are historical where superseded by CURRENT_STATE.md's2026-10-16checkpoint. Keep SMS/newregistration/fullbusiness,backupRPO,ACL/filescoverage and futureMise/mainintegration boundaries distinct. Next action is diagnosis/local reproduction,not another unapproved production submission.
+
+## Historical issues and module-specific boundaries
+
 # Known Issues and Open Gates
 
 ## ISSUE-MEOO-001

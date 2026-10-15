@@ -1,3 +1,30 @@
+# Current verified checkpoint
+
+CURRENT_CHECKPOINT=2026-10-16
+PRODUCTION_ACTIVE_RELEASE=v13
+PRODUCTION_PROJECT_ID=g8o5cv1om41o
+PRODUCTION_SOURCE_COMMIT=1b08d6fad2e7db9bb45eab49eb7ada4c0158e1ff
+PRODUCTION_DATABASE=ra_supabase_74z0ong0wmvmwj
+PRODUCTION_DUAL_LOGIN=PASS_EXACT_ORIGINAL_MERCHANT_AND_OWNER
+PRODUCTION_MANAGED_AUTH_MIGRATIONS=017-021_APPLIED
+PRODUCTION_AUTH_IDENTITY_LINKS=2
+STAGING_ACTIVE_RELEASE=v77
+STAGING_PROJECT_ID=asmhysidbg5g
+MERCHANT_CONCURRENCY=FAIL_OBSERVED_503
+HISTORICAL_PROCESS_EXIT_502=ROOT_CAUSE_OPEN
+SOURCE_MAIN_ALIGNMENT=PENDING
+FUTURE_CLI_RELEASE_PROTOCOL=MISE_ADAPTATION_PENDING
+
+This checkpoint supersedes conflicting older entries below. Production13 and Staging77 were read back using CLI0.5.5. Actual dual-surface authenticated acceptance on10-16 matches original Merchant and same-email owner IDs;seven-day session deadlines checked. This is not full business/permission/stability clearance.
+
+At01:05China time,three rounds of authenticated GETs:Merchant9/15HTTP200 and6/15HTTP503;Operator9/9HTTP200;publichealth3/3HTTP200. Followup16GETs200. Failed503publiccode not captured;do not assume it is the historical502process exit or a specific session error. Source1b08 in-process coalescing does not prove multi-instance contention clearance. No deployment/restart/credential or schema changes in this diagnostic.
+
+Source branch codex/meoo-managed-auth was synchronized at3f15942 before this documentation update;main2097ea8 does not contain the full Auth/startup task. Keep source/main integration separately reviewed. Current context checkpoint commit is documentation,not a new deployed application identity. Existing source/config/backup/recovery limits remain in task record.
+
+Evidence: [managed Auth task](../tasks/meoo-managed-auth-20261004.md). Detailed local operational evidence: C:/Users/Administrator/.codex/artifacts/production-recovery-preparation-20261008/stability-20261016/REPORT.md and production-release-20261015/DUAL_BROWSER_ACCEPTANCE_20261016.json. Current data/identity and source facts are bounded by their recorded collection times.
+
+## Historical snapshots — retain as evidence, not current status
+
 # Current State
 
 AS_OF=2026-09-06
