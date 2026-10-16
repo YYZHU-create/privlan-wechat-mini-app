@@ -2931,14 +2931,12 @@ createApp({
           <button class="icon-btn mobile-sidebar-toggle" type="button" aria-controls="merchant-sidebar" :aria-expanded="mobileSidebarOpen" :aria-label="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" :title="mobileSidebarOpen ? '关闭主导航' : '打开主导航'" @click="toggleMobileSidebar">
             <iconify-icon class="icon" :icon="mobileSidebarOpen ? 'ph:x' : 'ph:list'" aria-hidden="true"></iconify-icon>
           </button>
-          <div class="atelier-wordmark" translate="no" aria-label="ATELIER OS"><span class="atelier-name">ATELIER</span><span class="atelier-os">OS</span></div>
+          <div class="atelier-wordmark" translate="no" aria-label="FeelDao OS"><span class="atelier-name">FeelDao</span><span class="atelier-os">OS</span></div>
         </div>
         <div class="top-context">
-          <div class="workspace-switcher static"><span class="workspace-mark">{{ (platform.workspace?.storeName || 'A').slice(0,1) }}</span><span><strong>{{ platform.workspace?.storeName || auth.session.workspace?.name }}</strong><small>{{ account.subscription?.planId || '未激活' }}</small></span></div>
-          <iconify-icon class="icon crumb" icon="ph:caret-right" aria-hidden="true"></iconify-icon>
           <span class="crumb crumb-current">{{ viewTitle }}</span>
           <span class="action-divider"></span>
-          <span class="save-state" :class="{ dirty: isDirty, error: saveMode === 'error' }"><i class="save-dot"></i>{{ statusText() }}</span>
+          <span v-if="currentView!=='account'" class="save-state" :class="{ dirty: isDirty, error: saveMode === 'error' }"><i class="save-dot"></i>{{ statusText() }}</span>
         </div>
         <div class="top-actions" v-if="currentView!=='account'">
           <button class="icon-btn" title="撤销 Ctrl+Z" aria-label="撤销" :disabled="!canUndo" @click="undo"><iconify-icon class="icon" icon="ph:arrow-u-up-left"></iconify-icon></button>
@@ -2949,6 +2947,19 @@ createApp({
           <button class="btn primary" :disabled="saveMode === 'syncing'" @click="syncProject"><iconify-icon class="icon" icon="ph:arrows-clockwise"></iconify-icon><span class="btn-label">生成预览</span></button>
         </div>
         </template>
+        <div class="header-account">            <div class="merchant-account" @pointerdown.stop>
+              <button type="button" class="merchant-account-entry" :class="{active:accountMenu.open}" aria-haspopup="menu" :aria-expanded="accountMenu.open" aria-controls="merchant-account-menu" aria-label="账户" :title="sidebarCollapsed ? '账户' : null" @click="toggleAccountMenu">
+                <span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span class="merchant-account-copy"><strong>{{ merchantDisplayName }}</strong><small>{{ merchantStoreName }}</small></span><iconify-icon class="merchant-account-more" icon="ph:dots-three" aria-hidden="true"></iconify-icon><span class="nav-tooltip" role="tooltip">账户</span>
+              </button>
+              <div v-if="accountMenu.open" id="merchant-account-menu" class="account-menu" role="menu" aria-label="账户操作" @keydown="handleAccountMenuKeydown">
+                <div class="account-menu-summary" role="none"><span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span><strong>{{ merchantDisplayName }}</strong><small>{{ auth.session?.user?.login }}</small><small>{{ merchantStoreName }}</small></span></div>
+                <div class="account-menu-separator" role="separator"></div>
+                <button type="button" role="menuitem" @click="switchView('account')"><iconify-icon class="icon" icon="ph:identification-card" aria-hidden="true"></iconify-icon><span>账户与订阅</span></button>
+                <button type="button" role="menuitem" @click="openChangePassword"><iconify-icon class="icon" icon="ph:key" aria-hidden="true"></iconify-icon><span>修改密码</span></button>
+                <button type="button" role="menuitem" class="account-menu-signout" :disabled="accountMenu.signingOut" @click="merchantSignOut"><iconify-icon class="icon" :icon="accountMenu.signingOut ? 'ph:spinner-gap' : 'ph:sign-out'" aria-hidden="true"></iconify-icon><span>{{ accountMenu.signingOut ? '正在退出…' : '退出登录' }}</span></button>
+                <p v-if="accountMenu.error" class="account-menu-error" role="alert">{{ accountMenu.error }}</p>
+              </div>
+            </div></div>
       </header>
 
       <div class="workspace" :class="{'sidebar-collapsed':sidebarCollapsed,'sidebar-mobile-open':mobileSidebarOpen}">
@@ -2974,19 +2985,7 @@ createApp({
           </nav>
           <div class="nav-footer">
             <button class="nav-item nav-help" aria-label="帮助" :title="sidebarCollapsed ? '帮助' : null" @click="helpOpen=true;mobileSidebarOpen=false"><iconify-icon class="icon" icon="ph:question" aria-hidden="true"></iconify-icon><span class="nav-label">帮助</span><span class="nav-tooltip" role="tooltip">帮助</span></button>
-            <div class="merchant-account" @pointerdown.stop>
-              <button type="button" class="merchant-account-entry" :class="{active:accountMenu.open}" aria-haspopup="menu" :aria-expanded="accountMenu.open" aria-controls="merchant-account-menu" aria-label="账户" :title="sidebarCollapsed ? '账户' : null" @click="toggleAccountMenu">
-                <span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span class="merchant-account-copy"><strong>{{ merchantDisplayName }}</strong><small>{{ merchantStoreName }}</small></span><iconify-icon class="merchant-account-more" icon="ph:dots-three" aria-hidden="true"></iconify-icon><span class="nav-tooltip" role="tooltip">账户</span>
-              </button>
-              <div v-if="accountMenu.open" id="merchant-account-menu" class="account-menu" role="menu" aria-label="账户操作" @keydown="handleAccountMenuKeydown">
-                <div class="account-menu-summary" role="none"><span class="merchant-avatar" aria-hidden="true">{{ merchantInitial }}</span><span><strong>{{ merchantDisplayName }}</strong><small>{{ auth.session?.user?.login }}</small><small>{{ merchantStoreName }}</small></span></div>
-                <div class="account-menu-separator" role="separator"></div>
-                <button type="button" role="menuitem" @click="switchView('account')"><iconify-icon class="icon" icon="ph:identification-card" aria-hidden="true"></iconify-icon><span>账户与订阅</span></button>
-                <button type="button" role="menuitem" @click="openChangePassword"><iconify-icon class="icon" icon="ph:key" aria-hidden="true"></iconify-icon><span>修改密码</span></button>
-                <button type="button" role="menuitem" class="account-menu-signout" :disabled="accountMenu.signingOut" @click="merchantSignOut"><iconify-icon class="icon" :icon="accountMenu.signingOut ? 'ph:spinner-gap' : 'ph:sign-out'" aria-hidden="true"></iconify-icon><span>{{ accountMenu.signingOut ? '正在退出…' : '退出登录' }}</span></button>
-                <p v-if="accountMenu.error" class="account-menu-error" role="alert">{{ accountMenu.error }}</p>
-              </div>
-            </div>
+            <div class="nav-footer-note"><strong>FeelDao OS</strong><span>商户工作台</span></div>
           </div>
         </aside>
 
