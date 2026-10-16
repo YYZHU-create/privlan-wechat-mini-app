@@ -2364,3 +2364,48 @@ body, button, input, select, textarea { font-family: var(--ui-font-body); }
 .media-upload-progress { height: 6px; border-radius: 999px; background: var(--line, #2a2a2a); overflow: hidden; }
 .media-upload-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent, #c9a97e); transition: width .2s ease; }
 @media (max-width: 680px) { .media-upload-item { grid-template-columns: 1fr auto; } .media-upload-progress { grid-column: 1 / -1; } }
+
+/* Account center: selected design direction, content-sized and width-safe. */
+.account-management { --account-gap: 24px; }
+.account-management > .management-header { width: min(1160px,100%); margin-inline: auto; align-items: flex-start; }
+.account-management .management-header h1 { font-family: inherit; font-size: clamp(24px,2.4vw,32px); font-weight: 650; letter-spacing: -.03em; }
+.account-management .management-header p { max-width: 70ch; line-height: 1.65; }
+.account-tabs { display: flex; gap: 28px; width: min(1160px,100%); margin: 24px auto; border-bottom: 1px solid var(--line); }
+.account-tabs button { min-width: 0; min-height: 48px; padding: 10px 4px; border: 0; border-bottom: 3px solid transparent; background: transparent; font-weight: 600; color: var(--muted); cursor: pointer; }
+.account-tabs button[aria-selected="true"] { border-bottom-color: var(--gold); color: var(--ink); }
+.account-management .account-grid { width: min(1160px,100%); grid-template-columns: minmax(0,1.7fr) minmax(0,1fr); align-items: start; gap: var(--account-gap); }
+.account-management .account-grid > * { min-width: 0; max-width: 100%; }
+.account-management .atelier-panel { padding: 24px; border-radius: 10px; box-shadow: none; }
+.account-management .atelier-panel-head { align-items: flex-start; margin-bottom: 24px; }
+.account-management .atelier-panel-head h2, .account-security-link h2 { margin: 0; font-size: 19px; line-height: 1.4; font-weight: 650; }
+.account-management .atelier-panel-head p, .account-security-link p { margin: 8px 0 0; line-height: 1.65; }
+.account-management .account-profile { grid-column: 1; grid-row: 1 / span 2; }
+.account-management .subscription-summary { grid-column: 2; grid-row: 1; }
+.account-management .account-security-link { grid-column: 2; grid-row: 2; }
+.account-management .account-security-link .btn { margin-top: 20px; width: 100%; }
+.account-management .profile-editor { display: grid; grid-template-columns: minmax(0,1fr); align-items: start; gap: 20px; }
+.account-management .profile-editor > *, .account-management .profile-editor .field { min-width: 0; max-width: 100%; grid-column: 1; }
+.account-management .profile-avatar-editor { grid-row: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.account-management .profile-avatar { flex: 0 0 80px; }
+.account-management .field { display: grid; gap: 8px; }
+.account-management .field label { font-size: 14px; line-height: 1.5; }
+.account-management input:not([type="file"]) { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 6px; font-size: 14px; }
+.account-management input[readonly] { background: #f4f4f2; color: #666861; }
+.account-management .profile-editor > .btn { grid-column: 1; justify-self: end; min-height: 44px; margin-top: 4px; }
+.account-management .subscription-details > div { grid-template-columns: minmax(80px,.7fr) minmax(0,1fr); gap: 12px; padding-block: 12px; }
+.account-management .subscription-details dd { overflow-wrap: anywhere; line-height: 1.55; }
+.account-text-action { display: inline-flex; min-height: 44px; align-items: center; padding: 12px 0 0; border: 0; background: transparent; color: #806538; font-weight: 650; cursor: pointer; }
+.account-grid[data-tab="security"] .account-identity { grid-column: 1 / -1; }
+.account-grid[data-tab="subscription"] .redemption-panel { grid-column: 1; grid-row: 1; }
+.account-management .redemption-input { grid-template-columns: minmax(0,1fr); }
+.account-management .redemption-input .btn { justify-self: start; min-height: 44px; }
+.account-management .account-retention-note { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .account-management { --account-gap: 16px; } .account-management .atelier-panel { padding: 20px; } }
+@media (max-width: 820px) {
+ .account-management .account-grid { grid-template-columns: minmax(0,1fr); }
+ .account-management .account-profile, .account-management .subscription-summary, .account-management .account-security-link, .account-grid[data-tab="subscription"] .redemption-panel { grid-column: 1; grid-row: auto; }
+ .account-management .account-profile { order: -1; }
+ .account-tabs { gap: 16px; }
+ .account-tabs button { flex: 1; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .account-management *, .account-tabs * { scroll-behavior: auto; transition: none; } }
