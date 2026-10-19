@@ -1,0 +1,4 @@
+interface:
+  display_name: "FEELDAO 项目共享记忆"
+  short_description: "Retrieve and maintain evidence-linked FEELDAO project memory"
+  default_prompt: "Use $feeldao-project-memory to retrieve project history and record verified progress."
