@@ -1,0 +1,8 @@
+/.venv/
+/models/
+/cache/
+/runtime/
+/scripts/config.json
+/MODEL_MANIFEST.json
+**/__pycache__/
+*.pyc
