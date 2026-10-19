@@ -1,0 +1,4 @@
+const{test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const p=require('node:path');const root=process.env.INSPECTOR_SOURCE||p.join(__dirname,'../public');const app=fs.readFileSync(p.join(root,'app.js'),'utf8'),css=fs.readFileSync(p.join(root,'styles.css'),'utf8');
+test('inspector reveals selected block on focus and input',()=>assert.match(app,/aside class="side-panel right right-panel"[^>]*@focusin="revealSelectedSection"[^>]*@input="revealSelectedSection"/));
+test('alignment controls expose names and pressed state',()=>{assert.match(app,/左对齐/);assert.match(app,/:aria-pressed="selectedSection.style.textAlign===align.id"/);});
+test('inspector establishes readable button and icon sizes',()=>{assert.match(css,/\.editor-mode \.side-panel.right \.choice-grid button \{[^}]*font-size: 13px/);assert.match(css,/\.editor-mode \.side-panel.right \.icon \{[^}]*font-size: 18px/);});

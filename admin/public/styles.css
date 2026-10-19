@@ -732,7 +732,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .slide-edit-toolbar button { width: 28px; height: 27px; border: 1px solid #dfdcd5; border-right: 0; background: #fff; color: #69655e; display: grid; place-items: center; cursor: pointer; }
 .slide-edit-toolbar button:first-child { border-radius: 7px 0 0 7px; }
 .slide-edit-toolbar button:last-child { border-right: 1px solid #dfdcd5; border-radius: 0 7px 7px 0; }
-.slide-edit-toolbar button.slide-delete { width: auto; padding: 0 9px; gap: 4px; color: #a3483d; background: #fff8f6; }
+.slide-edit-toolbar button.slide-delete { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0; color: #a3483d; background: #fff8f6; }
 .slide-edit-toolbar button.slide-delete:hover { border-color: #d9a39b; background: #fff0ed; }
 .slide-edit-toolbar .slide-delete span { font-size: 9px; white-space: nowrap; }
 
@@ -2440,3 +2440,74 @@ body, button, input, select, textarea { font-family: var(--ui-font-body); }
 .nav-footer-note { display: grid; gap: 5px; padding: 12px; font-size: 12px; color: #a6a69f; }
 .nav-footer-note strong { color: #e7e5de; font-size: 13px; }
 .sidebar-collapsed .nav-footer-note { display: none; }
+
+/* Inspector controls: readable typography and consistent icon geometry. */
+.editor-mode .side-panel.right .choice-grid button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; line-height: 1.4; }
+.editor-mode .side-panel.right .icon { width: 18px; height: 18px; font-size: 18px; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; }
+.editor-mode .side-panel.right .field > label, .editor-mode .side-panel.right .field-title { font-size: 13px; line-height: 1.5; }
+.editor-mode .side-panel.right input:not([type="range"]):not([type="color"]), .editor-mode .side-panel.right select, .editor-mode .side-panel.right textarea { min-width: 0; max-width: 100%; font-size: 14px; line-height: 1.5; }
+.editor-mode .side-panel.right .range-row { grid-template-columns: minmax(0,1fr) 64px; }
+.editor-mode .side-panel.right .choice-grid button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Inspector layout contract: contain groups and never float block help text. */
+.editor-mode .side-panel.right .field-group { display: flow-root; min-width: 0; width: 100%; }
+.editor-mode .side-panel.right .field-group > .field-title { width: 100%; min-width: 0; flex-wrap: wrap; gap: 8px; overflow-wrap: break-word; }
+.editor-mode .side-panel.right p.field-hint { float: none; display: block; width: 100%; margin: 10px 0 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.editor-mode .side-panel.right .field-row > *, .editor-mode .side-panel.right .range-row > * { min-width: 0; }
+@media (max-width: 900px) {
+  .editor-mode .side-panel.right.open { display: block; }
+}
+
+/* Mobile simulator: fixed screen, independent content scroll and system chrome. */
+.editor-mode .phone-canvas.mobile { width: 426px; min-width: 426px; max-width: 426px; border: 12px solid #171817; border-radius: 48px; background: #171817; overflow: hidden; position: relative; }
+.editor-mode .phone-canvas.mobile::before { content: ""; position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 102px; height: 26px; border-radius: 20px; background: #080808; z-index: 40; pointer-events: none; }
+.phone-canvas.mobile .mobile-page { height: 874px; min-height: 874px; padding: 0; overflow: hidden; border-radius: 36px; }
+.phone-canvas.mobile .mobile-status { position: relative; height: 44px; padding: 8px 25px 0; font-size: 14px; background: var(--page-bg); }
+.phone-canvas.mobile .mobile-status-icons .icon { font-size: 14px; width: 14px; height: 14px; }
+.phone-canvas.mobile .mobile-scroll { position: relative; height: calc(100% - 44px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; }
+.phone-canvas.mobile .mobile-scroll::-webkit-scrollbar { display: none; }
+.phone-canvas.mobile .mobile-page:has(> .mobile-tabbar) .mobile-scroll { height: calc(100% - 44px - 78px); }
+.phone-canvas.mobile .mobile-tabbar { height: 78px; padding-bottom: 20px; }
+.phone-canvas.mobile .mobile-page::after { content: ""; position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%); width: 128px; height: 4px; border-radius: 3px; background: var(--page-text); opacity: .8; z-index: 35; pointer-events: none; }
+.wechat-capsule { display: none; }
+.phone-canvas.mobile .wechat-capsule { position: absolute; top: 50px; right: 10px; z-index: 30; width: 87px; height: 30px; display: flex; align-items: center; justify-content: space-evenly; border: 1px solid rgba(255,255,255,.35); border-radius: 18px; background: rgba(0,0,0,.22); color: white; font: 18px/1 system-ui; pointer-events: none; }
+.wechat-capsule i { width: 1px; height: 16px; background: rgba(255,255,255,.3); }
+.phone-canvas.mobile .mobile-nav { padding-right: 100px; }
+.phone-canvas:not(.mobile) .mobile-scroll { display: contents; }
+
+.phone-canvas.mobile .mobile-nav { top: 0; }
+
+.product-preview-grid { grid-template-columns: repeat(var(--columns, 2), minmax(0, 1fr)); }
+.product-preview-grid.is-horizontal { display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - (var(--columns) - 1) * var(--gap)) / var(--columns)); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.product-preview-grid.is-horizontal::-webkit-scrollbar { display: none; }
+.product-preview-grid .product-card, .product-preview-grid .product-image { min-width: 0; max-width: 100%; }
+.product-preview-grid .product-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-swipe-hint { margin: 8px 0 0; font-size: 11px; opacity: .65; text-align: right; }
+
+/* Phone interface profile: simulated system insets, not device-reported metrics. */
+.phone-canvas.mobile { --phone-status-height: 62px; --phone-bottom-inset: 34px; --phone-tab-height: 83px; }
+.phone-canvas.mobile .mobile-status { height: var(--phone-status-height); padding: 0 28px; align-items: center; font-size: 16px; }
+.phone-canvas.mobile .mobile-status-icons { gap: 6px; }
+.phone-canvas.mobile .mobile-status-icons .icon { width: 17px; height: 17px; }
+.phone-canvas.mobile .mobile-scroll { height: calc(100% - var(--phone-status-height) - var(--phone-bottom-inset)); }
+.phone-canvas.mobile .mobile-page:has(> .mobile-tabbar) .mobile-scroll { height: calc(100% - var(--phone-status-height) - var(--phone-tab-height)); }
+.phone-canvas.mobile .mobile-tabbar { height: var(--phone-tab-height); padding-bottom: var(--phone-bottom-inset); }
+.phone-canvas.mobile .mobile-tab { min-width: 0; font-size: 10px; line-height: 1.2; gap: 4px; }
+.phone-canvas.mobile .mobile-tab img { width: 23px; height: 23px; }
+.phone-canvas.mobile .mobile-tab.center img { width: var(--tab-center-size, 40px); height: var(--tab-center-size, 40px); }
+.phone-canvas.mobile .mobile-nav { height: 44px; padding-left: 44px; padding-right: 104px; }
+.phone-canvas.mobile .mobile-channel { max-width: 100%; gap: 16px; font-size: 13px; letter-spacing: 0; }
+.phone-canvas.mobile .mobile-page-title { font-size: 17px; letter-spacing: 0; }
+.phone-canvas.mobile .wechat-capsule { top: 69px; width: 87px; height: 30px; }
+
+.product-preview-grid.is-horizontal { cursor: grab; }
+.product-preview-grid.is-horizontal.is-dragging { cursor: grabbing; user-select: none; scroll-behavior: auto; }
+.product-preview-grid.is-horizontal img { -webkit-user-drag: none; user-select: none; }
+
+/* Desktop simulator uses a fixed Full HD viewport; zoom changes display scale. */
+.editor-mode .phone-canvas.desktop { width: 1920px; min-width: 1920px; max-width: 1920px; height: 1080px; min-height: 1080px; border: 0; border-radius: 0; transition: none; }
+.phone-canvas.desktop .mobile-page { height: 1080px; min-height: 1080px; padding: 0; overflow: hidden; }
+.phone-canvas.desktop .mobile-status { display: none; }
+.phone-canvas.desktop .mobile-scroll { display: block; height: 100%; overflow-y: auto; overflow-x: hidden; }
+.phone-canvas.desktop .mobile-page:has(> .mobile-tabbar) .mobile-scroll { height: calc(100% - 64px); }
+.phone-canvas.desktop .mobile-nav { top: 0; }

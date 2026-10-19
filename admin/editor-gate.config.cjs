@@ -1,0 +1,2 @@
+const {defineConfig}=require('@playwright/test');const path=require('node:path');const os=require('node:os');const fs=require('node:fs');
+module.exports=defineConfig({testDir:'./qa',testMatch:'editor-acceptance.spec.js',workers:1,timeout:45000,use:{baseURL:'http://127.0.0.1:63261',viewport:{width:1440,height:1000},trace:'retain-on-failure'},webServer:{command:'node ../scripts/local-editor.cjs',url:'http://127.0.0.1:63261/api/config',reuseExistingServer:false,env:{LOCAL_EDITOR_HOME:fs.mkdtempSync(path.join(os.tmpdir(),'feeldao-browser-gate-')),LOCAL_EDITOR_PORT:'63261'}}});

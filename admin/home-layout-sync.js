@@ -99,6 +99,11 @@ function staticHotspotLayer(block) {
 
 function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
   if (pageId === "appointment") return syncAppointmentLayout(cfg, root, pageMeta);
+  const motions = [];
+  const productLayouts = [];
+  const motionConfig = block => ({ effect: ["fade", "rise"].includes(block.motion?.effect) ? block.motion.effect : "none", duration: ({ fast: 200, standard: 350, slow: 500 })[block.motion?.speed] || 350 });
+  fs.mkdirSync(path.join(root, "utils"), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, "builder-motion-runtime.js"), path.join(root, "utils", "builder-motion.js"));
   const colors = cfg.theme.colors;
   const type = typographyTokens(cfg);
   const blocks = (cfg.pageLayouts[pageId] || []).filter(block => block.enabled !== false && block.visibility?.mobile !== false);
@@ -137,6 +142,7 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     data.visibleProducts = productCatalog;
   }
   if (productDetailIndex >= 0) {
+    data.detailGalleryHeight = 460;
     data.productCatalog = productCatalog;
     data.productMissing = false;
   }
@@ -205,19 +211,26 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
         ? cfg.products.filter(product => product.cat === props.category)
         : cfg.products;
       data[key] = source.slice(0, Number(props.count || 6));
-      const columns = Math.max(2, Math.min(4, Number(props.columns || 2)));
+      const horizontal = props.layout === "horizontal";
+      const columns = horizontal ? (Number(props.itemsPerView) === 1 ? 1 : 2) : Math.max(2, Math.min(4, Number(props.columns || 2)));
+      productLayouts.push({ key, columns, gap: Math.max(4, Math.min(30, Number(style.gap || 12))), padding: Math.max(0, Math.min(120, Number(style.paddingX) || 0)) });
+      data[key + "CardWidth"] = 150;
+      data[key + "ImageHeight"] = 200;
       const gap = Math.max(4, Math.min(30, Number(style.gap || 12)));
       const listExpression = pageId === "category" && categoryGridIndex === index ? "visibleProducts" : key;
       const viewAllCategory = props.category && props.category !== "all" ? props.category : "all";
       return `<view class="builder-products builder-block" style="${escapeXml(inlineStyle)}">
   <view class="builder-section-head"><text class="serif">${escapeXml(props.title || block.name || "精选商品")}</text><text class="builder-more" data-category="${escapeXml(viewAllCategory)}" bindtap="viewAllProducts">查看全部</text></view>
-  <view class="builder-grid" style="grid-template-columns:repeat(${columns},1fr);gap:${gap}px">
-    <view wx:for="{{${listExpression}}}" wx:key="id" class="builder-product" data-id="{{item.id}}" bindtap="goDetail">
-      <image class="builder-product-img" src="{{item.img}}" mode="aspectFill" />
+  ${horizontal ? '<scroll-view class="builder-product-scroll" scroll-x="true" show-scrollbar="false">' : ""}
+  <view class="${horizontal ? "builder-strip" : "builder-grid"}">
+    <view wx:for="{{${listExpression}}}" wx:key="id" class="builder-product" style="width:{{${key}CardWidth}}px;flex:0 0 {{${key}CardWidth}}px;margin-right:{{${horizontal ? `index + 1 === ${listExpression}.length ? 0 : ${gap}` : `(index + 1) % ${columns} === 0 ? 0 : ${gap}`}}}px;margin-bottom:${horizontal ? 0 : gap}px" data-id="{{item.id}}" bindtap="goDetail">
+      <image class="builder-product-img" style="height:{{${key}ImageHeight}}px" src="{{item.img}}" mode="aspectFill" />
       ${props.showName === false ? "" : `<view class="builder-product-name">{{item.name}}</view>`}
       ${props.showPrice === false ? "" : `<view class="builder-product-price">¥{{item.price}}</view>`}
     </view>
   </view>
+  ${horizontal ? '</scroll-view>' : ""}
+  ${horizontal && props.showSwipeHint !== false ? `<view wx:if="{{${listExpression}.length > ${columns}}}" class="builder-swipe-hint">左滑查看更多</view>` : ""}
 </view>`;
     }
 
@@ -246,8 +259,8 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
       data.productMissing = !product;
       data.detailFallbackId = props.productId == null ? "" : String(props.productId);
       return `<view wx:if="{{!productMissing}}" class="builder-detail builder-block" style="${escapeXml(inlineStyle)}">
-  <swiper class="builder-detail-gallery" indicator-dots="{{${key}.gallery.length > 1}}" circular="{{${key}.gallery.length > 1}}" duration="260">
-    <swiper-item wx:for="{{${key}.gallery}}" wx:key="*this"><image class="builder-detail-image" src="{{item}}" mode="aspectFill" /></swiper-item>
+  <swiper class="builder-detail-gallery" style="height:{{detailGalleryHeight}}px" indicator-dots="{{${key}.gallery.length > 1}}" circular="{{${key}.gallery.length > 1}}" duration="260">
+    <swiper-item wx:for="{{${key}.gallery}}" wx:key="*this"><image class="builder-detail-image" src="{{item}}" mode="aspectFit" /></swiper-item>
   </swiper>
   <view class="builder-detail-kicker">PRIVLAN COLLECTION</view>
   <view class="builder-detail-name serif">{{${key}.name}}</view>
@@ -270,7 +283,11 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     }
 
     return "";
-  }).map((markup, index) => `<view class="builder-hotspot-host">${markup}${blockHotspotLayer(`block${index}`)}</view>`).join("\n");
+  }).map((markup, index) => {
+    const motion = motionConfig(blocks[index]);
+    if (markup && motion.effect !== "none") motions.push({ ...motion, selector: `#builder-motion-${index}` });
+    return `<view id="builder-motion-${index}" class="builder-hotspot-host">${markup}${blockHotspotLayer(`block${index}`)}</view>`;
+  }).join("\n");
 
   const cartPanel = pageId === "cart" ? `<view class="builder-cart-panel">
   <view wx:if="{{!cartItems.length}}" class="builder-cart-empty"><image class="builder-cart-empty-icon" src="/images/tab-bag.png" mode="aspectFit" /><view class="builder-cart-empty-title">购物车还是空的</view><view class="builder-cart-empty-copy">从商品详情加入商品后，会显示在这里。</view><button bindtap="explore">去选购</button></view>
@@ -279,11 +296,9 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
 
   const navContent = pageId === "home"
     ? `<image class="builder-search" src="/images/icon-search.png" mode="aspectFit" bindtap="onSearch" /><view class="builder-channels"><text wx:for="{{channels}}" wx:key="*this" class="builder-channel {{channel === item ? 'on' : ''}}" data-c="{{item}}" bindtap="switchChannel">{{item}}</text></view>`
-    : tabIndex >= 0 ? "" : `<image class="builder-search" src="/images/icon-back.png" mode="aspectFit" bindtap="goBack" /><view class="builder-page-title">{{pageTitle}}</view>`;
+    : tabIndex >= 0 || pageId === "detail" ? "" : `<image class="builder-search" src="/images/icon-back.png" mode="aspectFit" bindtap="goBack" /><view class="builder-page-title">{{pageTitle}}</view>`;
   const wxml = `<view class="builder-page">
-  <view class="builder-nav" style="padding-top:{{navPadTop}}px">
-    ${navContent}
-  </view>
+  ${navContent ? `<view class="builder-nav" style="padding-top:{{navPadTop}}px">${navContent}</view>` : ""}
   <view class="builder-content">${cartPanel}${body}</view>
   <service-fab enabled="{{serviceBot.enabled}}" icon="{{serviceBot.icon}}" size="{{serviceBot.size}}" right="{{serviceBot.right}}" bottom="{{serviceBot.bottom}}" />
 </view>`;
@@ -310,19 +325,33 @@ function syncHomeLayout(cfg, root, pageId = "home", pageMeta = {}) {
     cart.add(product); wx.switchTab({ url: "/pages/cart/cart" });
   },` : ""}` : "";
   const detailLoad = productDetailIndex >= 0 ? `
+    this.setData({ detailGalleryHeight: Math.round(Math.max(1, (Number(win.windowWidth) || 375) - ${Math.max(0, Number(blocks[productDetailIndex].style?.paddingX) || 0) * 2}) * 4 / 3) });
     const requestedId = options && options.id != null && options.id !== "" ? String(options.id) : "";
     const targetId = requestedId || String(this.data.detailFallbackId || "");
     const product = this.data.productCatalog.find(item => String(item.id) === targetId);
     this.setData({ productMissing: !product, block${productDetailIndex}: product || { id: "", gallery: [], colors: [], sizes: [], description: "", detailImages: [] } });` : "";
   const js = `// Generated by PRIVLAN Commerce Studio. Edit the homepage in the admin panel.
-${cartImport}Page({
+${motions.length ? 'const builderMotion = require("../../utils/builder-motion");\n' : ""}${cartImport}Page({
   data: ${JSON.stringify(data, null, 4)},
   onLoad(options = {}) {
     const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    this.layoutProductCards(Number(win.windowWidth) || 375);
     const menu = wx.getMenuButtonBoundingClientRect();
     this.setData({ navPadTop: menu.top || win.statusBarHeight || 20 });${detailLoad}${pageId === "category" ? `
     this.applyCategory(options.cat);` : ""}
   },
+  layoutProductCards(width) {
+    const patch = {};
+    ${JSON.stringify(productLayouts)}.forEach(layout => {
+      const cardWidth = Math.max(1, (width - layout.padding * 2 - layout.gap * (layout.columns - 1)) / layout.columns);
+      patch[layout.key + "CardWidth"] = cardWidth;
+      patch[layout.key + "ImageHeight"] = Math.round(cardWidth * 4 / 3);
+    });
+    if (Object.keys(patch).length) this.setData(patch);
+  },
+  onResize(event) { if (event && event.size && event.size.windowWidth) this.layoutProductCards(event.size.windowWidth); },
+  onReady() { ${motions.length ? `this._stopBuilderMotion = builderMotion.attach(this, ${JSON.stringify(motions)});` : ""} },
+  onUnload() { if (this._stopBuilderMotion) this._stopBuilderMotion(); },
   onShow() {${tabIndex >= 0 ? `
     if (typeof this.getTabBar === "function" && this.getTabBar()) this.getTabBar().setData({ selected: ${tabIndex} });` : ""}${usesCart ? `
     this.refreshCart();` : ""}
@@ -372,21 +401,22 @@ ${cartImport}Page({
 
   const customFonts = (cfg.customFonts || []).filter(font => font.url).map(font => `@font-face{font-family:'${cssValue(font.id)}';src:url('${cssValue(font.url)}');font-display:swap}`).join("");
   const memberLogoStyles = `.builder-member{background:#000;color:#fff}.builder-member-logo{display:block;width:360rpx;height:72rpx;margin:0 auto 18rpx;background:#000}.builder-member-title,.builder-member-sub,.builder-benefits{transform:translateY(16rpx)}.builder-member-title{color:#fff}.builder-member-sub{color:#fff}.builder-benefit{min-width:0;margin:0;padding:22rpx 4rpx 0;border:0;border-top:1rpx solid ${colors.border};border-radius:0;background:transparent;color:#fff;line-height:${type.bodyLineHeight}}.builder-benefit::after{border:0}`;
-  const productDetailStyles = `.builder-detail-gallery{width:100%;height:auto;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-gallery swiper-item{height:100%}.builder-detail-options{display:flex;align-items:center;flex-wrap:wrap;gap:10rpx;margin-top:18rpx}.builder-detail-label{color:${colors.textSecondary};font-size:${type.meta}rpx;margin-right:6rpx}.builder-detail-option{padding:8rpx 18rpx;border:1rpx solid ${colors.border};border-radius:99rpx;font-size:${type.meta}rpx}.builder-detail-long-copy{margin-top:24rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight};white-space:pre-line}.builder-detail-story{margin-top:24rpx}.builder-detail-story image{display:block;width:100%;margin-bottom:14rpx}`;
+  const productDetailStyles = `.builder-detail-gallery{width:100%;height:460px;background:${colors.bgSecondary}}.builder-detail-gallery swiper-item{height:100%}.builder-detail-gallery .builder-detail-image{display:block;width:100%;height:100%;aspect-ratio:auto}.builder-detail-options{display:flex;align-items:center;flex-wrap:wrap;gap:10rpx;margin-top:18rpx}.builder-detail-label{color:${colors.textSecondary};font-size:${type.meta}rpx;margin-right:6rpx}.builder-detail-option{padding:8rpx 18rpx;border:1rpx solid ${colors.border};border-radius:99rpx;font-size:${type.meta}rpx}.builder-detail-long-copy{margin-top:24rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight};white-space:pre-line}.builder-detail-story{margin-top:24rpx}.builder-detail-story image{display:block;width:100%;margin-bottom:14rpx}`;
   const mediaStyles = ".builder-media{position:relative;width:100%;overflow:hidden}.builder-media-content{display:block;width:100%;height:100%}.builder-media-overlay{position:absolute;inset:0;pointer-events:none}.builder-hero swiper-item{position:relative}.builder-hotspot-host{position:relative}.builder-hotspot{position:absolute;z-index:8;background:transparent;display:block}";
   const cartStyles = `.builder-cart-panel{padding:32px 15px 18px}.builder-cart-empty{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;border:1rpx solid ${colors.border};text-align:center}.builder-cart-empty-icon{display:block;width:52rpx;height:52rpx;margin-bottom:10rpx}.builder-cart-empty-title{font-size:${type.sectionTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-cart-empty-copy{margin-top:8rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-cart-empty button{min-height:88rpx;margin-top:18rpx;padding:0 32rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx;line-height:88rpx}.builder-cart-head,.builder-cart-total{display:flex;align-items:center;justify-content:space-between;color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-cart-head{padding-bottom:18rpx;border-bottom:1rpx solid ${colors.border}}.builder-cart-accent{color:${colors.accent}}.builder-cart-line{display:grid;grid-template-columns:136rpx minmax(0,1fr) auto;gap:20rpx;align-items:center;padding:22rpx 0;border-bottom:1rpx solid ${colors.border}}.builder-cart-line>image{width:136rpx;height:172rpx;background:${colors.bgSecondary}}.builder-cart-copy{min-width:0}.builder-cart-name{display:block;overflow:hidden;font-size:${type.body}rpx;white-space:nowrap;text-overflow:ellipsis}.builder-cart-price{display:block;margin-top:8rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-cart-quantity{display:grid;grid-template-columns:64rpx 48rpx 64rpx;align-items:center;width:176rpx;margin-top:16rpx;border:1rpx solid ${colors.border}}.builder-cart-quantity button{width:64rpx;height:64rpx;padding:0;border:0;background:transparent;color:${colors.textPrimary};font-size:30rpx;line-height:64rpx}.builder-cart-quantity text{text-align:center;font-size:${type.meta}rpx}.builder-cart-total{padding-top:24rpx}.builder-cart-total .builder-cart-accent{font-size:${type.body}rpx}`;
-  const wxss = `${customFonts}.builder-page{min-height:100vh;background:${colors.bgPrimary};color:${colors.textPrimary};padding-bottom:130rpx;font-family:${FONT_STACKS.system};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-block{box-sizing:border-box;overflow:hidden}.builder-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;padding-left:24rpx;padding-right:24rpx;display:flex;align-items:center;background:linear-gradient(to bottom,rgba(0,0,0,.62),transparent)}.builder-search{width:40rpx;height:40rpx}.builder-page-title{flex:1;margin-right:40rpx;text-align:center;color:#fff;font-size:${type.pageTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-channels{flex:1;display:flex;justify-content:center;gap:44rpx;margin-right:120rpx}.builder-channel{font-size:${type.body}rpx;color:rgba(255,255,255,.72);padding-bottom:8rpx}.builder-channel.on{color:${colors.accent};border-bottom:2rpx solid ${colors.accent}}.builder-cover{width:100%;height:100%;display:block}.builder-hero{position:relative;width:100%;background:${colors.bgSecondary}}.builder-mask{position:absolute;inset:0}.builder-hero-copy{position:absolute;left:40rpx;right:40rpx;bottom:84rpx;text-align:inherit}.builder-eyebrow{font-size:${type.caption}rpx;color:rgba(255,255,255,.82)}.builder-hero-title{margin:16rpx 0 8rpx;font-size:${type.heroTitle}rpx;line-height:${type.headingLineHeight};color:inherit}.builder-hero-sub{font-size:${type.body}rpx;line-height:${type.bodyLineHeight};color:inherit;opacity:.9}.builder-outline{display:inline-flex;align-items:center;justify-content:center;min-height:88rpx;margin-top:34rpx;padding:0 48rpx;font-size:${type.body}rpx}.builder-categories{white-space:nowrap}.builder-category{display:inline-flex;align-items:center;min-height:72rpx;margin-right:16rpx;padding:0 24rpx;border:1rpx solid ${colors.border};border-radius:99rpx;color:${colors.textSecondary};font-size:${type.body}rpx}.builder-category.on{background:${colors.accent};border-color:${colors.accent};color:${colors.bgPrimary}}.builder-section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28rpx;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-more{color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-grid{display:grid}.builder-product-img{width:100%;aspect-ratio:3/4;background:${colors.bgSecondary}}.builder-product-name{margin-top:12rpx;font-size:${type.body}rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.builder-product-price{margin-top:5rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-member{text-align:inherit}.builder-member-title{color:inherit;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-member-sub{margin:14rpx 0 32rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:12rpx}.builder-benefit{border-top:1rpx solid ${colors.border};padding-top:22rpx;display:flex;flex-direction:column;align-items:center;font-size:${type.caption}rpx}.builder-benefit image{width:44rpx;height:44rpx;margin-bottom:10rpx}.builder-detail-image{width:100%;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-kicker{margin-top:28rpx;color:${colors.accent};font-size:${type.caption}rpx}.builder-detail-name{margin-top:12rpx;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-detail-price{margin-top:8rpx;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-copy{margin:24rpx 0 32rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}.builder-detail-actions button{min-height:88rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-actions button.primary{background:${colors.accent};color:${colors.bgPrimary}}.builder-detail-missing{padding:240rpx 48rpx 120rpx;text-align:center}.builder-detail-missing button{min-height:88rpx;padding:0 48rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent}}.builder-text-title{color:inherit;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-text-copy{margin-top:14rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-service{position:fixed;z-index:1000;right:24rpx;bottom:150rpx;width:88rpx;height:88rpx;border-radius:50%;background:${colors.bgSecondary};border:1rpx solid ${colors.accent};padding:0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none}.builder-service::after{border:0}.builder-service image{width:52%;height:52%}`;
+  const wxss = `${customFonts}.builder-page{min-height:100vh;background:${colors.bgPrimary};color:${colors.textPrimary};padding-bottom:130rpx;font-family:${FONT_STACKS.system};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-block{box-sizing:border-box;overflow:hidden}.builder-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;padding-left:24rpx;padding-right:24rpx;display:flex;align-items:center;background:linear-gradient(to bottom,rgba(0,0,0,.62),transparent)}.builder-search{width:40rpx;height:40rpx}.builder-page-title{flex:1;margin-right:40rpx;text-align:center;color:#fff;font-size:${type.pageTitle}rpx;font-weight:600;line-height:${type.headingLineHeight}}.builder-channels{flex:1;display:flex;justify-content:center;gap:44rpx;margin-right:120rpx}.builder-channel{font-size:${type.body}rpx;color:rgba(255,255,255,.72);padding-bottom:8rpx}.builder-channel.on{color:${colors.accent};border-bottom:2rpx solid ${colors.accent}}.builder-cover{width:100%;height:100%;display:block}.builder-hero{position:relative;width:100%;background:${colors.bgSecondary}}.builder-mask{position:absolute;inset:0}.builder-hero-copy{position:absolute;left:40rpx;right:40rpx;bottom:84rpx;text-align:inherit}.builder-eyebrow{font-size:${type.caption}rpx;color:rgba(255,255,255,.82)}.builder-hero-title{margin:16rpx 0 8rpx;font-size:${type.heroTitle}rpx;line-height:${type.headingLineHeight};color:inherit}.builder-hero-sub{font-size:${type.body}rpx;line-height:${type.bodyLineHeight};color:inherit;opacity:.9}.builder-outline{display:inline-flex;align-items:center;justify-content:center;min-height:88rpx;margin-top:34rpx;padding:0 48rpx;font-size:${type.body}rpx}.builder-categories{white-space:nowrap}.builder-category{display:inline-flex;align-items:center;min-height:72rpx;margin-right:16rpx;padding:0 24rpx;border:1rpx solid ${colors.border};border-radius:99rpx;color:${colors.textSecondary};font-size:${type.body}rpx}.builder-category.on{background:${colors.accent};border-color:${colors.accent};color:${colors.bgPrimary}}.builder-section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28rpx;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-more{color:${colors.textSecondary};font-size:${type.meta}rpx}.builder-grid{display:flex;flex-wrap:wrap}.builder-strip{display:flex;flex-wrap:nowrap;align-items:flex-start}.builder-product-scroll{width:100%;white-space:normal}.builder-product{min-width:0;box-sizing:border-box}.builder-swipe-hint{margin-top:16rpx;font-size:22rpx;opacity:.65;text-align:right}.builder-product-img{display:block;width:100%;height:200px;background:${colors.bgSecondary}}.builder-product-name{margin-top:12rpx;font-size:${type.body}rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.builder-product-price{margin-top:5rpx;color:${colors.accent};font-size:${type.meta}rpx}.builder-member{text-align:inherit}.builder-member-title{color:inherit;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-member-sub{margin:14rpx 0 32rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:12rpx}.builder-benefit{border-top:1rpx solid ${colors.border};padding-top:22rpx;display:flex;flex-direction:column;align-items:center;font-size:${type.caption}rpx}.builder-benefit image{width:44rpx;height:44rpx;margin-bottom:10rpx}.builder-detail-image{width:100%;aspect-ratio:1/1.12;background:${colors.bgSecondary}}.builder-detail-kicker{margin-top:28rpx;color:${colors.accent};font-size:${type.caption}rpx}.builder-detail-name{margin-top:12rpx;font-size:${type.pageTitle}rpx;line-height:${type.headingLineHeight}}.builder-detail-price{margin-top:8rpx;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-copy{margin:24rpx 0 32rpx;color:${colors.textSecondary};font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}.builder-detail-actions button{min-height:88rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent};font-size:${type.body}rpx}.builder-detail-actions button.primary{background:${colors.accent};color:${colors.bgPrimary}}.builder-detail-missing{padding:240rpx 48rpx 120rpx;text-align:center}.builder-detail-missing button{min-height:88rpx;padding:0 48rpx;border:1rpx solid ${colors.accent};background:transparent;color:${colors.accent}}.builder-text-title{color:inherit;font-size:${type.sectionTitle}rpx;line-height:${type.headingLineHeight}}.builder-text-copy{margin-top:14rpx;color:inherit;opacity:.78;font-size:${type.body}rpx;line-height:${type.bodyLineHeight}}.builder-service{position:fixed;z-index:1000;right:24rpx;bottom:150rpx;width:88rpx;height:88rpx;border-radius:50%;background:${colors.bgSecondary};border:1rpx solid ${colors.accent};padding:0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none}.builder-service::after{border:0}.builder-service image{width:52%;height:52%}`;
 
-  fs.writeFileSync(path.join(pageDir, `${pageId}.wxml`), wxml, "utf-8");
+  const interactiveWxml = wxml.replace(/<(view|button|text)(\s[^>]*\b(?:bindtap|catchtap)="[^"]*"[^>]*)>/g, (tag, type, attrs) => attrs.includes("hover-class=") ? tag : `<${type}${attrs} hover-class="builder-press" hover-stay-time="80">`);
+  fs.writeFileSync(path.join(pageDir, `${pageId}.wxml`), interactiveWxml, "utf-8");
   fs.writeFileSync(path.join(pageDir, `${pageId}.js`), js, "utf-8");
-  fs.writeFileSync(path.join(pageDir, `${pageId}.wxss`), wxss + memberLogoStyles + productDetailStyles + mediaStyles + cartStyles, "utf-8");
+  fs.writeFileSync(path.join(pageDir, `${pageId}.wxss`), wxss + memberLogoStyles + productDetailStyles + mediaStyles + cartStyles + ".builder-press{opacity:.82;transform:scale(.98)}", "utf-8");
   const jsonPath = path.join(pageDir, `${pageId}.json`);
   const pageJson = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, "utf-8")) : {};
   pageJson.navigationBarTitleText = pageMeta.name || cfg.brand.name;
   pageJson.enableShareAppMessage = true;
   pageJson.enableShareTimeline = true;
   fs.writeFileSync(jsonPath, JSON.stringify(pageJson, null, 2) + "\n", "utf-8");
-  return [`pages/${pageId}/${pageId}.wxml`, `pages/${pageId}/${pageId}.js`, `pages/${pageId}/${pageId}.wxss`, `pages/${pageId}/${pageId}.json`];
+  return ["utils/builder-motion.js", `pages/${pageId}/${pageId}.wxml`, `pages/${pageId}/${pageId}.js`, `pages/${pageId}/${pageId}.wxss`, `pages/${pageId}/${pageId}.json`];
 }
 
 function syncAppointmentLayout(cfg, root, pageMeta = {}) {

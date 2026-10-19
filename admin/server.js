@@ -1756,6 +1756,8 @@ app.post("/api/preview", (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, qrUrl: `/api/preview/qr?v=${Date.now()}`, previewReport });
   } catch (e) {
+    const known = require("./wechat-preview-error").classifyWechatPreviewError(e);
+    if (known) return res.status(known.status).json({ ok: false, code: known.code, message: known.message, error: known.message });
     respondUnexpectedError(res, e, { fallbackCode: "PREVIEW_FAILED", fallbackStatus: 502, fallbackMessage: "预览生成失败，请检查本地开发环境后重试", requestId: requestId("preview") });
   }
 });

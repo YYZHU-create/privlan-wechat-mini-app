@@ -36,3 +36,9 @@ For future Meoo releases, follow `docs/runbooks/release-provenance.md`: capture 
 ## Meoo Documentation Evidence
 
 Before Meoo platform integration, connection, deployment, or API work, review the relevant current official documentation. Separate what is `DOCUMENTED`, `PROJECT IMPLEMENTED`, and `RUNTIME VERIFIED`; documentation alone does not prove project configuration or live runtime behavior. Cite the relevant official documentation in findings or implementation notes.
+
+## UI layout quality gate
+For every editor UI addition or change, use existing scoped controls and tokens; block help text must not float. Inspector groups must contain their children, and field titles must retain the available row width. Use shrinkable grid columns, min-width:0 children and bounded inputs. Controls use readable typography and named icons. Preserve unsaved user tabs.
+Run npm test (includes ui-layout-contract tests). Also run qa/inspector-layout-audit.js against rendered affected content and inspect screenshots at 1440, 1024, 952 and 768px widths, including long labels and the affected tab. A passing source contract does not establish a browser geometry pass. Repair failures before claiming visual completion; report any untested widths. Do not append global generic selectors to repair one panel. Automated geometry checks cover measurable containment/wrapping, not aesthetic approval.
+
+Editor acceptance gate: docs/tasks/editor-acceptance-20261019.md; run node --test test/editor-roundtrip.test.js from admin, then pnpm exec playwright test -c editor-gate.config.cjs on isolated fixture. Browser/CI/native outcomes must remain distinct.
